@@ -10,6 +10,7 @@ identical tokens no matter how the server batches, caches or chunks work.
   prefix   same request with its prompt uncached vs. (partially) prefix-cached
   path     continuation through decode vs. re-prefilling the generated tokens
   repeat   one prompt sent many times under varying background load
+  sample   seeded temperature sampling, alone vs. under concurrent traffic
 
 Usage: detcheck.py --url http://host:port --tokenizer /path/to/model [--checks ...]
 Requires the server to return completion token ids ("return_token_ids": true,
@@ -29,15 +30,16 @@ class Server:
     def __init__(self, url, api, timeout=1200):
         self.url, self.api, self.timeout = url.rstrip("/"), api, timeout
 
-    def generate(self, ids, max_tokens):
+    def generate(self, ids, max_tokens, sampling=None):
+        sp = sampling or {"temperature": 0}
         if self.api == "sglang":
             r = requests.post(self.url + "/generate", json={
-                "input_ids": ids, "sampling_params": {"temperature": 0, "max_new_tokens": max_tokens,
+                "input_ids": ids, "sampling_params": {**sp, "max_new_tokens": max_tokens,
                                                       "ignore_eos": True}}, timeout=self.timeout)
             r.raise_for_status()
             return list(r.json()["output_ids"])
         r = requests.post(self.url + "/v1/completions", json={
-            "model": self.model(), "prompt": ids, "max_tokens": max_tokens, "temperature": 0,
+            "model": self.model(), "prompt": ids, "max_tokens": max_tokens, **sp,
             "ignore_eos": True, "return_token_ids": True}, timeout=self.timeout)
         r.raise_for_status()
         choice = r.json()["choices"][0]
@@ -160,12 +162,31 @@ def check_repeat(srv, prompt, T, rng, n, vocab):
     return {"samples": n, "unique_completions": len(outs)}
 
 
+def check_sample(srv, prompts, T, rng, conc, vocab):
+    sp = lambda i: {"temperature": 0.8, "top_p": 0.95, "top_k": 50, "seed": 1000 + i}
+    ref = [srv.generate(p, T, sp(i)) for i, p in enumerate(prompts)]
+    rows = []
+    for c in conc:
+        with cf.ThreadPoolExecutor(c * 2) as ex:
+            futs = {ex.submit(srv.generate, p, T, sp(i)): i for i, p in enumerate(prompts)}
+            for _ in range(c):
+                ex.submit(srv.generate, [rng.randrange(1000, vocab) for _ in range(rng.choice([16, 300, 1500]))],
+                          rng.choice([8, 64, 256]), {"temperature": 1.0, "seed": rng.randrange(1 << 30)})
+            got = {futs[f]: f.result() for f in cf.as_completed(futs)}
+        bad = [first_divergence(ref[i], got[i]) for i in range(len(prompts))]
+        bad = [d for d in bad if d is not None]
+        rows.append({"concurrency": c, "requests": len(prompts), "mismatched": len(bad),
+                     "first_divergence_tokens": sorted(bad)[:10]})
+    distinct = len({tuple(r) for r in ref})
+    return {"rows": rows, "distinct_reference_samples": distinct}
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--url", required=True)
     ap.add_argument("--tokenizer", required=True, help="HF tokenizer path (used only to build prompts)")
     ap.add_argument("--api", choices=["openai", "sglang"], default="openai")
-    ap.add_argument("--checks", nargs="+", default=["batch", "prefix", "path", "repeat"])
+    ap.add_argument("--checks", nargs="+", default=["batch", "prefix", "path", "repeat", "sample"])
     ap.add_argument("--prompts", type=int, default=16)
     ap.add_argument("--lengths", type=int, nargs="+", default=[24, 300, 1100, 2600])
     ap.add_argument("--tokens", type=int, default=256, help="completion length")
@@ -195,12 +216,16 @@ def main():
     if "repeat" in a.checks:
         report["repeat"] = check_repeat(srv, prompts[0], a.tokens, rng, a.repeat, vocab)
         print("repeat", json.dumps(report["repeat"]), flush=True)
+    if "sample" in a.checks:
+        report["sample"] = check_sample(srv, prompts, a.tokens, rng, a.concurrency, vocab)
+        print("sample", json.dumps(report["sample"]), flush=True)
     report["seconds"] = round(time.time() - t0, 1)
     if a.out:
         json.dump(report, open(a.out, "w"), indent=1)
     failures = sum(r["mismatched"] for r in report.get("batch", [])) + report.get("path", {}).get("mismatched", 0) \
         + report.get("prefix", {}).get("full_hit", 0) + report.get("prefix", {}).get("partial_hit", 0) \
-        + max(0, report.get("repeat", {}).get("unique_completions", 1) - 1)
+        + max(0, report.get("repeat", {}).get("unique_completions", 1) - 1) \
+        + sum(r["mismatched"] for r in report.get("sample", {}).get("rows", []))
     print("DETERMINISTIC" if failures == 0 else f"NONDETERMINISTIC ({failures} failing comparisons)")
     return 0 if failures == 0 else 1
 
