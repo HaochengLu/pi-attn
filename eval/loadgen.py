@@ -19,7 +19,7 @@ SAMPLING = {"temperature": 0}
 
 def one(url, ids, out_len, seed=0):
     t0 = time.perf_counter()
-    r = requests.post(url + "/v1/completions", json={"prompt": ids, "max_tokens": out_len, **SAMPLING, "seed": seed,
+    r = requests.post(url + "/v1/completions", json={"model": "default", "prompt": ids, "max_tokens": out_len, **SAMPLING, "seed": seed,
                                                      "ignore_eos": True, "stream": True,
                                                      "stream_options": {"include_usage": True}},
                       stream=True, timeout=1200)

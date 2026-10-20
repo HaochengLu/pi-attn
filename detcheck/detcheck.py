@@ -36,6 +36,8 @@ class Server:
     def generate(self, ids, max_tokens, sampling=None):
         sp = sampling or {"temperature": 0}
         if self.api == "sglang":
+            if "seed" in sp:  # SGLang names the per-request sampling seed sampling_seed
+                sp = {**{k: v for k, v in sp.items() if k != "seed"}, "sampling_seed": sp["seed"]}
             r = requests.post(self.url + "/generate", json={
                 "input_ids": ids, "sampling_params": {**sp, "max_new_tokens": max_tokens,
                                                       "ignore_eos": True}}, timeout=self.timeout)

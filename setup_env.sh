@@ -34,6 +34,10 @@ if [[ ! -x $ENV/gcc13/bin/x86_64-conda-linux-gnu-g++ ]]; then
     -c https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/conda-forge gcc_linux-64=13 gxx_linux-64=13
 fi
 
+# 1c. libnuma (needed by the SGLang baseline's sgl_kernel; absent on the host) into $ENV/syslibs.
+[[ -f $ENV/syslibs/lib/libnuma.so.1 ]] || MAMBA_ROOT_PREFIX=$ENV/mamba $ENV/mamba/bin/micromamba create -y \
+  -p $ENV/syslibs --override-channels -c https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/conda-forge libnuma=2.0.18
+
 # 2. Rust toolchain into $ENV/rustup and $ENV/cargo
 export RUSTUP_HOME=$ENV/rustup CARGO_HOME=$ENV/cargo
 if [[ ! -x $CARGO_HOME/bin/cargo ]]; then
@@ -52,7 +56,7 @@ uv pip install --python $ENV/venv/bin/python \
 uv pip install --python $ENV/venv/bin/python --index-url https://mirrors.ivolces.com/pypi/simple/ \
   --extra-index-url https://pypi.org/simple --extra-index-url $TORCH_INDEX --index-strategy unsafe-best-match \
   "torch==$TORCH_VER" "flashinfer-python==$FLASHINFER_VER" numpy pytest "openai>=1.0,<3.0" "requests>=2.34.2" \
-  "transformers" "safetensors" "huggingface_hub" "modelscope" ninja "lm-eval[api]==0.4.9.1"
+  "transformers==5.20.2" "safetensors" "huggingface_hub" "modelscope" ninja "lm-eval[api]==0.4.13"
 
 # 3b. nvcc wrapper for FlashInfer JIT: drops fatbin compression flags
 #     (--compress-mode=size), whose output driver 535 rejects as an invalid image.

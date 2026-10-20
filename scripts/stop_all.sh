@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Stop evaluation drivers and engine servers started from this project.
-for pat in "e2e_matrix.sh" "crossconfig.sh" "eval/loadgen.py" "detcheck/detcheck.py" "sglang-rust --model-path"; do
+for pat in "e2e_matrix.sh" "crossconfig.sh" "eval/loadgen.py" "detcheck/detcheck.py" "sglang-rust --model-path" "sglang.launch_server" "sglang::" "vllm serve" "EngineCore"; do
   for p in $(pgrep -f "$pat"); do
     [[ $p == $$ || $p == $PPID ]] || kill "$p" 2>/dev/null
   done

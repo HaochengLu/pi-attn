@@ -6,3 +6,5 @@ llm_infer_rust/
 models/
 logs/
 results/detcheck/*.json
+results/**/*.server.log
+results/accuracy/*/*/

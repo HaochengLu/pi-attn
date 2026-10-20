@@ -8,3 +8,7 @@ torch 2.13.0+cu126 cuda 12.6
 flashinfer 0.6.18
 host gcc: gcc (Debian 14.2.0-19) 14.2.0
 build g++: x86_64-conda-linux-gnu-g++ (conda-forge gcc 13.4.0-20) 13.4.0
+transformers 5.20.2; lm-eval 0.4.13 (0.4.9.1 is incompatible with transformers 5; from pypi.org)
+sglang 0.5.5.post3 (env/venv-sglang, torch 2.8.0+cu128); vllm 0.11.0 (env/venv-vllm, torch 2.8.0+cu128): run on driver 535 via CUDA minor-version compatibility
+vllm 0.11.2 (env/venv-vllm, torch 2.9.0+cu128) replaces 0.11.0: VLLM_BATCH_INVARIANT first ships in 0.11.x after 0.11.0
+libnuma-2.0.18-hb03c661_4 (env/syslibs, conda-forge; LD_LIBRARY_PATH for the SGLang baseline only)

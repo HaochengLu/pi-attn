@@ -1,0 +1,5 @@
+Qwen3-1.7B sglang detcheck exit=1
+Qwen3-1.7B sglang loadgen exit=0
+Qwen3-1.7B sglang-det detcheck exit=1
+Qwen3-1.7B sglang-det loadgen exit=0
+BASELINES_DONE
