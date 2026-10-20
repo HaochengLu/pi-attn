@@ -5,6 +5,7 @@ fn main() {
     println!("cargo:rustc-check-cfg=cfg(has_flashinfer)");
     println!("cargo:rustc-check-cfg=cfg(has_layer_cuda)");
     println!("cargo:rustc-check-cfg=cfg(has_cuda_kv_store)");
+    println!("cargo:rustc-check-cfg=cfg(has_pi)");
     println!("cargo:rerun-if-changed=src/models/attention/kv_store_bridge.cpp");
     println!("cargo:rerun-if-changed=src/models/attention/kv_store.cu");
     println!("cargo:rerun-if-changed=src/engine/cuda_graph_bridge.cpp");
@@ -160,4 +161,31 @@ fn main() {
         .warnings(false);
     sampling.compile("sglang_flashinfer_sampling");
     println!("cargo:rustc-cfg=has_flashinfer");
+
+    // Partition-invariant kernels for deterministic mode; CUTLASS ships with the FlashInfer wheel.
+    println!("cargo:rerun-if-changed=src/kernels/pi");
+    let mut pi = cc::Build::new();
+    pi.cuda(true)
+        .debug(false)
+        .opt_level(3)
+        .file("src/kernels/pi/pi_launch.cu")
+        .include("src/kernels/pi")
+        .include(flashinfer_data.join("cutlass/include"))
+        .flag("-std=c++17")
+        .flag("--expt-relaxed-constexpr")
+        .flag(&format!("-gencode=arch=compute_{arch},code=sm_{arch}"))
+        .warnings(false);
+    pi.compile("pi_kernels");
+    let mut pi_stream = cc::Build::new();
+    pi_stream
+        .cpp(true)
+        .file("src/kernels/pi/pi_stream.cpp")
+        .flag_if_supported("-std=c++17")
+        .warnings(false)
+        .define("_GLIBCXX_USE_CXX11_ABI", abi);
+    for include in &torch_includes {
+        pi_stream.include(include);
+    }
+    pi_stream.compile("pi_stream");
+    println!("cargo:rustc-cfg=has_pi");
 }

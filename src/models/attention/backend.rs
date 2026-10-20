@@ -25,6 +25,9 @@ enum AttentionBackendKind {
     FlashAttention,
     /// FlashInfer paged decode and paged/ragged prefill.
     FlashInfer,
+    /// Partition-invariant attention: bitwise independent of batching, KV
+    /// splits, chunked-prefill cuts, prefix caching and prefill vs decode.
+    Pi,
 }
 
 impl AttentionBackendKind {
@@ -33,8 +36,9 @@ impl AttentionBackendKind {
             "pt" | "pytorch" => Ok(Self::Pt),
             "fa" | "flashattention" | "flash-attention" => Ok(Self::FlashAttention),
             "flashinfer" => Ok(Self::FlashInfer),
+            "pi" => Ok(Self::Pi),
             _ => Err(model_error(&format!(
-                "unknown attention backend {name:?}; expected \"pt\", \"fa\", or \"flashinfer\""
+                "unknown attention backend {name:?}; expected \"pt\", \"fa\", \"flashinfer\", or \"pi\""
             ))),
         }
     }
@@ -115,6 +119,9 @@ impl Attention {
     /// Validate a backend combination without allocating model tensors.
     pub fn validate(name: &str, spec: AttentionSpec) -> Result<()> {
         let kind = AttentionBackendKind::parse(name)?;
+        if kind == AttentionBackendKind::Pi {
+            Self::validate_pi(spec)?;
+        }
         if kind == AttentionBackendKind::FlashInfer {
             if !cfg!(has_flashinfer) {
                 return Err(model_error(
@@ -133,6 +140,27 @@ impl Attention {
                     "native FlashInfer decode currently requires head_dim=128",
                 ));
             }
+        }
+        Ok(())
+    }
+
+    fn validate_pi(spec: AttentionSpec) -> Result<()> {
+        if !crate::kernels::pi::available() {
+            return Err(model_error(
+                "PI attention is unavailable; rebuild on Linux CUDA with the FlashInfer wheel installed",
+            ));
+        }
+        if !matches!(spec.device, Device::Cuda(_)) || spec.kind != Kind::BFloat16 {
+            return Err(model_error("PI attention requires CUDA and bfloat16"));
+        }
+        if spec.head_dim != 128 {
+            return Err(model_error("PI attention requires head_dim=128"));
+        }
+        if spec.num_kv_heads <= 0
+            || spec.num_heads % spec.num_kv_heads != 0
+            || spec.num_heads / spec.num_kv_heads > 16
+        {
+            return Err(model_error("PI attention requires a GQA group size of at most 16"));
         }
         Ok(())
     }
@@ -219,6 +247,9 @@ impl AttentionBatch<'_> {
         {
             return Err(model_error("invalid static attention output"));
         }
+        if matches!(self.plan, BackendPlan::PiDecode(..) | BackendPlan::PiPrefill(_)) {
+            return pi_forward(q, cache, self.metadata, self.spec.num_kv_heads, &self.plan, output);
+        }
         #[cfg(has_flashinfer)]
         if matches!(self.plan, BackendPlan::FlashInferPrefill(_, _)) {
             let _ =
@@ -256,6 +287,8 @@ enum BackendPlan {
     FlashInfer(Rc<FlashInferPlan>),
     #[cfg(has_flashinfer)]
     FlashInferPrefill(Rc<FlashInferPlan>, bool),
+    PiDecode(std::rc::Rc<crate::kernels::pi::DecodeWorkspace>, i32),
+    PiPrefill(crate::kernels::pi::PrefillPlan),
 }
 
 /// Internal seam for the three existing attention implementations.
@@ -310,7 +343,184 @@ fn create_attention_backend(kind: AttentionBackendKind) -> Box<dyn AttentionBack
         AttentionBackendKind::Pt => Box::new(PyTorchAttentionBackend),
         AttentionBackendKind::FlashAttention => Box::new(FlashAttentionBackend),
         AttentionBackendKind::FlashInfer => Box::new(FlashInferAttentionBackend::default()),
+        AttentionBackendKind::Pi => Box::new(PiAttentionBackend::default()),
     }
+}
+
+/// Partition-invariant attention (src/kernels/pi). Decode writes per-chunk
+/// partials to a workspace that eager decode and every captured decode graph
+/// share: all attention work is ordered on the execution stream, so one buffer
+/// of the largest requested shape suffices. Page table and lengths are read on
+/// the GPU, so graph replay needs no host-side planning.
+#[derive(Default)]
+struct PiAttentionBackend {
+    workspace: RefCell<Option<std::rc::Rc<crate::kernels::pi::DecodeWorkspace>>>,
+}
+
+impl PiAttentionBackend {
+    fn decode_workspace(
+        &self,
+        rows: i64,
+        max_chunks: i64,
+        spec: AttentionSpec,
+    ) -> std::rc::Rc<crate::kernels::pi::DecodeWorkspace> {
+        let mut slot = self.workspace.borrow_mut();
+        if let Some(ws) = slot
+            .as_ref()
+            .filter(|ws| ws.rows() >= rows && ws.max_chunks() >= max_chunks)
+        {
+            return std::rc::Rc::clone(ws);
+        }
+        let (rows, max_chunks) = slot.as_ref().map_or((rows, max_chunks), |ws| {
+            (ws.rows().max(rows), ws.max_chunks().max(max_chunks))
+        });
+        let ws = std::rc::Rc::new(crate::kernels::pi::DecodeWorkspace::new(
+            rows,
+            spec.num_heads,
+            max_chunks,
+            spec.device,
+        ));
+        *slot = Some(std::rc::Rc::clone(&ws));
+        ws
+    }
+
+    fn decode_plan(&self, metadata: &AttentionMetadata, spec: AttentionSpec, page_size: i64) -> Result<BackendPlan> {
+        let table = metadata
+            .block_table
+            .as_ref()
+            .ok_or_else(|| model_error("PI decode requires block_table"))?;
+        let rows = table.size()[0];
+        let chunks = crate::kernels::pi::max_chunks(table.size()[1], page_size);
+        let ws = self.decode_workspace(rows, chunks, spec);
+        Ok(BackendPlan::PiDecode(
+            ws,
+            crate::kernels::pi::decode_splits(rows, spec.num_kv_heads, chunks),
+        ))
+    }
+}
+
+struct PiGraphState {
+    _workspace: std::rc::Rc<crate::kernels::pi::DecodeWorkspace>,
+}
+
+impl DecodeGraphState for PiGraphState {
+    fn prepare_replay(&self, _host: Option<&crate::engine::DecodeHostMetadata>) -> Result<()> {
+        Ok(())
+    }
+    fn needs_req_to_token(&self) -> bool {
+        false
+    }
+}
+
+impl AttentionBackend for PiAttentionBackend {
+    fn metadata_requirements(&self, _phase: BatchPhase) -> MetadataRequirements {
+        MetadataRequirements {
+            block_table: true,
+            req_to_token: false,
+        }
+    }
+    fn supports_cuda_graph(&self) -> bool {
+        crate::kernels::pi::available()
+    }
+
+    fn prepare_decode_graph(
+        &self,
+        metadata: &AttentionMetadata,
+        spec: AttentionSpec,
+        page_size: i64,
+    ) -> Result<Option<Box<dyn DecodeGraphState>>> {
+        let BackendPlan::PiDecode(workspace, _) = self.decode_plan(metadata, spec, page_size)? else {
+            unreachable!()
+        };
+        Ok(Some(Box::new(PiGraphState {
+            _workspace: workspace,
+        })))
+    }
+
+    fn prepare(
+        &self,
+        metadata: Option<&AttentionMetadata>,
+        prefill: &PrefillMetadata,
+        spec: AttentionSpec,
+        page_size: Option<i64>,
+    ) -> Result<BackendPlan> {
+        let metadata = metadata.ok_or_else(|| model_error("PI attention requires batch metadata"))?;
+        let page_size =
+            page_size.ok_or_else(|| model_error("PI attention requires a bound KV cache"))?;
+        if metadata.forward_mode == BatchPhase::Decode {
+            return self.decode_plan(metadata, spec, page_size);
+        }
+        let q_lens: Vec<i64> = prefill.boundaries.windows(2).map(|w| w[1] - w[0]).collect();
+        Ok(BackendPlan::PiPrefill(crate::kernels::pi::plan_prefill(
+            &q_lens,
+            &prefill.prefixes,
+            spec.num_heads,
+            spec.num_kv_heads,
+            spec.device,
+        )))
+    }
+
+    fn forward(
+        &self,
+        q: &Tensor,
+        _k: &Tensor,
+        _v: &Tensor,
+        cache: &BaseAttention,
+        _prefill: &PrefillMetadata,
+        metadata: Option<&AttentionMetadata>,
+        num_heads: i64,
+        num_kv_heads: i64,
+        head_dim: i64,
+        plan: &BackendPlan,
+    ) -> Result<Tensor> {
+        let out = Tensor::empty([q.size()[0], num_heads * head_dim], (q.kind(), q.device()));
+        pi_forward(q, cache, metadata, num_kv_heads, plan, &out)?;
+        Ok(out)
+    }
+}
+
+/// Runs a prepared PI plan, writing `[tokens, Hq * head_dim]` into `out`.
+fn pi_forward(
+    q: &Tensor,
+    cache: &BaseAttention,
+    metadata: Option<&AttentionMetadata>,
+    num_kv_heads: i64,
+    plan: &BackendPlan,
+    out: &Tensor,
+) -> Result<()> {
+    let metadata = metadata.ok_or_else(|| model_error("PI attention requires batch metadata"))?;
+    let (k_cache, v_cache) = cache.cache_tensors()?;
+    let table = metadata
+        .block_table
+        .as_ref()
+        .ok_or_else(|| model_error("PI attention requires block_table"))?;
+    let q = q.contiguous();
+    match plan {
+        BackendPlan::PiDecode(workspace, splits) => {
+            let lengths = metadata
+                .cache_seqlens
+                .as_ref()
+                .ok_or_else(|| model_error("PI decode requires cache_seqlens"))?;
+            crate::kernels::pi::decode(
+                &q, k_cache, v_cache, table, lengths, workspace, *splits, num_kv_heads, out,
+            )
+        }
+        BackendPlan::PiPrefill(plan) => {
+            let cumulative = metadata
+                .cu_seqlens_q
+                .as_ref()
+                .ok_or_else(|| model_error("PI prefill requires cu_seqlens_q"))?;
+            let prefixes = metadata
+                .prefix_lens
+                .as_ref()
+                .ok_or_else(|| model_error("PI prefill requires prefix_lens"))?;
+            crate::kernels::pi::prefill(
+                &q, k_cache, v_cache, cumulative, table, prefixes, plan, num_kv_heads, out,
+            )
+        }
+        _ => return Err(model_error("missing PI attention plan")),
+    }
+    .map_err(|error| model_error(&format!("PI attention failed: {error}")))
 }
 
 #[derive(Default)]

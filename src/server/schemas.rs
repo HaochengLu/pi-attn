@@ -61,11 +61,23 @@ impl ChatCompletionRequest {
     }
 }
 
+/// Completion prompt: text, or token ids (as in the OpenAI API, so callers can
+/// avoid detokenize/retokenize round trips).
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum PromptInput {
+    Text(String),
+    Tokens(Vec<i64>),
+}
+
 #[derive(Debug, Deserialize)]
 pub struct CompletionRequest {
     #[serde(default = "default_model")]
     pub model: String,
-    pub prompt: String,
+    pub prompt: PromptInput,
+    /// Also return prompt and completion token ids (non-streaming responses).
+    #[serde(default)]
+    pub return_token_ids: bool,
     #[serde(default)]
     pub temperature: f64,
     #[serde(default = "default_top_p")]
@@ -104,6 +116,12 @@ mod tests {
     #[test]
     fn defaults_and_clamps_http_sampling() {
         let request: CompletionRequest = serde_json::from_str(r#"{"prompt":"hello"}"#).unwrap();
+        assert!(matches!(request.prompt, PromptInput::Text(_)));
+        assert!(!request.return_token_ids);
+        let tokens: CompletionRequest =
+            serde_json::from_str(r#"{"prompt":[1,2,3],"return_token_ids":true}"#).unwrap();
+        assert!(matches!(tokens.prompt, PromptInput::Tokens(ref ids) if ids == &[1, 2, 3]));
+        assert!(tokens.return_token_ids);
         assert_eq!(request.model, "default");
         assert_eq!(request.max_tokens, 1024);
         assert!(!request.stream);

@@ -20,7 +20,7 @@ use crate::{
 
 use super::{
     manager::{FrontendManager, RequestHandle},
-    schemas::{ChatCompletionRequest, CompletionRequest, sampling_params},
+    schemas::{ChatCompletionRequest, CompletionRequest, PromptInput, sampling_params},
     streaming::{self, ApiKind},
 };
 
@@ -196,13 +196,19 @@ async fn completions_inner(
     started_at: Instant,
 ) -> Result<Response, ApiError> {
     let mut profiler = RequestProfiler::new();
-    let input_ids = profiler.measure(RequestStage::Encode, || {
-        frontend
+    let input_ids = profiler.measure(RequestStage::Encode, || match &request.prompt {
+        PromptInput::Text(text) => frontend
             .tokenizer()
-            .encode(&request.prompt)
-            .map_err(|error| ApiError::new(StatusCode::BAD_REQUEST, error.to_string()))
+            .encode(text)
+            .map_err(|error| ApiError::new(StatusCode::BAD_REQUEST, error.to_string())),
+        PromptInput::Tokens(ids) if ids.iter().any(|&id| id < 0) => Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "prompt token ids must be non-negative",
+        )),
+        PromptInput::Tokens(ids) => Ok(ids.clone()),
     })?;
     let prompt_tokens = input_ids.len();
+    let prompt_ids = request.return_token_ids.then(|| input_ids.clone());
     let params = sampling_params(
         request.temperature,
         request.top_p,
@@ -249,15 +255,20 @@ async fn completions_inner(
         duration_ms = %format_duration(started_at.elapsed()),
         "generation request completed"
     );
-    Ok(Json(json!({
+    let mut choice = json!({"index": 0, "text": text, "finish_reason": streaming::reason(reason)});
+    let mut body = json!({
         "id": ApiKind::Completion.id(uid),
         "object": ApiKind::Completion.object(false),
         "created": streaming::created(),
         "model": request.model,
-        "choices": [{"index": 0, "text": text, "finish_reason": streaming::reason(reason)}],
         "usage": streaming::usage(prompt_tokens, token_ids.len()),
-    }))
-    .into_response())
+    });
+    if let Some(prompt_ids) = prompt_ids {
+        choice["token_ids"] = json!(token_ids);
+        body["prompt_token_ids"] = json!(prompt_ids);
+    }
+    body["choices"] = json!([choice]);
+    Ok(Json(body).into_response())
 }
 
 async fn submit(

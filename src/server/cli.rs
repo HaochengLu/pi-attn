@@ -27,7 +27,8 @@ Options:\n\
   --disable-async-metadata  Keep metadata uploads on the execution stream\n\
   --max-seq-len N           Maximum sequence length (default 8192; must not exceed model config)\n\
   --page-size N             KV cache page size (default 16)\n\
-  --attention-backend NAME  Attention backend: fa, pt, or flashinfer\n\
+  --attention-backend NAME  Attention backend: fa, pt, flashinfer, or pi\n\
+  --deterministic           Bitwise-deterministic outputs (pi attention + row-invariant GEMM)\n\
   --dtype NAME              Model dtype: auto, bfloat16, float16, float32\n\
   --device NAME             Device: auto, cpu, or cuda (default auto)\n\
   --trust-remote-code       Request Hugging Face remote code\n\
@@ -38,6 +39,7 @@ Options:\n\
 pub fn parse_args(args: impl IntoIterator<Item = String>) -> Result<ServeArgs, String> {
     let mut args = args.into_iter();
     let mut model_path: Option<PathBuf> = None;
+    let mut attention_backend_explicit = false;
     let mut host: IpAddr = "127.0.0.1".parse().expect("literal IP");
     let mut port = 8000;
     let mut engine = ServerArgs::new("");
@@ -79,7 +81,11 @@ pub fn parse_args(args: impl IntoIterator<Item = String>) -> Result<ServeArgs, S
             }
             "--max-seq-len" => engine.max_seq_len = parse_value(&value()?, &flag)?,
             "--page-size" => engine.page_size = parse_value(&value()?, &flag)?,
-            "--attention-backend" => engine.attention_backend = value()?,
+            "--attention-backend" => {
+                engine.attention_backend = value()?;
+                attention_backend_explicit = true;
+            }
+            "--deterministic" => engine.deterministic = true,
             "--dtype" => {
                 let dtype = value()?;
                 if !["auto", "bfloat16", "float16", "float32"].contains(&dtype.as_str()) {
@@ -111,6 +117,12 @@ pub fn parse_args(args: impl IntoIterator<Item = String>) -> Result<ServeArgs, S
     if engine.tp_size != 1 {
         return Err("当前不支持 tp_size > 1".to_owned());
     }
+    if engine.deterministic {
+        if attention_backend_explicit && engine.attention_backend != "pi" {
+            return Err("--deterministic 固定使用 pi 注意力后端，不能同时指定其他 --attention-backend".to_owned());
+        }
+        engine.attention_backend = "pi".to_owned();
+    }
     Ok(ServeArgs {
         engine,
         bind: SocketAddr::new(host, port),
@@ -125,6 +137,21 @@ fn parse_value<T: std::str::FromStr>(text: &str, flag: &str) -> Result<T, String
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn deterministic_selects_pi_attention() {
+        let args = parse_args(["--model-path", "/tmp/model", "--deterministic"].map(str::to_owned))
+            .unwrap();
+        assert!(args.engine.deterministic);
+        assert_eq!(args.engine.attention_backend, "pi");
+        assert!(
+            parse_args(
+                ["--model-path", "/tmp/model", "--deterministic", "--attention-backend", "flashinfer"]
+                    .map(str::to_owned)
+            )
+            .is_err()
+        );
+    }
 
     #[test]
     fn parses_model_server_address_and_device() {

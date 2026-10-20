@@ -3,6 +3,9 @@
 use tch::{Device, Kind, Tensor};
 
 pub(crate) fn linear(x: &Tensor, weight: &Tensor) -> Tensor {
+    if crate::kernels::pi::deterministic() {
+        return crate::kernels::pi::linear(x, weight);
+    }
     x.matmul(&weight.transpose(0, 1))
 }
 

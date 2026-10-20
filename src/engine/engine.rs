@@ -57,6 +57,8 @@ pub struct ServerArgs {
     pub dtype: String,
     pub device: String,
     pub attention_backend: String,
+    /// Bitwise-deterministic serving: PI attention and the row-invariant GEMM.
+    pub deterministic: bool,
     pub trust_remote_code: bool,
 }
 
@@ -81,6 +83,7 @@ impl ServerArgs {
             dtype: "auto".to_owned(),
             device: "auto".to_owned(),
             attention_backend: "fa".to_owned(),
+            deterministic: false,
             trust_remote_code: false,
         }
     }
@@ -217,6 +220,16 @@ impl Engine {
     ) -> Result<Self> {
         let (kind, device) =
             Self::validate_for_serving(&server_args, runtime_config, tp_rank, factory)?;
+        if server_args.deterministic
+            && (!crate::kernels::pi::available()
+                || !matches!(device, Device::Cuda(_))
+                || kind != Kind::BFloat16)
+        {
+            return Err(EngineError::InvalidArgument(
+                "--deterministic requires CUDA, bfloat16 and a build with the PI kernels".into(),
+            ));
+        }
+        crate::kernels::pi::set_deterministic(server_args.deterministic);
         // GPU serving performs small CPU metadata operations. A large default
         // intra-op pool causes contention/long tails without helping GPU kernels.
         // Match upstream's CUDA policy, while honoring explicit thread settings.
