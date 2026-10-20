@@ -118,21 +118,23 @@ at::Tensor prefill(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Ten
   return out;
 }
 
-// q: [batch, Hq, 128]. ws_o: [batch, Hq, max_chunks, 128] f32, ws_ml: [batch, Hq, max_chunks, 2] f32.
+// q: [batch, Hq, 128]. Compact workspace: ws_o [capacity, Hq, 128] f32, ws_ml [capacity, Hq, 2] f32,
+// with capacity >= sum of ceil(kv_len / 64); max_chunks bounds one request (planner only).
 // splits/variant: 0 = planner.
 at::Tensor decode(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Tensor kv_page_indptr,
                   at::Tensor kv_page_indices, at::Tensor kv_lens, at::Tensor ws_o, at::Tensor ws_ml,
-                  int64_t splits, double sm_scale, int64_t variant) {
+                  int64_t max_chunks, int64_t splits, double sm_scale, int64_t variant) {
   check_inputs(q, k_cache, v_cache, {kv_page_indptr, kv_page_indices, kv_lens});
   const c10::cuda::CUDAGuard guard(q.device());
   auto out = at::empty_like(q);
   const int batch = q.size(0), hq = q.size(1), hkv = k_cache.size(2);
   TORCH_CHECK(kv_lens.size(0) == batch && kv_page_indptr.size(0) == batch + 1);
-  TORCH_CHECK(ws_o.scalar_type() == at::kFloat && ws_o.dim() == 4 && ws_o.size(0) >= batch &&
-              ws_o.size(1) == hq && ws_o.size(3) == kHeadDim && ws_o.is_contiguous());
-  TORCH_CHECK(ws_ml.scalar_type() == at::kFloat && ws_ml.dim() == 4 && ws_ml.size(2) == ws_o.size(2) &&
-              ws_ml.size(3) == 2 && ws_ml.is_contiguous());
-  const int page_size = k_cache.size(1), max_chunks = ws_o.size(2);
+  TORCH_CHECK(ws_o.scalar_type() == at::kFloat && ws_o.dim() == 3 && ws_o.size(1) == hq &&
+              ws_o.size(2) == kHeadDim && ws_o.is_contiguous());
+  TORCH_CHECK(ws_ml.scalar_type() == at::kFloat && ws_ml.dim() == 3 && ws_ml.size(0) == ws_o.size(0) &&
+              ws_ml.size(2) == 2 && ws_ml.is_contiguous());
+  const int page_size = k_cache.size(1), capacity = ws_o.size(0);
+  auto chunk_offsets = at::empty({batch + 1}, kv_lens.options());
   int var = (int)variant;
   if (var == 0) var = 1;
   int sp = (int)splits;
@@ -143,14 +145,16 @@ at::Tensor decode(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Tens
                                                      (want + (int64_t)hkv * batch - 1) / ((int64_t)hkv * batch)));
   }
   auto stream = at::cuda::getCurrentCUDAStream();
+  decode_chunk_offsets_kernel<<<1, 32, 0, stream>>>(kv_lens.data_ptr<int32_t>(), batch,
+                                                    chunk_offsets.data_ptr<int32_t>());
   auto launch = [&](auto kernel, int warps, size_t smem) {
     cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem);
     kernel<<<dim3(hkv, batch, sp), warps * 32, smem, stream>>>(
         (const __nv_bfloat16*)q.data_ptr(), (const __nv_bfloat16*)k_cache.data_ptr(),
         (const __nv_bfloat16*)v_cache.data_ptr(), kv_page_indptr.data_ptr<int32_t>(),
         kv_page_indices.data_ptr<int32_t>(), (int64_t)0, kv_lens.data_ptr<int32_t>(), ws_o.data_ptr<float>(),
-        (float2*)ws_ml.data_ptr<float>(), hq, hkv, page_size, page_shift_of(page_size), max_chunks,
-        (float)(sm_scale * 1.4426950408889634));
+        (float2*)ws_ml.data_ptr<float>(), chunk_offsets.data_ptr<int32_t>(), capacity, hq, hkv,
+        page_size, page_shift_of(page_size), (float)(sm_scale * 1.4426950408889634));
   };
 #define PI_DLAUNCH(W, B) launch(decode_partial_kernel<W, B>, W, decode_smem_elems<W, B>() * sizeof(__nv_bfloat16))
   // variant: 1 = 1 warp/1 tile, 2 = 2 warps/1 tile, 3 = 4 warps/1 tile, 4 = 2 warps/2 tiles, 5 = 4 warps/2 tiles
@@ -165,7 +169,7 @@ at::Tensor decode(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Tens
   C10_CUDA_KERNEL_LAUNCH_CHECK();
   decode_merge_kernel<<<dim3(hq, batch), kHeadDim, 0, stream>>>(
       ws_o.data_ptr<float>(), (const float2*)ws_ml.data_ptr<float>(), kv_lens.data_ptr<int32_t>(),
-      (__nv_bfloat16*)out.data_ptr(), hq, max_chunks);
+      chunk_offsets.data_ptr<int32_t>(), capacity, (__nv_bfloat16*)out.data_ptr(), hq);
   C10_CUDA_KERNEL_LAUNCH_CHECK();
   return out;
 }

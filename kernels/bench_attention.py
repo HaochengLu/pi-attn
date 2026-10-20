@@ -67,9 +67,9 @@ def bench_decode(batch, kv_len, hq, hkv):
             return timeit(lambda: w.run(q, (k, v)))
         res[name] = fi_try(run)
     max_chunks = (kv_len + C - 1) // C
-    ws_o = torch.empty(batch, hq, max_chunks, D, device=dev)
-    ws_ml = torch.empty(batch, hq, max_chunks, 2, device=dev)
-    res["pi"] = timeit(lambda: ext.decode(q, k, v, indptr, indices, lens, ws_o, ws_ml, 0, 1 / math.sqrt(D), 0))
+    ws_o = torch.empty(batch * max_chunks, hq, D, device=dev)
+    ws_ml = torch.empty(batch * max_chunks, hq, 2, device=dev)
+    res["pi"] = timeit(lambda: ext.decode(q, k, v, indptr, indices, lens, ws_o, ws_ml, max_chunks, 0, 1 / math.sqrt(D), 0))
     return res
 
 

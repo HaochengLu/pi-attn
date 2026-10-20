@@ -87,10 +87,11 @@ def decode(pool, reqs, splits):
     q = torch.cat([r[0] for r in reqs]).contiguous()
     m = meta([r[1] for r in reqs], [r[2] for r in reqs])
     max_chunks = max((r[2] + C - 1) // C for r in reqs)
-    ws_o = torch.full((len(reqs), HQ, max_chunks, D), float("nan"), device=dev)
-    ws_ml = torch.full((len(reqs), HQ, max_chunks, 2), float("nan"), device=dev)
+    capacity = sum((r[2] + C - 1) // C for r in reqs)
+    ws_o = torch.full((capacity, HQ, D), float("nan"), device=dev)
+    ws_ml = torch.full((capacity, HQ, 2), float("nan"), device=dev)
     out = ext.decode(q, pool.k, pool.v, m["kv_page_indptr"], m["kv_page_indices"], m["kv_lens"],
-                     ws_o, ws_ml, splits, SCALE, DVAR)
+                     ws_o, ws_ml, max_chunks, splits, SCALE, DVAR)
     return list(out.split(1))
 
 

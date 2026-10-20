@@ -25,8 +25,9 @@ at::Tensor linear(at::Tensor x, at::Tensor w, int64_t kernel, bool out_fp32) {
   auto stream = at::cuda::getCurrentCUDAStream();
   auto run = [&](auto* out) {
     using OutT = std::remove_pointer_t<decltype(out)>;
-    auto small = [&](auto kern, int G, int W) {
-      const size_t smem = (size_t)kSmallStages * (16 * G + 8 * W) * kSmallStride * sizeof(__nv_bfloat16);
+    auto small = [&](auto kern, int G, int W, int BK = kSmallBK, int ST = kSmallStages) {
+      TORCH_CHECK(K % BK == 0, "K must be a multiple of BK for this variant");
+      const size_t smem = (size_t)ST * (16 * G + 8 * W) * (BK + 8) * sizeof(__nv_bfloat16);
       cudaFuncSetAttribute(kern, cudaFuncAttributeMaxDynamicSharedMemorySize, smem);
       kern<<<dim3(N / (8 * W), (M + 16 * G - 1) / (16 * G)), W * 32, smem, stream>>>(
           (const __nv_bfloat16*)x.data_ptr(), x.stride(0), (const __nv_bfloat16*)w.data_ptr(), out, N, M, N, K);
@@ -40,7 +41,14 @@ at::Tensor linear(at::Tensor x, at::Tensor w, int64_t kernel, bool out_fp32) {
     else if (k == 7) small(gemm_small_kernel<1, 2, OutT>, 1, 2);
     else if (k == 8) small(gemm_small_kernel<2, 1, OutT>, 2, 1);
     else if (k == 9) small(gemm_small_kernel<4, 2, OutT>, 4, 2);
-    else if (k >= 10) {
+    // Deep-pipeline variants for weight streaming (decode): (G, W, BK, STAGES).
+    else if (k == 20) small(gemm_small_kernel<1, 4, OutT, 128, 6>, 1, 4, 128, 6);
+    else if (k == 21) small(gemm_small_kernel<1, 4, OutT, 256, 3>, 1, 4, 256, 3);
+    else if (k == 22) small(gemm_small_kernel<1, 2, OutT, 256, 4>, 1, 2, 256, 4);
+    else if (k == 23) small(gemm_small_kernel<1, 1, OutT, 256, 6>, 1, 1, 256, 6);
+    else if (k == 24) small(gemm_small_kernel<2, 4, OutT, 128, 5>, 2, 4, 128, 5);
+    else if (k == 25) small(gemm_small_kernel<4, 4, OutT, 128, 3>, 4, 4, 128, 3);
+    else if (k >= 10 && k < 20) {
       cudaError_t e = cudaSuccess;
       const void* xp = x.data_ptr();
       const void* wp = w.data_ptr();

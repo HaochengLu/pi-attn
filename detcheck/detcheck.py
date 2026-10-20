@@ -11,6 +11,9 @@ identical tokens no matter how the server batches, caches or chunks work.
   path     continuation through decode vs. re-prefilling the generated tokens
   repeat   one prompt sent many times under varying background load
   sample   seeded temperature sampling, alone vs. under concurrent traffic
+  save / compare   store greedy and seeded-sample references, then compare a
+           later run against them: across server restarts and across server
+           configurations (chunk size, CUDA graphs, batch limits, overlap)
 
 Usage: detcheck.py --url http://host:port --tokenizer /path/to/model [--checks ...]
 Requires the server to return completion token ids ("return_token_ids": true,
@@ -181,6 +184,23 @@ def check_sample(srv, prompts, T, rng, conc, vocab):
     return {"rows": rows, "distinct_reference_samples": distinct}
 
 
+def references(srv, prompts, T, conc):
+    sp = lambda i: {"temperature": 0.8, "top_p": 0.95, "top_k": 50, "seed": 7000 + i}
+    with cf.ThreadPoolExecutor(conc) as ex:
+        greedy = list(ex.map(lambda p: srv.generate(p, T), prompts))
+        sampled = list(ex.map(lambda ip: srv.generate(ip[1], T, sp(ip[0])), enumerate(prompts)))
+    return {"greedy": greedy, "sampled": sampled}
+
+
+def compare_refs(saved, got):
+    rows = {}
+    for kind in ("greedy", "sampled"):
+        div = [first_divergence(a, b) for a, b in zip(saved[kind], got[kind])]
+        bad = [d for d in div if d is not None]
+        rows[kind] = {"requests": len(div), "mismatched": len(bad), "first_divergence_tokens": sorted(bad)[:10]}
+    return rows
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--url", required=True)
@@ -194,6 +214,8 @@ def main():
     ap.add_argument("--flush", default="flood:70000", help="sglang | vllm | flood:<tokens> | none")
     ap.add_argument("--repeat", type=int, default=200)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--save", help="write greedy/sampled references (run under --concurrency[-1])")
+    ap.add_argument("--compare", help="compare against references written by --save")
     ap.add_argument("--out")
     a = ap.parse_args()
     from transformers import AutoTokenizer
@@ -219,13 +241,23 @@ def main():
     if "sample" in a.checks:
         report["sample"] = check_sample(srv, prompts, a.tokens, rng, a.concurrency, vocab)
         print("sample", json.dumps(report["sample"]), flush=True)
+    if a.save:
+        json.dump({"prompts": prompts, "tokens": a.tokens,
+                   **references(srv, prompts, a.tokens, a.concurrency[-1])}, open(a.save, "w"))
+        print("saved references to", a.save, flush=True)
+    if a.compare:
+        saved = json.load(open(a.compare))
+        got = references(srv, saved["prompts"], saved["tokens"], a.concurrency[-1])
+        report["compare"] = compare_refs(saved, got)
+        print("compare", json.dumps(report["compare"]), flush=True)
     report["seconds"] = round(time.time() - t0, 1)
     if a.out:
         json.dump(report, open(a.out, "w"), indent=1)
     failures = sum(r["mismatched"] for r in report.get("batch", [])) + report.get("path", {}).get("mismatched", 0) \
         + report.get("prefix", {}).get("full_hit", 0) + report.get("prefix", {}).get("partial_hit", 0) \
         + max(0, report.get("repeat", {}).get("unique_completions", 1) - 1) \
-        + sum(r["mismatched"] for r in report.get("sample", {}).get("rows", []))
+        + sum(r["mismatched"] for r in report.get("sample", {}).get("rows", [])) \
+        + sum(r["mismatched"] for r in report.get("compare", {}).values())
     print("DETERMINISTIC" if failures == 0 else f"NONDETERMINISTIC ({failures} failing comparisons)")
     return 0 if failures == 0 else 1
 
