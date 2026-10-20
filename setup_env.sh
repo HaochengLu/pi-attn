@@ -52,7 +52,7 @@ uv pip install --python $ENV/venv/bin/python \
 uv pip install --python $ENV/venv/bin/python --index-url https://mirrors.ivolces.com/pypi/simple/ \
   --extra-index-url https://pypi.org/simple --extra-index-url $TORCH_INDEX --index-strategy unsafe-best-match \
   "torch==$TORCH_VER" "flashinfer-python==$FLASHINFER_VER" numpy pytest "openai>=1.0,<3.0" "requests>=2.34.2" \
-  "transformers" "safetensors" "huggingface_hub" "modelscope" ninja
+  "transformers" "safetensors" "huggingface_hub" "modelscope" ninja "lm-eval[api]==0.4.9.1"
 
 # 3b. nvcc wrapper for FlashInfer JIT: drops fatbin compression flags
 #     (--compress-mode=size), whose output driver 535 rejects as an invalid image.
@@ -79,7 +79,7 @@ export UV_PYTHON_INSTALL_DIR=$ENV/python UV_CACHE_DIR=$ENV/uv-cache
 export UV_PYTHON_INSTALL_MIRROR=https://registry.npmmirror.com/-/binary/python-build-standalone
 export TORCH_LIB=\$(ls -d $ENV/venv/lib/python*/site-packages/torch/lib)
 export LD_LIBRARY_PATH=\$TORCH_LIB:$ENV/cuda-12.6/lib64\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}
-export HF_ENDPOINT=https://hf-mirror.com
+export HF_ENDPOINT=https://hf-mirror.com HF_HOME=$ENV/hf-home
 export TMPDIR=$ENV/tmp
 export CC=$ENV/gcc13/bin/x86_64-conda-linux-gnu-gcc CXX=$ENV/gcc13/bin/x86_64-conda-linux-gnu-g++
 export NVCC_CCBIN=\$CXX CUDAHOSTCXX=\$CXX
