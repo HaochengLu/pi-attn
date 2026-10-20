@@ -399,9 +399,10 @@ impl PiAttentionBackend {
             .ok_or_else(|| model_error("PI decode requires block_table"))?;
         let rows = table.size()[0];
         let chunks = crate::kernels::pi::max_chunks(table.size()[1], page_size);
+        // The kernels bound a request by the table row stride (>= its columns).
         let capacity = crate::kernels::pi::decode_capacity(
             rows,
-            table.size()[1],
+            table.stride()[0].max(table.size()[1]),
             page_size,
             self.cache_pages.get().map(|pages| pages * page_size),
         );

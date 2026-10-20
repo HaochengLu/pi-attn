@@ -98,7 +98,9 @@ int pi_attn_decode_splits(int batch, int num_kv_heads, int max_chunks) {
 // [pages, page_size, Hkv, 128] bf16; page table: dense [batch, table_stride]
 // int32; seqlens: [batch] int32 (KV length including the decoded token).
 // Compact workspace: ws_o [capacity, Hq, 128] f32, ws_ml [capacity, Hq, 2] f32 and
-// chunk_offsets [batch + 1] int32 (filled here); capacity >= sum of ceil(seqlen / 64).
+// chunk_offsets [batch + 1] int32 (filled here). capacity >= batch * max_groups is
+// required; when the sum of ceil(seqlen / 64) exceeds capacity (shared prefix pages)
+// the kernels switch to grouped mode on device, with identical results.
 const char* pi_attn_decode(const void* q, const void* k_cache, const void* v_cache,
                            const int32_t* page_table, int64_t table_stride, const int32_t* seqlens,
                            float* ws_o, float* ws_ml, int32_t* chunk_offsets, int capacity,
@@ -107,6 +109,10 @@ const char* pi_attn_decode(const void* q, const void* k_cache, const void* v_cac
   if (num_kv_heads <= 0 || num_qo_heads % num_kv_heads || num_qo_heads / num_kv_heads > 16)
     return fail("PI attention needs num_qo_heads = g * num_kv_heads with g <= 16");
   if (batch == 0) return nullptr;
+  const int64_t max_chunks = (table_stride * page_size + kChunk - 1) / kChunk;
+  const int max_groups = (int)((max_chunks + kGroupChunks - 1) / kGroupChunks);
+  if ((int64_t)capacity < (int64_t)batch * max_groups)
+    return fail("PI decode workspace smaller than batch * fold groups per request");
   auto st = (cudaStream_t)stream;
   decode_chunk_offsets_kernel<<<1, 32, 0, st>>>(seqlens, batch, chunk_offsets);
   if (auto e = check_launch("pi decode offsets")) return e;
@@ -116,12 +122,12 @@ const char* pi_attn_decode(const void* q, const void* k_cache, const void* v_cac
   decode_partial_kernel<W, B><<<dim3(num_kv_heads, batch, splits), W * 32, smem, st>>>(
       (const __nv_bfloat16*)q, (const __nv_bfloat16*)k_cache, (const __nv_bfloat16*)v_cache,
       nullptr, page_table, table_stride, seqlens, ws_o, (float2*)ws_ml, chunk_offsets, capacity,
-      num_qo_heads, num_kv_heads, page_size, page_shift_of(page_size),
+      max_groups, num_qo_heads, num_kv_heads, page_size, page_shift_of(page_size),
       (float)(sm_scale * 1.4426950408889634));
   if (auto e = check_launch("pi decode partials")) return e;
   decode_merge_kernel<<<dim3(num_qo_heads, batch), kHeadDim, 0, st>>>(
-      ws_o, (const float2*)ws_ml, seqlens, chunk_offsets, capacity, (__nv_bfloat16*)out,
-      num_qo_heads);
+      ws_o, (const float2*)ws_ml, seqlens, chunk_offsets, capacity, max_groups,
+      (__nv_bfloat16*)out, num_qo_heads);
   return check_launch("pi decode merge");
 }
 

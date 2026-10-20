@@ -288,12 +288,15 @@ impl DecodeWorkspace {
     }
 }
 
-/// Chunk capacity a decode batch of `rows` can need: every request's KV lives in
-/// the pool (`pool_tokens`), plus one partial chunk per row; without a known pool
-/// size, every row may fill its page-table row.
+/// Workspace rows for a decode batch of `rows`. Requests with disjoint KV need at
+/// most the pool's chunks plus one partial chunk per row; when shared prefix pages
+/// push the batch past that, the kernels switch to grouped mode (same bits), which
+/// needs one row per (request, fold group), so the capacity never drops below that.
 pub(crate) fn decode_capacity(rows: i64, table_columns: i64, page_size: i64, pool_tokens: Option<i64>) -> i64 {
-    let dense = rows * max_chunks(table_columns, page_size);
-    pool_tokens.map_or(dense, |tokens| dense.min((tokens + 63) / 64 + rows))
+    let chunks = max_chunks(table_columns, page_size);
+    let dense = rows * chunks;
+    let grouped = rows * ((chunks + 31) / 32);
+    pool_tokens.map_or(dense, |tokens| dense.min((tokens + 63) / 64 + rows)).max(grouped)
 }
 
 /// Decode attention for `q [batch, Hq, 128]` against the paged caches; writes `out [batch, Hq*128]`.
