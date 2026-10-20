@@ -391,29 +391,37 @@ impl Sampler {
         let greedy = logits.argmax(-1, false);
         #[cfg(has_flashinfer)]
         if matches!(device, tch::Device::Cuda(_)) {
-            let temps: Vec<f32> = params
-                .iter()
-                .zip(&greedy_rows)
-                .map(|(p, &g)| if g { 1.0 } else { p.temperature as f32 })
-                .collect();
-            let top_k: Vec<i64> = params.iter().map(|p| if p.top_k > 0 { p.top_k.min(vocab) } else { vocab }).collect();
-            let top_p: Vec<f32> = params.iter().map(|p| p.top_p as f32).collect();
+            // Per-row parameters go up in two packed copies (each small host copy
+            // stalls the CPU/GPU pipeline): [top_k, seed, offset, greedy] as i64 and
+            // [temperature, top_p] as f32.
+            let rows = params.len() as i64;
+            let mut ints = Vec::with_capacity(4 * params.len());
+            ints.extend(params.iter().map(|p| if p.top_k > 0 { p.top_k.min(vocab) } else { vocab }));
+            ints.extend(params.iter().map(|p| p.seed as i64));
             // Disjoint Philox ranges per position (a row consumes far fewer).
-            let seeds: Vec<i64> = params.iter().map(|p| p.seed as i64).collect();
-            let offsets: Vec<i64> = params.iter().map(|p| p.position.wrapping_mul(1 << 24) as i64).collect();
-            let upload = |t: Tensor| t.to_device(device);
-            let probs = (logits.to_kind(Kind::Float) / upload(Tensor::from_slice(&temps)).unsqueeze(1))
+            ints.extend(params.iter().map(|p| p.position.wrapping_mul(1 << 24) as i64));
+            ints.extend(greedy_rows.iter().map(|&g| g as i64));
+            let mut floats = Vec::with_capacity(2 * params.len());
+            floats.extend(params.iter().zip(&greedy_rows).map(|(p, &g)| if g { 1.0 } else { p.temperature as f32 }));
+            floats.extend(params.iter().map(|p| p.top_p as f32));
+            // Pinned + non-blocking: a pageable copy would block the host until the
+            // stream drains and stall the CPU/GPU overlap pipeline. The caching host
+            // allocator keeps the pinned buffer alive until the copy completes.
+            let upload = |t: Tensor| t.pin_memory(device).to_device_(device, t.kind(), true, false);
+            let ints = upload(Tensor::from_slice(&ints));
+            let floats = upload(Tensor::from_slice(&floats));
+            let part = |t: &Tensor, i: i64| t.narrow(0, i * rows, rows);
+            let probs = (logits.to_kind(Kind::Float) / part(&floats, 0).unsqueeze(1))
                 .softmax(-1, Kind::Float)
                 .contiguous();
             let sampled = sample_flashinfer_rows(
                 &probs,
-                &upload(Tensor::from_slice(&top_k)),
-                &upload(Tensor::from_slice(&top_p)),
-                &upload(Tensor::from_slice(&seeds)),
-                &upload(Tensor::from_slice(&offsets)),
+                &part(&ints, 0),
+                &part(&floats, 1),
+                &part(&ints, 1),
+                &part(&ints, 2),
             )?;
-            let mask = upload(Tensor::from_slice(&greedy_rows));
-            return Ok(greedy.where_self(&mask, &sampled));
+            return Ok(greedy.where_self(&part(&ints, 3).to_kind(Kind::Bool), &sampled));
         }
         let _ = (greedy, greedy_rows, vocab);
         Err(SamplingError::Native("deterministic sampling requires CUDA FlashInfer".into()))
