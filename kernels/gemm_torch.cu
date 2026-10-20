@@ -8,7 +8,7 @@
 
 using namespace pi_gemm;
 
-// kernel: 0 = auto, 1..4 = small with G = kernel, 5 = hand-written large,
+// kernel: 0 = auto, 1..4 = small with G = kernel,
 // 10.. = CUTLASS tiles (10: 128x256x32 s3, 11: 128x128x32 s4, 12: 64x128x32 s4, 13: 64x64x32 s5).
 at::Tensor linear(at::Tensor x, at::Tensor w, int64_t kernel, bool out_fp32) {
   TORCH_CHECK(x.is_cuda() && x.scalar_type() == at::kBFloat16 && w.scalar_type() == at::kBFloat16);
@@ -21,7 +21,7 @@ at::Tensor linear(at::Tensor x, at::Tensor w, int64_t kernel, bool out_fp32) {
   auto y = at::empty({M, N}, x.options().dtype(out_fp32 ? at::kFloat : at::kBFloat16));
   if (M == 0) return y;
   int k = (int)kernel;
-  if (k == 0) k = M <= 16 ? 1 : M <= 32 ? 2 : M <= 64 ? 4 : 5;
+  if (k == 0) k = M <= 16 ? 1 : M <= 32 ? 2 : M <= 64 ? 4 : 11;
   auto stream = at::cuda::getCurrentCUDAStream();
   auto run = [&](auto* out) {
     using OutT = std::remove_pointer_t<decltype(out)>;
@@ -58,10 +58,7 @@ at::Tensor linear(at::Tensor x, at::Tensor w, int64_t kernel, bool out_fp32) {
       else e = CutlassGemm<OutT, 64, 64, 32, 32, 32, 5>::run(xp, x.stride(0), wp, out, N, M, N, K, stream);
       TORCH_CHECK(e == cudaSuccess, "cutlass gemm failed for kernel ", k);
     } else {
-      const size_t smem = kLargeSmemElems * sizeof(__nv_bfloat16);
-      cudaFuncSetAttribute(gemm_large_kernel<OutT>, cudaFuncAttributeMaxDynamicSharedMemorySize, smem);
-      gemm_large_kernel<OutT><<<dim3((N + kLargeBN - 1) / kLargeBN, (M + kLargeBM - 1) / kLargeBM), 256, smem, stream>>>(
-          (const __nv_bfloat16*)x.data_ptr(), x.stride(0), (const __nv_bfloat16*)w.data_ptr(), out, N, M, N, K);
+      TORCH_CHECK(false, "unknown kernel id ", k);
     }
   };
   if (out_fp32) run((float*)y.data_ptr()); else run((__nv_bfloat16*)y.data_ptr());

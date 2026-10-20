@@ -44,7 +44,7 @@ def main(bench):
         X = torch.randn(4096, K, device=dev).bfloat16()
         ref = ext.linear(X[:1].contiguous(), W, 1, False)[0]
         for M in [1, 2, 7, 16, 17, 33, 64, 65, 200, 1000, 4096]:
-            for kern in [1, 2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 20, 21, 22, 23, 24, 25]:
+            for kern in [1, 2, 4, 6, 7, 8, 9, 10, 11, 12, 13, 20, 21, 22, 23, 24, 25]:
                 Xm = X[:M].clone()
                 if M > 1:
                     Xm[1:] = torch.randn_like(Xm[1:]) * 100  # other rows must not matter
