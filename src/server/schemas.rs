@@ -21,6 +21,16 @@ fn default_max_tokens() -> i64 {
     1024
 }
 
+/// The request's seed, or a fresh random one.
+pub fn resolve_seed(seed: Option<i64>) -> u64 {
+    use std::hash::{BuildHasher, Hasher};
+    seed.map(|seed| seed as u64).unwrap_or_else(|| {
+        let mut hasher = std::collections::hash_map::RandomState::new().build_hasher();
+        hasher.write_u128(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos()));
+        hasher.finish() >> 1
+    })
+}
+
 #[derive(Debug, Deserialize)]
 pub struct ChatCompletionRequest {
     #[serde(default = "default_model")]
@@ -46,16 +56,17 @@ pub struct ChatCompletionRequest {
     pub stream: bool,
     #[serde(default)]
     pub ignore_eos: bool,
-    /// Sampling seed (deterministic mode).
+    /// Sampling seed (OpenAI `seed`; any integer). Without one a random seed is drawn
+    /// and returned, so a sampled response can be reproduced in deterministic mode.
     #[serde(default)]
-    pub seed: Option<u64>,
+    pub seed: Option<i64>,
 }
 
 impl ChatCompletionRequest {
     /// The newer chat API limit takes precedence over the legacy `max_tokens`.
     pub fn sampling_params(&self) -> SamplingParams {
         SamplingParams {
-            seed: self.seed.unwrap_or(0),
+            seed: resolve_seed(self.seed),
             ..sampling_params(
                 self.temperature,
                 self.top_p,
@@ -96,9 +107,10 @@ pub struct CompletionRequest {
     pub stream: bool,
     #[serde(default)]
     pub ignore_eos: bool,
-    /// Sampling seed (deterministic mode).
+    /// Sampling seed (OpenAI `seed`; any integer). Without one a random seed is drawn
+    /// and returned, so a sampled response can be reproduced in deterministic mode.
     #[serde(default)]
-    pub seed: Option<u64>,
+    pub seed: Option<i64>,
 }
 
 pub fn sampling_params(

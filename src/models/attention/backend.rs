@@ -169,6 +169,11 @@ impl Attention {
         self.page_size = Some(page_size);
     }
 
+    /// Total pages of the bound KV pool (sizes backend workspaces that scale with live KV).
+    pub fn bind_cache_pages(&self, pages: i64) {
+        self.backend.bind_cache_pages(pages);
+    }
+
     pub fn supports_cuda_graph(&self) -> bool {
         self.backend.supports_cuda_graph()
     }
@@ -303,6 +308,8 @@ trait AttentionBackend {
         false
     }
 
+    fn bind_cache_pages(&self, _pages: i64) {}
+
     fn prepare_decode_graph(
         &self,
         _metadata: &AttentionMetadata,
@@ -355,29 +362,30 @@ fn create_attention_backend(kind: AttentionBackendKind) -> Box<dyn AttentionBack
 #[derive(Default)]
 struct PiAttentionBackend {
     workspace: RefCell<Option<std::rc::Rc<crate::kernels::pi::DecodeWorkspace>>>,
+    cache_pages: std::cell::Cell<Option<i64>>,
 }
 
 impl PiAttentionBackend {
     fn decode_workspace(
         &self,
         rows: i64,
-        max_chunks: i64,
+        capacity: i64,
         spec: AttentionSpec,
     ) -> std::rc::Rc<crate::kernels::pi::DecodeWorkspace> {
         let mut slot = self.workspace.borrow_mut();
         if let Some(ws) = slot
             .as_ref()
-            .filter(|ws| ws.rows() >= rows && ws.max_chunks() >= max_chunks)
+            .filter(|ws| ws.rows() >= rows && ws.capacity() >= capacity)
         {
             return std::rc::Rc::clone(ws);
         }
-        let (rows, max_chunks) = slot.as_ref().map_or((rows, max_chunks), |ws| {
-            (ws.rows().max(rows), ws.max_chunks().max(max_chunks))
+        let (rows, capacity) = slot.as_ref().map_or((rows, capacity), |ws| {
+            (ws.rows().max(rows), ws.capacity().max(capacity))
         });
         let ws = std::rc::Rc::new(crate::kernels::pi::DecodeWorkspace::new(
             rows,
+            capacity,
             spec.num_heads,
-            max_chunks,
             spec.device,
         ));
         *slot = Some(std::rc::Rc::clone(&ws));
@@ -391,7 +399,13 @@ impl PiAttentionBackend {
             .ok_or_else(|| model_error("PI decode requires block_table"))?;
         let rows = table.size()[0];
         let chunks = crate::kernels::pi::max_chunks(table.size()[1], page_size);
-        let ws = self.decode_workspace(rows, chunks, spec);
+        let capacity = crate::kernels::pi::decode_capacity(
+            rows,
+            table.size()[1],
+            page_size,
+            self.cache_pages.get().map(|pages| pages * page_size),
+        );
+        let ws = self.decode_workspace(rows, capacity, spec);
         Ok(BackendPlan::PiDecode(
             ws,
             crate::kernels::pi::decode_splits(rows, spec.num_kv_heads, chunks),
@@ -421,6 +435,10 @@ impl AttentionBackend for PiAttentionBackend {
     }
     fn supports_cuda_graph(&self) -> bool {
         crate::kernels::pi::available()
+    }
+
+    fn bind_cache_pages(&self, pages: i64) {
+        self.cache_pages.set(Some(pages));
     }
 
     fn prepare_decode_graph(

@@ -98,6 +98,10 @@ impl ModelWeights {
         self.tensors.is_empty()
     }
 
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &Tensor)> {
+        self.tensors.iter().map(|(name, tensor)| (name.as_str(), tensor))
+    }
+
     pub fn into_tensors(self) -> Vec<(String, Tensor)> {
         self.tensors
     }

@@ -91,27 +91,31 @@ int pi_attn_decode_splits(int batch, int num_kv_heads, int max_chunks) {
 // q: [batch, Hq, 128] bf16 contiguous; out: [batch, Hq, 128] bf16; caches:
 // [pages, page_size, Hkv, 128] bf16; page table: dense [batch, table_stride]
 // int32; seqlens: [batch] int32 (KV length including the decoded token).
-// ws_o: [batch, Hq, max_chunks, 128] f32, ws_ml: [batch, Hq, max_chunks, 2] f32.
+// Compact workspace: ws_o [capacity, Hq, 128] f32, ws_ml [capacity, Hq, 2] f32 and
+// chunk_offsets [batch + 1] int32 (filled here); capacity >= sum of ceil(seqlen / 64).
 const char* pi_attn_decode(const void* q, const void* k_cache, const void* v_cache,
                            const int32_t* page_table, int64_t table_stride, const int32_t* seqlens,
-                           float* ws_o, float* ws_ml, int max_chunks, void* out, int batch,
-                           int num_qo_heads, int num_kv_heads, int page_size, int splits,
-                           double sm_scale, void* stream) {
+                           float* ws_o, float* ws_ml, int32_t* chunk_offsets, int capacity,
+                           void* out, int batch, int num_qo_heads, int num_kv_heads, int page_size,
+                           int splits, double sm_scale, void* stream) {
   if (num_kv_heads <= 0 || num_qo_heads % num_kv_heads || num_qo_heads / num_kv_heads > 16)
     return fail("PI attention needs num_qo_heads = g * num_kv_heads with g <= 16");
   if (batch == 0) return nullptr;
   auto st = (cudaStream_t)stream;
+  decode_chunk_offsets_kernel<<<1, 32, 0, st>>>(seqlens, batch, chunk_offsets);
+  if (auto e = check_launch("pi decode offsets")) return e;
   constexpr int W = 1, B = 1;  // 1 warp per CTA, one shared K/V tile: best on Ampere/Ada tested
   const size_t smem = decode_smem_elems<W, B>() * sizeof(__nv_bfloat16);
   set_smem(decode_partial_kernel<W, B>, smem);
   decode_partial_kernel<W, B><<<dim3(num_kv_heads, batch, splits), W * 32, smem, st>>>(
       (const __nv_bfloat16*)q, (const __nv_bfloat16*)k_cache, (const __nv_bfloat16*)v_cache,
-      nullptr, page_table, table_stride, seqlens, ws_o, (float2*)ws_ml, num_qo_heads,
-      num_kv_heads, page_size, page_shift_of(page_size), max_chunks,
+      nullptr, page_table, table_stride, seqlens, ws_o, (float2*)ws_ml, chunk_offsets, capacity,
+      num_qo_heads, num_kv_heads, page_size, page_shift_of(page_size),
       (float)(sm_scale * 1.4426950408889634));
   if (auto e = check_launch("pi decode partials")) return e;
   decode_merge_kernel<<<dim3(num_qo_heads, batch), kHeadDim, 0, st>>>(
-      ws_o, (const float2*)ws_ml, seqlens, (__nv_bfloat16*)out, num_qo_heads, max_chunks);
+      ws_o, (const float2*)ws_ml, seqlens, chunk_offsets, capacity, (__nv_bfloat16*)out,
+      num_qo_heads);
   return check_launch("pi decode merge");
 }
 
@@ -186,11 +190,15 @@ const char* pi_attn_prefill(const void* q, const void* k_cache, const void* v_ca
 
 namespace {
 
-// Kernel ids: 1/2/4 small (4 warps, G = 1/2/4), 6..9 small narrow, 10..13 CUTLASS.
+// Kernel ids: 1/2/4 small (4 warps, G = 1/2/4), 6..9 small narrow, 20..25 small with
+// deep weight-streaming pipelines, 10..13 CUTLASS. All realise the same k order.
 const std::vector<int>& small_kernels() {
-  static const std::vector<int> v{1, 2, 4, 6, 7, 8, 9};
+  static const std::vector<int> v{1, 2, 4, 20, 21, 22, 24, 25};
   return v;
 }
+
+// K granularity a kernel id requires.
+int kernel_bk(int k) { return k == 21 || k == 22 ? 256 : k >= 20 && k < 30 ? 128 : 64; }
 const std::vector<int>& large_kernels() {
   static const std::vector<int> v{10, 11, 12, 13};
   return v;
@@ -205,13 +213,19 @@ int bucket_of(int m) {
 std::mutex tune_mutex;
 std::map<std::tuple<int, int, int>, int> tuned;  // (N, K, M bucket) -> kernel
 
-int heuristic_kernel(int M) { return M <= 16 ? 1 : M <= 32 ? 2 : M <= 64 ? 13 : M <= 1024 ? 12 : 11; }
+// Fixed choice when a bucket was never tuned (e.g. first seen inside capture),
+// from whole-decode-step measurements: deep weight-streaming tiles for small M.
+int heuristic_kernel(int M, int K = 0) {
+  if (M <= 16) return K % 128 == 0 ? 20 : 1;
+  if (M <= 32) return K % 128 == 0 ? 24 : 2;
+  return M <= 64 ? 13 : M <= 1024 ? 12 : 11;
+}
 
 template <typename OutT>
 cudaError_t run_gemm(int k, const void* x, int64_t ldx, const void* w, OutT* y, int64_t ldy, int M,
                      int N, int K, cudaStream_t st) {
-  auto small = [&](auto kern, int G, int W) {
-    const size_t smem = (size_t)kSmallStages * (16 * G + 8 * W) * kSmallStride * sizeof(__nv_bfloat16);
+  auto small = [&](auto kern, int G, int W, int BK = kSmallBK, int ST = kSmallStages) {
+    const size_t smem = (size_t)ST * (16 * G + 8 * W) * (BK + 8) * sizeof(__nv_bfloat16);
     set_smem(kern, smem);
     kern<<<dim3(N / (8 * W), (M + 16 * G - 1) / (16 * G)), W * 32, smem, st>>>(
         (const __nv_bfloat16*)x, ldx, (const __nv_bfloat16*)w, y, ldy, M, N, K);
@@ -225,6 +239,11 @@ cudaError_t run_gemm(int k, const void* x, int64_t ldx, const void* w, OutT* y, 
     case 7: return small(gemm_small_kernel<1, 2, OutT>, 1, 2);
     case 8: return small(gemm_small_kernel<2, 1, OutT>, 2, 1);
     case 9: return small(gemm_small_kernel<4, 2, OutT>, 4, 2);
+    case 20: return small(gemm_small_kernel<1, 4, OutT, 128, 6>, 1, 4, 128, 6);
+    case 21: return small(gemm_small_kernel<1, 4, OutT, 256, 3>, 1, 4, 256, 3);
+    case 22: return small(gemm_small_kernel<1, 2, OutT, 256, 4>, 1, 2, 256, 4);
+    case 24: return small(gemm_small_kernel<2, 4, OutT, 128, 5>, 2, 4, 128, 5);
+    case 25: return small(gemm_small_kernel<4, 4, OutT, 128, 3>, 4, 4, 128, 3);
     case 10: return CutlassGemm<OutT, 128, 256, 32, 64, 64, 3>::run(x, ldx, w, y, ldy, M, N, K, st);
     case 11: return CutlassGemm<OutT, 128, 128, 32, 64, 64, 4>::run(x, ldx, w, y, ldy, M, N, K, st);
     case 12: return CutlassGemm<OutT, 64, 128, 32, 32, 64, 4>::run(x, ldx, w, y, ldy, M, N, K, st);
@@ -232,13 +251,12 @@ cudaError_t run_gemm(int k, const void* x, int64_t ldx, const void* w, OutT* y, 
   }
 }
 
-// Time each candidate kernel for one (N, K, M bucket) on scratch activations
-// and remember the fastest. Called outside stream capture only.
-const char* tune_bucket(const void* w, int N, int K, int m, cudaStream_t st) {
-  void *x = nullptr, *y = nullptr;
-  if (cudaMallocAsync(&x, (size_t)m * K * 2, st) != cudaSuccess ||
-      cudaMallocAsync(&y, (size_t)m * N * 2, st) != cudaSuccess)
-    return fail("PI linear tune: scratch allocation failed");
+// Time each candidate kernel for one (N, K, M bucket) and remember the fastest.
+// Scratch comes from the caller (the torch allocator): x [m, K] and y [m, N] bf16,
+// and an optional L2-flush buffer used for small m, where GEMMs stream weights
+// from DRAM in a real forward. Called outside stream capture only.
+const char* tune_bucket(const void* w, int N, int K, int m, void* x, void* y, void* flush,
+                        size_t flush_bytes, cudaStream_t st) {
   cudaMemsetAsync(x, 0, (size_t)m * K * 2, st);
   cudaEvent_t e0, e1;
   cudaEventCreate(&e0);
@@ -246,25 +264,29 @@ const char* tune_bucket(const void* w, int N, int K, int m, cudaStream_t st) {
   std::vector<int> cands = large_kernels();
   if (m <= 64) cands.insert(cands.begin(), small_kernels().begin(), small_kernels().end());
   float best = 1e30f;
-  int best_k = heuristic_kernel(m);
+  int best_k = heuristic_kernel(m, K);
   for (int k : cands) {
+    if (K % kernel_bk(k)) continue;
     if (run_gemm(k, x, K, w, (__nv_bfloat16*)y, N, m, N, K, st) != cudaSuccess) continue;  // warm-up
-    cudaEventRecord(e0, st);
-    for (int r = 0; r < 5; ++r) run_gemm(k, x, K, w, (__nv_bfloat16*)y, N, m, N, K, st);
-    cudaEventRecord(e1, st);
-    cudaEventSynchronize(e1);
-    float ms = 0.f;
-    cudaEventElapsedTime(&ms, e0, e1);
-    if (ms < best) {
-      best = ms;
+    std::vector<float> times;
+    for (int r = 0; r < 5; ++r) {
+      if (flush) cudaMemsetAsync(flush, r, flush_bytes, st);
+      cudaEventRecord(e0, st);
+      run_gemm(k, x, K, w, (__nv_bfloat16*)y, N, m, N, K, st);
+      cudaEventRecord(e1, st);
+      cudaEventSynchronize(e1);
+      float ms = 0.f;
+      cudaEventElapsedTime(&ms, e0, e1);
+      times.push_back(ms);
+    }
+    std::sort(times.begin(), times.end());
+    if (times[2] < best) {
+      best = times[2];
       best_k = k;
     }
   }
   cudaEventDestroy(e0);
   cudaEventDestroy(e1);
-  cudaFreeAsync(x, st);
-  cudaFreeAsync(y, st);
-  cudaStreamSynchronize(st);
   {
     std::lock_guard<std::mutex> lock(tune_mutex);
     tuned[{N, K, m}] = best_k;
@@ -278,37 +300,49 @@ extern "C" {
 
 // y[M, N] = x[M, K] w[N, K]^T with a row-invariant reduction order (see gemm_inv.cuh).
 // x rows have stride ldx (elements); y is [M, N] contiguous; out_fp32 selects f32 output.
-// The first call for an (N, K, M bucket) outside stream capture tunes the tile
-// choice (all choices give identical bits); inside capture an untuned bucket
-// uses a fixed heuristic.
+// Uses the tuned tile for (N, K, M bucket) when present, a fixed heuristic otherwise;
+// every choice gives identical bits.
 const char* pi_linear(const void* x, int64_t ldx, const void* w, void* y, int M, int N, int K,
                       int out_fp32, void* stream) {
   if (K % 64 || N % 32) return fail("PI linear needs K % 64 == 0 and N % 32 == 0");
   if (M == 0) return nullptr;
   auto st = (cudaStream_t)stream;
-  const int bucket = bucket_of(M);
   int k = -1;
   {
     std::lock_guard<std::mutex> lock(tune_mutex);
-    auto it = tuned.find({N, K, bucket});
+    auto it = tuned.find({N, K, bucket_of(M)});
     if (it != tuned.end()) k = it->second;
   }
-  if (k < 0) {
-    cudaStreamCaptureStatus status = cudaStreamCaptureStatusNone;
-    cudaStreamIsCapturing(st, &status);
-    if (status == cudaStreamCaptureStatusNone) {
-      if (auto e = tune_bucket(w, N, K, bucket, st)) return e;
-      std::lock_guard<std::mutex> lock(tune_mutex);
-      k = tuned[{N, K, bucket}];
-    } else {
-      k = heuristic_kernel(M);
-    }
-  }
-  if (M > 64 && k < 10) k = heuristic_kernel(M);
+  if (k < 0 || (M > 64 && k < 10) || K % kernel_bk(k)) k = heuristic_kernel(M, K);
   const cudaError_t err = out_fp32 ? run_gemm(k, x, ldx, w, (float*)y, N, M, N, K, st)
                                    : run_gemm(k, x, ldx, w, (__nv_bfloat16*)y, N, M, N, K, st);
   if (err != cudaSuccess) return fail(std::string("PI linear: ") + cudaGetErrorString(err));
   return nullptr;
+}
+
+// M bucket (power of two) used for tuning, and whether it is already tuned.
+int pi_linear_bucket(int M) { return bucket_of(M); }
+int pi_linear_is_tuned(int N, int K, int bucket) {
+  std::lock_guard<std::mutex> lock(tune_mutex);
+  return tuned.count({N, K, bucket}) ? 1 : 0;
+}
+// Whether `stream` is capturing a CUDA graph (tuning must not run then).
+int pi_stream_capturing(void* stream) {
+  cudaStreamCaptureStatus status = cudaStreamCaptureStatusNone;
+  cudaStreamIsCapturing((cudaStream_t)stream, &status);
+  return status != cudaStreamCaptureStatusNone;
+}
+// L2 size in bytes of the current device (flush buffer sizing).
+int64_t pi_l2_bytes() {
+  int device = 0, l2 = 0;
+  cudaGetDevice(&device);
+  cudaDeviceGetAttribute(&l2, cudaDevAttrL2CacheSize, device);
+  return l2;
+}
+const char* pi_linear_tune(const void* w, int N, int K, int bucket, void* x, void* y, void* flush,
+                           int64_t flush_bytes, void* stream) {
+  if (K % 64 || N % 32) return fail("PI linear needs K % 64 == 0 and N % 32 == 0");
+  return tune_bucket(w, N, K, bucket, x, y, flush, (size_t)flush_bytes, (cudaStream_t)stream);
 }
 
 }  // extern "C"

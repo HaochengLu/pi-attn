@@ -280,6 +280,21 @@ constexpr int decode_smem_elems() {
   return DW * KVB * kTileElems;
 }
 
+// Compact decode workspace: request b's chunk partials occupy rows
+// [chunk_offsets[b], chunk_offsets[b + 1]) of ws_o [capacity, Hq, 128] and
+// ws_ml [capacity, Hq, 2], so the workspace scales with live KV, not with
+// batch x max sequence length. One block computes the exclusive prefix sum.
+__global__ void decode_chunk_offsets_kernel(const int32_t* __restrict__ kv_lens, int batch,
+                                            int32_t* __restrict__ chunk_offsets) {
+  if (threadIdx.x != 0) return;
+  int32_t total = 0;
+  for (int b = 0; b < batch; ++b) {
+    chunk_offsets[b] = total;
+    total += (kv_lens[b] + kChunk - 1) / kChunk;
+  }
+  chunk_offsets[batch] = total;
+}
+
 // Decode partials. grid = (num_kv_heads, batch, split CTAs). Each warp owns one
 // chunk at a time (chunks strided over all warps of the request) and writes the
 // partial of the GQA group's query rows. The split count only changes who
@@ -295,8 +310,9 @@ __global__ void __launch_bounds__(DW * 32)
                           const int32_t* __restrict__ kv_page_indptr,
                           const int32_t* __restrict__ kv_page_indices, int64_t table_stride,
                           const int32_t* __restrict__ kv_lens, float* __restrict__ ws_o,
-                          float2* __restrict__ ws_ml, int num_qo_heads, int num_kv_heads,
-                          int page_size, int page_shift, int max_chunks, float scale_log2) {
+                          float2* __restrict__ ws_ml, const int32_t* __restrict__ chunk_offsets,
+                          int capacity, int num_qo_heads, int num_kv_heads, int page_size,
+                          int page_shift, float scale_log2) {
   extern __shared__ __align__(16) __nv_bfloat16 smem[];
   const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
   __nv_bfloat16* sK = smem + warp * KVB * kTileElems;
@@ -350,15 +366,18 @@ __global__ void __launch_bounds__(DW * 32)
       cp_async_wait<0>();
     }
     __syncwarp();
-    const int64_t slot0 = ((int64_t)b * num_qo_heads + kvh * group + g) * max_chunks + c;
-    const int64_t slot1 = slot0 + 8 * (int64_t)max_chunks;
+    // Never write past the workspace even if lengths and capacity disagree.
+    const int64_t row = (int64_t)chunk_offsets[b] + c;
+    const bool in_bounds = row < capacity;
+    const int64_t slot0 = row * num_qo_heads + kvh * group + g;
+    const int64_t slot1 = slot0 + 8;
     chunk_pv<1>(pf, sV, lane, [&](int, int n, const float(&o)[4]) {
-      if (g < group)
+      if (in_bounds && g < group)
         *reinterpret_cast<float2*>(ws_o + slot0 * kHeadDim + n * 8 + t * 2) = make_float2(o[0], o[1]);
-      if (g + 8 < group)
+      if (in_bounds && g + 8 < group)
         *reinterpret_cast<float2*>(ws_o + slot1 * kHeadDim + n * 8 + t * 2) = make_float2(o[2], o[3]);
     });
-    if (t == 0) {
+    if (t == 0 && in_bounds) {
       if (g < group) ws_ml[slot0] = make_float2(m[0], l[0]);
       if (g + 8 < group) ws_ml[slot1] = make_float2(m[1], l[1]);
     }
@@ -377,13 +396,15 @@ __global__ void __launch_bounds__(DW * 32)
 // two-level tree: sequential within each fold group, then across groups.
 __global__ void __launch_bounds__(kHeadDim)
     decode_merge_kernel(const float* __restrict__ ws_o, const float2* __restrict__ ws_ml,
-                        const int32_t* __restrict__ kv_lens, __nv_bfloat16* __restrict__ out,
-                        int num_qo_heads, int max_chunks) {
+                        const int32_t* __restrict__ kv_lens,
+                        const int32_t* __restrict__ chunk_offsets, int capacity,
+                        __nv_bfloat16* __restrict__ out, int num_qo_heads) {
   constexpr int kBatch = 8;
   static_assert(kGroupChunks % kBatch == 0, "prefetch batches must not straddle fold groups");
   const int h = blockIdx.x, b = blockIdx.y, d = threadIdx.x;
-  const int n_chunks = (kv_lens[b] + kChunk - 1) / kChunk;
-  const int64_t base = ((int64_t)b * num_qo_heads + h) * max_chunks;
+  const int64_t first = chunk_offsets[b];
+  const int64_t want = (kv_lens[b] + kChunk - 1) / kChunk, room = capacity - first;
+  const int n_chunks = (int)(want < room ? want : room);
   float tM = -INFINITY, tL = 0.f, tO = 0.f;  // total
   float gM = -INFINITY, gL = 0.f, gO = 0.f;  // current fold group
   for (int c0 = 0; c0 < n_chunks; c0 += kBatch) {
@@ -392,8 +413,9 @@ __global__ void __launch_bounds__(kHeadDim)
 #pragma unroll
     for (int i = 0; i < kBatch; ++i) {
       if (c0 + i < n_chunks) {
-        ml[i] = ws_ml[base + c0 + i];
-        ov[i] = ws_o[(base + c0 + i) * kHeadDim + d];
+        const int64_t slot = (first + c0 + i) * num_qo_heads + h;
+        ml[i] = ws_ml[slot];
+        ov[i] = ws_o[slot * kHeadDim + d];
       }
     }
 #pragma unroll

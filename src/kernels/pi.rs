@@ -41,6 +41,21 @@ mod ffi {
             out_fp32: i32,
             stream: *mut c_void,
         ) -> *const c_char;
+        pub fn pi_linear_bucket(m: i32) -> i32;
+        pub fn pi_linear_is_tuned(n: i32, k: i32, bucket: i32) -> i32;
+        pub fn pi_stream_capturing(stream: *mut c_void) -> i32;
+        pub fn pi_l2_bytes() -> i64;
+        pub fn pi_linear_tune(
+            w: *const c_void,
+            n: i32,
+            k: i32,
+            bucket: i32,
+            x: *mut c_void,
+            y: *mut c_void,
+            flush: *mut c_void,
+            flush_bytes: i64,
+            stream: *mut c_void,
+        ) -> *const c_char;
         pub fn pi_attn_decode_splits(batch: i32, num_kv_heads: i32, max_chunks: i32) -> i32;
         pub fn pi_attn_decode(
             q: *const c_void,
@@ -51,7 +66,8 @@ mod ffi {
             seqlens: *const i32,
             ws_o: *mut f32,
             ws_ml: *mut f32,
-            max_chunks: i32,
+            chunk_offsets: *mut i32,
+            capacity: i32,
             out: *mut c_void,
             batch: i32,
             num_qo_heads: i32,
@@ -144,6 +160,10 @@ pub(crate) fn try_linear(x: &Tensor, weight: &Tensor) -> Result<Tensor, String> 
     }
     let y = Tensor::empty([m, n], (Kind::BFloat16, weight.device()));
     #[cfg(has_pi)]
+    if m > 0 {
+        tune(weight, n, k, m)?;
+    }
+    #[cfg(has_pi)]
     check(unsafe {
         ffi::pi_linear(
             x2.data_ptr(),
@@ -164,6 +184,65 @@ pub(crate) fn try_linear(x: &Tensor, weight: &Tensor) -> Result<Tensor, String> 
     Ok(y.reshape(out_shape))
 }
 
+/// Picks the fastest GEMM tile for this weight shape and M bucket the first time
+/// it is seen outside graph capture (graph warm-ups run before every capture).
+/// Scratch comes from the torch allocator; if it cannot be allocated the fixed
+/// heuristic is used. Tile choice never changes results, only speed.
+#[cfg(has_pi)]
+fn tune(weight: &Tensor, n: i64, k: i64, m: i64) -> Result<(), String> {
+    use std::{cell::RefCell, collections::HashSet};
+    thread_local! {
+        static ATTEMPTED: RefCell<HashSet<(i64, i64, i32)>> = RefCell::new(HashSet::new());
+    }
+    let bucket = unsafe { ffi::pi_linear_bucket(m as i32) };
+    if unsafe { ffi::pi_linear_is_tuned(n as i32, k as i32, bucket) } != 0
+        || !ATTEMPTED.with(|seen| seen.borrow_mut().insert((n, k, bucket)))
+    {
+        return Ok(());
+    }
+    let stream = stream_of(weight)?;
+    if unsafe { ffi::pi_stream_capturing(stream) } != 0 {
+        ATTEMPTED.with(|seen| seen.borrow_mut().remove(&(n, k, bucket)));
+        return Ok(());
+    }
+    let device = weight.device();
+    let scratch = |shape: &[i64], kind: Kind| Tensor::f_empty(shape, (kind, device)).ok();
+    let (Some(x), Some(y)) = (
+        scratch(&[bucket as i64, k], Kind::BFloat16),
+        scratch(&[bucket as i64, n], Kind::BFloat16),
+    ) else {
+        tracing::warn!(n, k, bucket, "PI GEMM tuning skipped: no scratch memory; using heuristic tile");
+        return Ok(());
+    };
+    // Small M streams weights from DRAM in a forward: time with a cold L2.
+    let flush_bytes = if bucket <= 64 { 2 * unsafe { ffi::pi_l2_bytes() } } else { 0 };
+    let flush = (flush_bytes > 0)
+        .then(|| scratch(&[flush_bytes], Kind::Uint8))
+        .flatten();
+    let result = check(unsafe {
+        ffi::pi_linear_tune(
+            weight.data_ptr(),
+            n as i32,
+            k as i32,
+            bucket,
+            x.data_ptr(),
+            y.data_ptr(),
+            flush.as_ref().map_or(std::ptr::null_mut(), |f| f.data_ptr()),
+            if flush.is_some() { flush_bytes } else { 0 },
+            stream,
+        )
+    });
+    if let Err(error) = result {
+        tracing::warn!(n, k, bucket, %error, "PI GEMM tuning failed; using heuristic tile");
+    }
+    Ok(())
+}
+
+/// Shape requirement of the row-invariant GEMM for a `[N, K]` weight.
+pub fn linear_shape_supported(n: i64, k: i64) -> bool {
+    k % 64 == 0 && n % 32 == 0
+}
+
 /// Chunk capacity of a dense page table: chunks of 64 keys covering every column.
 pub(crate) fn max_chunks(table_columns: i64, page_size: i64) -> i64 {
     (table_columns * page_size + 63) / 64
@@ -179,25 +258,38 @@ pub(crate) fn decode_splits(batch: i64, num_kv_heads: i64, max_chunks: i64) -> i
     }
 }
 
-/// Per-chunk decode partials: o `[rows, Hq, max_chunks, 128]`, ml `[rows, Hq, max_chunks, 2]` f32.
+/// Compact per-chunk decode partials: o `[capacity, Hq, 128]`, ml `[capacity, Hq, 2]`
+/// f32, and `offsets [rows + 1]` int32 (each request's first partial row, filled on
+/// the GPU). `capacity` bounds the batch's total KV chunks, so it scales with the
+/// KV pool, not with rows x max sequence length.
 pub(crate) struct DecodeWorkspace {
     pub o: Tensor,
     pub ml: Tensor,
+    pub offsets: Tensor,
 }
 
 impl DecodeWorkspace {
-    pub fn new(rows: i64, num_heads: i64, max_chunks: i64, device: Device) -> Self {
+    pub fn new(rows: i64, capacity: i64, num_heads: i64, device: Device) -> Self {
         Self {
-            o: Tensor::empty([rows, num_heads, max_chunks, 128], (Kind::Float, device)),
-            ml: Tensor::empty([rows, num_heads, max_chunks, 2], (Kind::Float, device)),
+            o: Tensor::empty([capacity, num_heads, 128], (Kind::Float, device)),
+            ml: Tensor::empty([capacity, num_heads, 2], (Kind::Float, device)),
+            offsets: Tensor::empty([rows + 1], (Kind::Int, device)),
         }
     }
     pub fn rows(&self) -> i64 {
+        self.offsets.size()[0] - 1
+    }
+    pub fn capacity(&self) -> i64 {
         self.o.size()[0]
     }
-    pub fn max_chunks(&self) -> i64 {
-        self.o.size()[2]
-    }
+}
+
+/// Chunk capacity a decode batch of `rows` can need: every request's KV lives in
+/// the pool (`pool_tokens`), plus one partial chunk per row; without a known pool
+/// size, every row may fill its page-table row.
+pub(crate) fn decode_capacity(rows: i64, table_columns: i64, page_size: i64, pool_tokens: Option<i64>) -> i64 {
+    let dense = rows * max_chunks(table_columns, page_size);
+    pool_tokens.map_or(dense, |tokens| dense.min((tokens + 63) / 64 + rows))
 }
 
 /// Decode attention for `q [batch, Hq, 128]` against the paged caches; writes `out [batch, Hq*128]`.
@@ -220,9 +312,6 @@ pub(crate) fn decode(
         return Err("decode page table or workspace smaller than the batch".into());
     }
     let page_size = k_cache.size()[1];
-    if workspace.max_chunks() < max_chunks(page_table.size()[1], page_size) {
-        return Err("decode workspace has fewer chunks than the page table".into());
-    }
     #[cfg(has_pi)]
     return check(unsafe {
         ffi::pi_attn_decode(
@@ -234,7 +323,8 @@ pub(crate) fn decode(
             seqlens.data_ptr().cast(),
             workspace.o.data_ptr().cast(),
             workspace.ml.data_ptr().cast(),
-            workspace.max_chunks() as i32,
+            workspace.offsets.data_ptr().cast(),
+            workspace.capacity() as i32,
             out.data_ptr(),
             batch as i32,
             num_heads as i32,

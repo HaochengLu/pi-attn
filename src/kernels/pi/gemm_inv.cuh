@@ -12,51 +12,53 @@ namespace pi_gemm {
 using namespace pi_attn;
 
 // ---------------------------------------------------------------- small M ----
-// CTA = 4 warps; warp w owns output columns [n0 + 8w, n0 + 8w + 8). All warps
+// CTA = W warps; warp w owns output columns [n0 + 8w, n0 + 8w + 8). All warps
 // share the X tile (16*G rows). K streams through a cp.async ring of STAGES
-// stages of BK columns. One n8 tile per warp keeps the CTA count high for the
-// narrow projections of decode (N = 1024 gives 32 CTAs x 4 warps).
+// stages of BK columns. Decode GEMMs are weight-streaming: what matters is the
+// bytes in flight per CTA ((STAGES-1) * 8W * BK * 2), so narrow-N projections
+// use deep stages. BK and STAGES change scheduling only, never the k order.
 constexpr int kSmallBK = 64;
 constexpr int kSmallStages = 4;
 constexpr int kSmallStride = kSmallBK + 8;  // bf16 elements per smem row (conflict-free ldmatrix)
 
-template <int G, int W>
+template <int G, int W, int BK = kSmallBK, int STAGES = kSmallStages>
 constexpr int small_smem_elems() {
-  return kSmallStages * (16 * G + 8 * W) * kSmallStride;
+  return STAGES * (16 * G + 8 * W) * (BK + 8);
 }
 
 // W warps per CTA (BN = 8 W): fewer warps per CTA means more CTAs for narrow N.
-template <int G, int W, typename OutT>
+template <int G, int W, typename OutT, int BK = kSmallBK, int STAGES = kSmallStages>
 __global__ void __launch_bounds__(W * 32)
     gemm_small_kernel(const __nv_bfloat16* __restrict__ x, int64_t ldx,
                       const __nv_bfloat16* __restrict__ w, OutT* __restrict__ y, int64_t ldy, int M,
                       int N, int K) {
   constexpr int kRows = 16 * G;
   constexpr int kSmallBN = 8 * W;
-  constexpr int kStageElems = (kRows + kSmallBN) * kSmallStride;
+  constexpr int kStride = BK + 8;
+  constexpr int kStageElems = (kRows + kSmallBN) * kStride;
   extern __shared__ __align__(16) __nv_bfloat16 smem[];
   const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
   const int n0 = blockIdx.x * kSmallBN, m0 = blockIdx.y * kRows;
-  const int ktiles = K / kSmallBK;
+  const int ktiles = K / BK;
 
   auto issue = [&](int kt) {
-    __nv_bfloat16* st = smem + (kt % kSmallStages) * kStageElems;
-    constexpr int kVec = kSmallBK / 8;
+    __nv_bfloat16* st = smem + (kt % STAGES) * kStageElems;
+    constexpr int kVec = BK / 8;
     for (int i = threadIdx.x; i < (kRows + kSmallBN) * kVec; i += blockDim.x) {
       const int r = i / kVec, v = i % kVec;
       const __nv_bfloat16* src = w;
       int bytes = 0;
       if (r < kRows) {
-        if (m0 + r < M) { src = x + (int64_t)(m0 + r) * ldx + kt * kSmallBK + v * 8; bytes = 16; }
+        if (m0 + r < M) { src = x + (int64_t)(m0 + r) * ldx + kt * BK + v * 8; bytes = 16; }
       } else {
-        src = w + (int64_t)(n0 + r - kRows) * K + kt * kSmallBK + v * 8;
+        src = w + (int64_t)(n0 + r - kRows) * K + kt * BK + v * 8;
         bytes = 16;
       }
-      cp_async16(st + r * kSmallStride + v * 8, src, bytes);
+      cp_async16(st + r * kStride + v * 8, src, bytes);
     }
   };
 #pragma unroll
-  for (int s = 0; s < kSmallStages - 1; ++s) {
+  for (int s = 0; s < STAGES - 1; ++s) {
     if (s < ktiles) issue(s);
     cp_async_commit();
   }
@@ -66,24 +68,24 @@ __global__ void __launch_bounds__(W * 32)
   for (int g = 0; g < G; ++g) acc[g][0] = acc[g][1] = acc[g][2] = acc[g][3] = 0.f;
   const int mat = lane >> 3, r8 = lane & 7;
   for (int kt = 0; kt < ktiles; ++kt) {
-    cp_async_wait<kSmallStages - 2>();
+    cp_async_wait<STAGES - 2>();
     __syncthreads();
-    if (kt + kSmallStages - 1 < ktiles) issue(kt + kSmallStages - 1);
+    if (kt + STAGES - 1 < ktiles) issue(kt + STAGES - 1);
     cp_async_commit();
-    const __nv_bfloat16* st = smem + (kt % kSmallStages) * kStageElems;
+    const __nv_bfloat16* st = smem + (kt % STAGES) * kStageElems;
     const __nv_bfloat16* sx = st;
-    const __nv_bfloat16* sw = st + kRows * kSmallStride + warp * 8 * kSmallStride;
+    const __nv_bfloat16* sw = st + kRows * kStride + warp * 8 * kStride;
 #pragma unroll
-    for (int ks = 0; ks < kSmallBK / 16; ks += 2) {
+    for (int ks = 0; ks < BK / 16; ks += 2) {
       // B fragments for two k16 steps of this warp's n8 tile.
       uint32_t b[4];
-      ldmatrix_x4(b, sw + r8 * kSmallStride + ks * 16 + mat * 8);
+      ldmatrix_x4(b, sw + r8 * kStride + ks * 16 + mat * 8);
 #pragma unroll
       for (int kk = 0; kk < 2; ++kk) {
 #pragma unroll
         for (int g = 0; g < G; ++g) {
           uint32_t a[4];
-          ldmatrix_x4(a, sx + (g * 16 + (mat & 1) * 8 + r8) * kSmallStride + (ks + kk) * 16 + (mat >> 1) * 8);
+          ldmatrix_x4(a, sx + (g * 16 + (mat & 1) * 8 + r8) * kStride + (ks + kk) * 16 + (mat >> 1) * 8);
           mma_bf16(acc[g], a, b[2 * kk], b[2 * kk + 1]);
         }
       }

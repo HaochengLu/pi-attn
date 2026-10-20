@@ -20,7 +20,7 @@ use crate::{
 
 use super::{
     manager::{FrontendManager, RequestHandle},
-    schemas::{ChatCompletionRequest, CompletionRequest, PromptInput, sampling_params},
+    schemas::{ChatCompletionRequest, CompletionRequest, PromptInput, resolve_seed, sampling_params},
     streaming::{self, ApiKind},
 };
 
@@ -216,7 +216,8 @@ async fn completions_inner(
         request.max_tokens,
         request.ignore_eos,
     );
-    params.seed = request.seed.unwrap_or(0);
+    params.seed = resolve_seed(request.seed);
+    let seed = params.seed;
     let handle = profiler
         .measure_async(RequestStage::Submit, submit(&frontend, input_ids, params))
         .await?;
@@ -262,6 +263,7 @@ async fn completions_inner(
         "object": ApiKind::Completion.object(false),
         "created": streaming::created(),
         "model": request.model,
+        "seed": seed,
         "usage": streaming::usage(prompt_tokens, token_ids.len()),
     });
     if let Some(prompt_ids) = prompt_ids {

@@ -379,56 +379,69 @@ impl Sampler {
 }
 
 impl Sampler {
-    /// Deterministic mode: every row is sampled on its own (FlashInfer seeds a
-    /// row's Philox stream with its batch index, so rows never share a launch)
-    /// with the stream fixed by (request seed, token position). A request's
-    /// sample therefore does not depend on which requests share its batch.
+    /// Deterministic mode: one batched launch in which row i draws from its own
+    /// Philox stream fixed by (request seed, token position), with its own
+    /// temperature, top-k and top-p. Greedy rows take argmax. Every step is a
+    /// row-wise kernel, so a request's sample does not depend on its batch.
     fn sample_rows_deterministic(&self, logits: &Tensor, params_list: &[SamplingParams]) -> Result<Tensor> {
+        let device = logits.device();
+        let vocab = logits.size()[1];
+        let params: Vec<SamplingParams> = params_list.iter().map(|p| p.normalized()).collect();
+        let greedy_rows: Vec<bool> = params.iter().map(|p| p.temperature <= 0.0 || p.top_p == 0.0).collect();
         let greedy = logits.argmax(-1, false);
-        let rows: Vec<Tensor> = params_list
-            .iter()
-            .enumerate()
-            .map(|(row, params)| {
-                let params = params.normalized();
-                if params.temperature <= 0.0 || params.top_p == 0.0 {
-                    return Ok(greedy.narrow(0, row as i64, 1));
-                }
-                let scaled = logits.narrow(0, row as i64, 1) / params.temperature;
-                let vocab = logits.size()[1];
-                let top_k = if params.top_k > 0 { params.top_k.min(vocab) } else { vocab };
-                #[cfg(has_flashinfer)]
-                if matches!(logits.device(), tch::Device::Cuda(_)) {
-                    return sample_flashinfer_seeded(
-                        &scaled.softmax(-1, Kind::Float).contiguous(),
-                        top_k,
-                        params.top_p,
-                        params.seed,
-                        // Disjoint Philox ranges per position (one row consumes far fewer).
-                        params.position.wrapping_mul(1 << 24),
-                    );
-                }
-                let _ = (scaled, top_k);
-                Err(SamplingError::Native("deterministic sampling requires CUDA FlashInfer".into()))
-            })
-            .collect::<Result<_>>()?;
-        Ok(Tensor::cat(&rows, 0))
+        #[cfg(has_flashinfer)]
+        if matches!(device, tch::Device::Cuda(_)) {
+            let temps: Vec<f32> = params
+                .iter()
+                .zip(&greedy_rows)
+                .map(|(p, &g)| if g { 1.0 } else { p.temperature as f32 })
+                .collect();
+            let top_k: Vec<i64> = params.iter().map(|p| if p.top_k > 0 { p.top_k.min(vocab) } else { vocab }).collect();
+            let top_p: Vec<f32> = params.iter().map(|p| p.top_p as f32).collect();
+            // Disjoint Philox ranges per position (a row consumes far fewer).
+            let seeds: Vec<i64> = params.iter().map(|p| p.seed as i64).collect();
+            let offsets: Vec<i64> = params.iter().map(|p| p.position.wrapping_mul(1 << 24) as i64).collect();
+            let upload = |t: Tensor| t.to_device(device);
+            let probs = (logits.to_kind(Kind::Float) / upload(Tensor::from_slice(&temps)).unsqueeze(1))
+                .softmax(-1, Kind::Float)
+                .contiguous();
+            let sampled = sample_flashinfer_rows(
+                &probs,
+                &upload(Tensor::from_slice(&top_k)),
+                &upload(Tensor::from_slice(&top_p)),
+                &upload(Tensor::from_slice(&seeds)),
+                &upload(Tensor::from_slice(&offsets)),
+            )?;
+            let mask = upload(Tensor::from_slice(&greedy_rows));
+            return Ok(greedy.where_self(&mask, &sampled));
+        }
+        let _ = (greedy, greedy_rows, vocab);
+        Err(SamplingError::Native("deterministic sampling requires CUDA FlashInfer".into()))
     }
 }
 
 #[cfg(has_flashinfer)]
-fn sample_flashinfer_seeded(probs: &Tensor, top_k: i64, top_p: f64, seed: u64, offset: u64) -> Result<Tensor> {
+fn sample_flashinfer_rows(probs: &Tensor, top_k: &Tensor, top_p: &Tensor, seeds: &Tensor, offsets: &Tensor) -> Result<Tensor> {
     use std::ffi::{CStr, c_void};
     unsafe extern "C" {
-        fn sglang_sampling_flashinfer_seeded(
+        fn sglang_sampling_flashinfer_rows(
             probs: *const c_void,
-            top_k: i64,
-            top_p: f64,
-            seed: u64,
-            offset: u64,
+            top_k: *const c_void,
+            top_p: *const c_void,
+            seeds: *const c_void,
+            offsets: *const c_void,
         ) -> *mut c_void;
         fn sglang_sampling_error() -> *const std::ffi::c_char;
     }
-    let output = unsafe { sglang_sampling_flashinfer_seeded(probs.as_ptr().cast(), top_k, top_p, seed, offset) };
+    let output = unsafe {
+        sglang_sampling_flashinfer_rows(
+            probs.as_ptr().cast(),
+            top_k.as_ptr().cast(),
+            top_p.as_ptr().cast(),
+            seeds.as_ptr().cast(),
+            offsets.as_ptr().cast(),
+        )
+    };
     if output.is_null() {
         return Err(SamplingError::Native(
             unsafe { CStr::from_ptr(sglang_sampling_error()) }

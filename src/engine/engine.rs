@@ -249,6 +249,22 @@ impl Engine {
         let weights = load_hf_safetensors(&server_args.model_path).map_err(|error| {
             EngineError::InvalidArgument(format!("Hugging Face 权重加载失败: {error}"))
         })?;
+        if server_args.deterministic {
+            // Every projection runs through the row-invariant GEMM; reject shapes it
+            // cannot run before serving instead of failing on the first request.
+            for (name, tensor) in weights.iter() {
+                let size = tensor.size();
+                let projection = name.ends_with("proj.weight") || name.ends_with("lm_head.weight");
+                if projection
+                    && size.len() == 2
+                    && !crate::kernels::pi::linear_shape_supported(size[0], size[1])
+                {
+                    return Err(EngineError::InvalidArgument(format!(
+                        "--deterministic: weight {name} {size:?} needs K % 64 == 0 and N % 32 == 0"
+                    )));
+                }
+            }
+        }
         runner.load_weights(weights)?;
 
         let spec = factory.cache_spec(runtime_config)?;
