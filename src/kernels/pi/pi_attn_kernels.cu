@@ -90,7 +90,6 @@ __global__ void __launch_bounds__(NWARPS * 32)
   auto row_q = [&](int r) { return q + (int64_t)(q0 + r / group) * num_qo_heads * kHeadDim + (kvh * group + r % group) * kHeadDim; };
   const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
   const int row_base = tile * kCtaRows + warp * kWarpRows;
-  const int64_t q_stride = (int64_t)num_qo_heads * kHeadDim;
   const int32_t* pages = request_pages(kv_page_indices, kv_page_indptr, table_stride, b);
   const int last_tok = tok(min(tile * kCtaRows + kCtaRows, rows_total) - 1);
   const int warp_last_tok = tok(min(row_base + kWarpRows, rows_total) - 1);
