@@ -26,6 +26,7 @@ HQ, HKV, D = 16, 8, 128
 SCALE = 1 / math.sqrt(D)
 WARPS = int(__import__('os').environ.get('PI_CFG', '0'))
 DVAR = int(__import__('os').environ.get('PI_DVAR', '0'))
+KVSPLITS = int(__import__('os').environ.get('PI_KVSPLITS', '1'))
 
 
 class Pool:
@@ -76,7 +77,8 @@ def prefill(pool, reqs):
     q = torch.cat([r[0] for r in reqs]).contiguous()
     m = meta([r[1] for r in reqs], [r[2] for r in reqs], [r[0].shape[0] for r in reqs])
     out = ext.prefill(q, pool.k, pool.v, m["qo_indptr"], m["kv_page_indptr"], m["kv_page_indices"],
-                      m["kv_lens"], max(r[0].shape[0] for r in reqs), SCALE, WARPS)
+                      m["kv_lens"], max(r[0].shape[0] for r in reqs), max(r[2] for r in reqs), SCALE,
+                      WARPS, KVSPLITS)
     return list(out.split([r[0].shape[0] for r in reqs]))
 
 

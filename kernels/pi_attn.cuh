@@ -4,9 +4,12 @@
 // positions. A chunk partial (m, l, o) for one query row is a pure function of
 // (q row, chunk K/V, visible-key mask): m is the chunk-local row max, P is
 // rounded to bf16 against it, l sums the rounded P, o = P V from a zero
-// accumulator. The output is the canonical fold of the partials in ascending
-// chunk order. Prefill folds in registers; decode writes partials and the
-// merge kernel folds them. Every kernel goes through `scores_to_p`,
+// accumulator. Partials are reduced by one fixed two-level tree that depends
+// only on positions: chunks are folded sequentially (ascending) within absolute
+// groups of kGroupChunks chunks, and the group partials are folded
+// sequentially (ascending). Prefill folds in registers or, split over groups,
+// writes group partials; decode writes chunk partials. The merge kernels
+// realise the same tree. Every kernel goes through `scores_to_p`,
 // `chunk_scores`, `chunk_values` and the fold functions below, which fix each
 // row's operation sequence; kernels differ only in how work is distributed.
 #pragma once
@@ -17,6 +20,7 @@ namespace pi_attn {
 
 constexpr int kHeadDim = 128;
 constexpr int kChunk = 64;                // keys per chunk (multiple of page size)
+constexpr int kGroupChunks = 32;          // chunks per fold group (2048 keys)
 constexpr int kRowStride = kHeadDim + 8;  // smem row padding (bf16), conflict-free
 constexpr int kNTilesS = kChunk / 8;      // 8 n-tiles of S per chunk
 constexpr int kKStepsQK = kHeadDim / 16;  // 8 k-steps over head_dim
@@ -180,40 +184,44 @@ __device__ __forceinline__ void chunk_qk(float (&s)[G][kNTilesS][4], QA qa,
   }
 }
 
-// o_c = P V for G row groups, produced one n-tile pair at a time: each element
+// o_c = P V for G row groups, produced NB n-tiles at a time (NB independent
+// accumulator chains per row group keep the tensor pipe busy): each element
 // accumulates the 4 key k-steps in ascending order from zero, then signed
 // zeros are canonicalized (masked 0*v products must not leave a -0) and the
-// tile is handed to sink(grp, n, o[4]).
-template <int G, typename Sink>
+// tile is handed to sink(grp, n, o[4]). NB changes scheduling only.
+template <int G, typename Sink, int NB = 8>
 __device__ __forceinline__ void chunk_pv(const PFrag (&pf)[G], const __nv_bfloat16* sV, int lane,
                                          Sink sink) {
+  static_assert(NB % 2 == 0 && kNTilesO % NB == 0, "NB must split the n-tiles in pairs");
   const int mat = lane >> 3, r8 = lane & 7;  // .trans: {keys lo n, keys hi n, keys lo n+1, keys hi n+1}
 #pragma unroll
-  for (int n = 0; n < kNTilesO; n += 2) {
-    float o[G][2][4];
+  for (int n0 = 0; n0 < kNTilesO; n0 += NB) {
+    float o[G][NB][4];
 #pragma unroll
     for (int grp = 0; grp < G; ++grp)
 #pragma unroll
-      for (int i = 0; i < 4; ++i) o[grp][0][i] = o[grp][1][i] = 0.f;
+      for (int nn = 0; nn < NB; ++nn) o[grp][nn][0] = o[grp][nn][1] = o[grp][nn][2] = o[grp][nn][3] = 0.f;
 #pragma unroll
     for (int j = 0; j < kKStepsPV; ++j) {
-      uint32_t b[4];
-      ldmatrix_x4_trans(b, sV + (j * 16 + (mat & 1) * 8 + r8) * kRowStride + (n + (mat >> 1)) * 8);
 #pragma unroll
-      for (int grp = 0; grp < G; ++grp) {
-        mma_bf16(o[grp][0], pf[grp].a[j], b[0], b[1]);
-        mma_bf16(o[grp][1], pf[grp].a[j], b[2], b[3]);
+      for (int nn = 0; nn < NB; nn += 2) {
+        uint32_t b[4];
+        ldmatrix_x4_trans(b, sV + (j * 16 + (mat & 1) * 8 + r8) * kRowStride + (n0 + nn + (mat >> 1)) * 8);
+#pragma unroll
+        for (int grp = 0; grp < G; ++grp) {
+          mma_bf16(o[grp][nn], pf[grp].a[j], b[0], b[1]);
+          mma_bf16(o[grp][nn + 1], pf[grp].a[j], b[2], b[3]);
+        }
       }
     }
 #pragma unroll
     for (int grp = 0; grp < G; ++grp) {
 #pragma unroll
-      for (int i = 0; i < 4; ++i) {
-        o[grp][0][i] = add(o[grp][0][i], 0.f);
-        o[grp][1][i] = add(o[grp][1][i], 0.f);
+      for (int nn = 0; nn < NB; ++nn) {
+#pragma unroll
+        for (int i = 0; i < 4; ++i) o[grp][nn][i] = add(o[grp][nn][i], 0.f);
+        sink(grp, n0 + nn, o[grp][nn]);
       }
-      sink(grp, n, o[grp][0]);
-      sink(grp, n + 1, o[grp][1]);
     }
   }
 }
@@ -232,10 +240,35 @@ __device__ __forceinline__ FoldScalars fold_scalars(float& M, float& L, float m_
   M = Mn;
   return {alpha, beta};
 }
+// Identity partials (m == -inf) leave the state untouched; this branch is part
+// of the canonical sequence (all kernels take it).
 __device__ __forceinline__ float fold_elem(float o, float o_c, FoldScalars f) {
   if (f.beta == 0.f && f.alpha == 1.f) return o;
   return __fmaf_rn(o, f.alpha, mul(o_c, f.beta));
 }
+
+// Register fold state for the two 16-row-group rows a thread holds.
+struct RowFold {
+  float M[2], L[2], O[kNTilesO][4];
+  __device__ __forceinline__ void reset() {
+    M[0] = M[1] = -INFINITY;
+    L[0] = L[1] = 0.f;
+#pragma unroll
+    for (int n = 0; n < kNTilesO; ++n) O[n][0] = O[n][1] = O[n][2] = O[n][3] = 0.f;
+  }
+  // Fold another state (a finished group) into this one.
+  __device__ __forceinline__ void absorb(const RowFold& g) {
+#pragma unroll
+    for (int r = 0; r < 2; ++r) {
+      const FoldScalars f = fold_scalars(M[r], L[r], g.M[r], g.L[r]);
+#pragma unroll
+      for (int n = 0; n < kNTilesO; ++n) {
+        O[n][2 * r] = fold_elem(O[n][2 * r], g.O[n][2 * r], f);
+        O[n][2 * r + 1] = fold_elem(O[n][2 * r + 1], g.O[n][2 * r + 1], f);
+      }
+    }
+  }
+};
 __device__ __forceinline__ __nv_bfloat16 finish(float o, float L) {
   return __float2bfloat16_rn(__fdiv_rn(o, L));
 }

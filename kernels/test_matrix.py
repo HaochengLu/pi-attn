@@ -37,13 +37,13 @@ def run_geometry(hq, hkv, qscale, lens, seed):
     fails = []
     T.WARPS = PCFGS[0]
     ref = {L: T.prefill(pool, [(seqs[L][0], pages[L], L)])[0] for L in lens}
-    for cfg in PCFGS:  # prefill configs, mixed batch
-        T.WARPS = cfg
+    for cfg, kvs in [(c, 1) for c in PCFGS] + [(c, ks) for c in PCFGS for ks in (2, 5)]:  # configs x fold-group splits
+        T.WARPS, T.KVSPLITS = cfg, kvs
         order = lens[:]
         random.shuffle(order)
         for L, out in zip(order, T.prefill(pool, [(seqs[L][0], pages[L], L) for L in order])):
             if not T.same(out, ref[L]):
-                fails.append(("prefill-cfg", cfg, L))
+                fails.append(("prefill-cfg", cfg, kvs, L))
         for L in lens:  # chunked prefill over a cached prefix in other pages
             if L < 2:
                 continue
@@ -56,11 +56,11 @@ def run_geometry(hq, hkv, qscale, lens, seed):
                 start = end
             pool.free.extend(p2)
             if not T.same(torch.cat(outs), ref[L]):
-                fails.append(("chunked", cfg, L))
-    T.WARPS = 0
+                fails.append(("chunked", cfg, kvs, L))
+    T.WARPS, T.KVSPLITS = 0, 0
     for dvar in DVARS:  # decode variants x splits vs prefill rows
         T.DVAR = dvar
-        for splits in [1, 3, 16, 128]:
+        for splits in [0, 1, 3, 16, 128]:
             probes = [(L, p) for L in lens for p in {0, L - 1, random.randrange(L)}]
             random.shuffle(probes)
             for i in range(0, len(probes), 7):
@@ -84,7 +84,7 @@ def run_geometry(hq, hkv, qscale, lens, seed):
 
 
 def main():
-    lens = [1, 2, 63, 64, 65, 127, 128, 129, 777, 4096]
+    lens = [1, 2, 63, 64, 65, 127, 128, 129, 777, 2047, 2048, 2049, 4096, 6200]
     total = []
     for hq, hkv in [(16, 8), (32, 8), (8, 8), (32, 4)]:
         for qscale in [1.0, 6.0]:
