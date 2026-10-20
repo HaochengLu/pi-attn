@@ -77,6 +77,12 @@ extern "C" {
 
 const char* pi_last_error() { return last_error.c_str(); }
 
+// Raw launches go to the calling thread's current device: make it the tensors' device.
+void pi_set_device(int device) {
+  int current = -1;
+  if (cudaGetDevice(&current) != cudaSuccess || current != device) cudaSetDevice(device);
+}
+
 // ------------------------------------------------------------------ attention
 
 // Decode planner: split CTAs so the batch's chunks are covered ~8 warps per SM.

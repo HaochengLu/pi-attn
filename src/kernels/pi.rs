@@ -30,6 +30,7 @@ mod ffi {
     use std::ffi::{c_char, c_void};
     unsafe extern "C" {
         pub fn pi_current_stream(device: i64) -> *mut c_void;
+        pub fn pi_set_device(device: i32);
         pub fn pi_linear(
             x: *const c_void,
             ldx: i64,
@@ -127,7 +128,10 @@ fn check(message: *const std::ffi::c_char) -> Result<(), String> {
 #[cfg(has_pi)]
 fn stream_of(t: &Tensor) -> Result<*mut std::ffi::c_void, String> {
     match t.device() {
-        Device::Cuda(index) => Ok(unsafe { ffi::pi_current_stream(index as i64) }),
+        Device::Cuda(index) => Ok(unsafe {
+            ffi::pi_set_device(index as i32);
+            ffi::pi_current_stream(index as i64)
+        }),
         _ => Err("PI kernels require CUDA tensors".into()),
     }
 }

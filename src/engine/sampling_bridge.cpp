@@ -39,27 +39,6 @@ extern "C" at::Tensor* sglang_sampling_flashinfer_rows(const at::Tensor* probs, 
     return new at::Tensor(std::move(output));
   } catch (const std::exception& e) { last_error=e.what(); return nullptr; }
 }
-// Explicit Philox (seed, offset) for deterministic mode; one row per call so
-// the row's subsequence (its batch index) is always 0.
-extern "C" at::Tensor* sglang_sampling_flashinfer_seeded(const at::Tensor* probs, int64_t top_k,
-                                                        double top_p, uint64_t seed, uint64_t offset) {
-  try {
-    if (!probs->is_cuda() || probs->scalar_type()!=at::kFloat || probs->dim()!=2 ||
-        probs->size(0)!=1 || !probs->is_contiguous() || top_p<=0 || top_p>1 ||
-        top_k<1 || top_k>probs->size(1))
-      throw std::runtime_error("invalid deterministic sampling input");
-    c10::cuda::CUDAGuard guard(probs->device());
-    auto output = at::empty({1},probs->options().dtype(at::kLong));
-    auto valid = at::empty({1},probs->options().dtype(at::kBool));
-    auto stream = c10::cuda::getCurrentCUDAStream(probs->get_device()).stream();
-    auto error = sglang_sampling_native(probs->data_ptr<float>(),output.data_ptr<int64_t>(),
-        valid.data_ptr<bool>(),1,probs->size(1),top_k,top_p,seed,offset,stream);
-    if (error) throw std::runtime_error(error);
-    output.masked_fill_(valid.logical_not(),-1);
-    return new at::Tensor(std::move(output));
-  } catch (const std::exception& e) { last_error=e.what(); return nullptr; }
-}
-
 extern "C" at::Tensor* sglang_sampling_flashinfer(const at::Tensor* probs, int64_t top_k, double top_p) {
   try {
     if (!probs->is_cuda() || probs->scalar_type()!=at::kFloat ||
