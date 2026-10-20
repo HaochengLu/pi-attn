@@ -1959,6 +1959,104 @@ mod tests {
         }
     }
 
+    /// fp32 reference attention reading every K/V row from the paged cache.
+    #[cfg(has_pi)]
+    fn pi_reference(
+        q: &Tensor,
+        keys: &Tensor,
+        values: &Tensor,
+        table: &Tensor,
+        q_lens: &[i64],
+        prefixes: &[i64],
+    ) -> Tensor {
+        let mut rows = Vec::new();
+        let mut start = 0;
+        for (b, (&q_len, &prefix)) in q_lens.iter().zip(prefixes).enumerate() {
+            let kv_len = prefix + q_len;
+            let pages = table.get(b as i64);
+            let slots = Tensor::arange(kv_len, (Kind::Int64, q.device()));
+            let page_ids = pages.index_select(0, &slots.divide_scalar_mode(16, "floor")).to_kind(Kind::Int64);
+            let flat = page_ids * 16 + slots.remainder(16);
+            let k = keys.view([-1, 8, 128]).index_select(0, &flat).to_kind(Kind::Float);
+            let v = values.view([-1, 8, 128]).index_select(0, &flat).to_kind(Kind::Float);
+            let k = k.repeat_interleave_self_int(2, Some(1), None);
+            let v = v.repeat_interleave_self_int(2, Some(1), None);
+            let qb = q.narrow(0, start, q_len).to_kind(Kind::Float);
+            let scores = Tensor::einsum("qhd,khd->hqk", &[&qb, &k], None::<i64>) / (128f64).sqrt();
+            let qpos = Tensor::arange(q_len, (Kind::Int64, q.device())).unsqueeze(1) + prefix;
+            let kpos = Tensor::arange(kv_len, (Kind::Int64, q.device())).unsqueeze(0);
+            let masked = scores.masked_fill(&kpos.gt_tensor(&qpos).unsqueeze(0), f64::NEG_INFINITY);
+            let out = Tensor::einsum("hqk,khd->qhd", &[&masked.softmax(-1, Kind::Float), &v], None::<i64>);
+            rows.push(out.reshape([q_len, 16 * 128]));
+            start += q_len;
+        }
+        Tensor::cat(&rows, 0)
+    }
+
+    #[cfg(has_pi)]
+    #[test]
+    #[ignore = "requires CUDA; run scripts/run-rust-tests.sh cuda"]
+    fn pi_prefill_matches_reference_and_decode_bitwise() {
+        assert!(tch::Cuda::is_available(), "CUDA test requires an available GPU");
+        let device = Device::Cuda(0);
+        let kind = Kind::BFloat16;
+        let spec = AttentionSpec { num_heads: 16, num_kv_heads: 8, head_dim: 128, kind, device };
+        let mut attention = Attention::new("pi", spec).unwrap();
+        attention.bind_cache_layout(16);
+        let mut cache = BaseAttention::default();
+        let keys = Tensor::randn([512, 16, 8, 128], (kind, device));
+        let values = Tensor::randn_like(&keys);
+        cache.bind_kv_cache(keys.shallow_clone(), values.shallow_clone()).unwrap();
+        // Two requests on interleaved, non-contiguous pages.
+        let table = Tensor::arange(512, (Kind::Int, device)).view([256, 2]).transpose(0, 1).contiguous();
+        for (q_lens, prefixes) in [([17i64, 1], [0i64, 0]), ([129, 33], [0, 0]), ([1, 17], [2047, 16]), ([300, 64], [1800, 4000])] {
+            let total: i64 = q_lens.iter().sum();
+            let bounds = [0i32, q_lens[0] as i32, total as i32];
+            let metadata = AttentionMetadata {
+                forward_mode: BatchPhase::Prefill,
+                decode_host: None,
+                write_loc: None,
+                cu_seqlens_q: Some(Tensor::from_slice(&bounds).to_device(device)),
+                prefix_lens: Some(Tensor::from_slice(&prefixes.map(|p| p as i32)).to_device(device)),
+                block_table: Some(table.shallow_clone()),
+                req_to_token: None,
+                cache_seqlens: None,
+                max_seqlen: None,
+            };
+            let q = Tensor::randn([total, 16, 128], (kind, device));
+            let batch = attention.prepare(Some(&metadata), total as usize).unwrap();
+            assert!(matches!(batch.plan, BackendPlan::PiPrefill(_)));
+            let prefill = batch.forward(&q, &q, &q, &cache).unwrap();
+            let reference = pi_reference(&q, &keys, &values, &table, &q_lens, &prefixes);
+            let error = (prefill.to_kind(Kind::Float) - reference).abs().max().double_value(&[]);
+            assert!(error <= 0.03125, "q_lens={q_lens:?}, prefixes={prefixes:?}, error={error}");
+            // forward_into writes the same bits into caller-owned storage.
+            let target = Tensor::full([total, 2048], 99., (kind, device));
+            batch.forward_into(&q, &q, &q, &cache, &target).unwrap();
+            assert!(Tensor::equal(&prefill, &target));
+            // Decoding the last token of each request reproduces its prefill row bitwise.
+            let last = [q_lens[0] - 1, total - 1];
+            let lengths = [(prefixes[0] + q_lens[0]) as i32, (prefixes[1] + q_lens[1]) as i32];
+            let decode_meta = AttentionMetadata {
+                forward_mode: BatchPhase::Decode,
+                decode_host: None,
+                write_loc: None,
+                cu_seqlens_q: None,
+                prefix_lens: None,
+                block_table: Some(table.shallow_clone()),
+                req_to_token: None,
+                cache_seqlens: Some(Tensor::from_slice(&lengths).to_device(device)),
+                max_seqlen: None,
+            };
+            let rows = Tensor::from_slice(&last).to_device(device);
+            let qd = q.index_select(0, &rows);
+            let decode = attention.prepare(Some(&decode_meta), 2).unwrap();
+            assert!(matches!(decode.plan, BackendPlan::PiDecode(..)));
+            let out = decode.forward(&qd, &qd, &qd, &cache).unwrap();
+            assert!(Tensor::equal(&out, &prefill.index_select(0, &rows)), "decode differs from prefill for {q_lens:?}");
+        }
+    }
+
     #[cfg(has_flashinfer)]
     #[test]
     #[ignore = "requires CUDA; run scripts/run-rust-tests.sh cuda"]

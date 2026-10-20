@@ -40,7 +40,8 @@ if [[ "$mode" == cuda ]]; then
         fused_cuda_ops_match_eager_bfloat16 \
         cuda_kv_store_preserves_packed_strides_padding_and_unwritten_slots \
         flashinfer_sampling_preserves_support_distribution_and_rng \
-        flashinfer_graph_replays_dynamic_pages_lengths_and_padded_batches; do
+        flashinfer_graph_replays_dynamic_pages_lengths_and_padded_batches \
+        pi_prefill_matches_reference_and_decode_bitwise; do
         if [[ "$catalog" != *"${test_name}: test"* ]]; then
             echo "CUDA 测试未编入：${test_name}；请检查 CUDA toolkit 和 FlashInfer 环境。" >&2
             exit 1
