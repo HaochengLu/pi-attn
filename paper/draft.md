@@ -1,6 +1,6 @@
 # Determinism Needs Fixed Trees, Not Fixed Loops: Bitwise-Reproducible LLM Serving with Every Optimization On
 
-*Draft — numbers marked [TBD] are filled from results/ after the evaluation runs.*
+*Draft. Every number below is produced by a script under eval/ or detcheck/ and stored in results/.*
 
 ## Abstract
 
@@ -9,8 +9,8 @@ is in the batch, whether the prompt prefix is cached, where chunked prefill cuts
 prompt, and whether a token is produced by decode or by prefill. Existing
 "deterministic modes" remove this by disabling or pinning the optimizations that create
 it — fixed KV-split sizes, a single split, aligned chunk boundaries, no prefix cache on
-some backends — at 20–60% throughput cost, and they still leave prefill and decode
-numerically different. We show that bitwise reproducibility does not require sequential
+some backends — at large throughput cost (1.9–3.5× on our GPU for SGLang's mode), and
+they still leave prefill and decode numerically different. We show that bitwise reproducibility does not require sequential
 reductions, only reduction trees that are fixed by problem shape and token position and
 never by the schedule. For attention we make every key-chunk partial a pure function of
 the query row and the chunk (chunk-local softmax statistics) and fold partials with one
@@ -20,7 +20,9 @@ For projections we fix the per-element k order, which leaves the tile shape free
 can be autotuned with no numerical consequence. With seeded per-row sampling, an engine
 built this way returns bitwise-identical outputs across concurrency, cache state, chunk
 sizes, CUDA graphs vs eager execution, page sizes, batch limits and restarts, with every
-optimization enabled, at a throughput cost of 0.6–6% for batched serving [TBD final]. We
+optimization enabled. On Qwen3 1.7B–8B the throughput cost is at most 4% for batched
+serving and 3–5% at batch 1 (up to 6% and 11% for 0.6B), and GSM8K accuracy is unchanged
+while every one of 1,819 generations is identical between client concurrency 1 and 16. We
 release the kernels, a Rust serving engine with a `--deterministic` mode, and detcheck, a
 black-box checker that measures these properties for any OpenAI-compatible server.
 
@@ -74,7 +76,9 @@ Contributions:
   CPU/GPU overlap all enabled (Section 6).
 - detcheck, a black-box checker, and an evaluation showing bitwise identity across
   concurrency, cache state, decode vs re-prefill, seeded sampling, restarts and seven server
-  configurations, at [TBD] cost (Section 7).
+  configurations, at ≤4% batched-serving cost for 1.7B–8B models, against SGLang's
+  deterministic mode, which on the same GPU is 1.9–3.5× slower, disables the radix cache, and
+  still differs between decode and re-prefill and under seeded sampling (Section 7).
 
 ## 2 Background: where serving nondeterminism comes from
 
@@ -95,8 +99,10 @@ Contributions:
 - Thinking Machines, *Defeating Nondeterminism in LLM Inference* (2025): batch-invariant
   kernels, fixed split size for decode attention.
 - SGLang deterministic inference (2025): fixed split size, num_splits=1 (FA3), chunk
-  alignment to split size; radix cache support depends on backend; ~34% average slowdown.
-- vLLM batch invariance (`VLLM_BATCH_INVARIANT`): num_splits=1 attention.
+  alignment to split size; radix cache disabled with the FlashInfer backend; ~34% average
+  slowdown reported on H100 (1.9–3.5× measured on our sm_89 GPU, Section 7).
+- vLLM batch invariance (`VLLM_BATCH_INVARIANT`): num_splits=1 attention, overridden aten
+  matmul/reduction kernels; documented for compute capability ≥ 9.0 in 0.11.x.
 - Vosti (arXiv 2609.38981): verified deterministic inference with a sequential running-max
   tile loop; prefill and decode agree but decode gets no KV-split parallelism.
 - ReproFuse (arXiv 2609.25624): GEMM split-K fixed by K; TBIK (arXiv 2511.17826): TP-invariant
@@ -160,17 +166,99 @@ weight to be rounded to bf16 and doubled error for peaked attention in our refer
   device); one workspace serves eager decode and all graphs; GEMM tiles tuned during graph
   warm-ups with a cold L2.
 
-## 7 Evaluation [TBD]
-- Setup: RTX 4090 D (sm_89), Qwen3 0.6B/1.7B/4B/8B, FlashInfer 0.6.18, CUDA 12.6.
-- Kernel microbenchmarks (results/PHASE1-2_kernels.md, bench_attention_v6): decode 0.58–1.20×
-  of nondeterministic FlashInfer and up to 3× faster than FlashInfer's fixed-split
-  deterministic decode at batch 1 with long contexts; prefill 0.65–1.5×.
-- Determinism (detcheck): within-instance, cross-restart and cross-config tables.
-- End-to-end cost: results/e2e_matrix (greedy and sampled).
-- Accuracy: agreement with fp32 reference; GSM8K.
-- Baselines on the same GPU: SGLang deterministic, vLLM batch-invariant [if runnable on driver 535].
+## 7 Evaluation
+
+**Setup.** One RTX 4090 D (sm_89, driver 535, CUDA 12.6), Qwen3 0.6B/1.7B/4B/8B in bf16.
+"Original" is llm_infer_rust with FlashInfer 0.6.18 attention, cuBLAS projections and its
+default sampler; "PI" is the same binary with `--deterministic`. Both run with radix prefix
+caching, chunked prefill (2048 tokens), mixed batches, CUDA graphs and overlap enabled.
+Baselines on the same GPU: SGLang 0.5.5.post3 (`--enable-deterministic-inference`) and
+vLLM 0.11.2 (`VLLM_BATCH_INVARIANT=1`). Exact versions are in VERSIONS.txt.
+
+### 7.1 Determinism
+
+detcheck sends token-id prompts (24–2600 tokens, 256 output tokens, `ignore_eos`) and
+compares completion token ids. Within one server instance (Qwen3-1.7B):
+
+| engine | batch c4/c16 | decode vs re-prefill | repeat ×200 (distinct) | seeded sampling c4/c16 | prefix full/partial hit |
+|---|---|---|---|---|---|
+| original (FlashInfer) | 1/1 of 16 | 1/24 | 14 | 6/7 of 16 | 0/0 of 8 |
+| **PI (`--deterministic`)** | **0/0** | **0/24** | **1** | **0/0** | **0/0** |
+| SGLang | 1/2 | 0/24 | 7 | 7/6 | 0/0 |
+| SGLang deterministic | 0/0 | 1/24 | 1 | 2/1 | 0/0 † |
+| vLLM | 2/1 | 0/24 | 14 | 6/6 | 1/0 |
+| vLLM batch-invariant ‡ | 2/3 | 1/24 | 9 | 5/6 | 0/0 |
+
+† SGLang disables the radix cache in deterministic mode with the FlashInfer backend (the
+only one available on sm_89), so the prefix check exercises no cache hits.
+‡ vLLM 0.11.x documents batch invariance for compute capability ≥ 9.0; on sm_89 it engages
+(attention forced to FLASH_ATTN, aten kernels overridden) but is not batch-invariant.
+
+SGLang's deterministic mode is the closest competitor. It removes batch dependence, but the
+token decoded at position p and the same token re-processed by prefill still differ (as the
+fixed-split argument of Section 2 predicts), and seeded sampling still changes with
+concurrency.
+
+**Across restarts and configurations** (Qwen3-0.6B, 16 greedy + 16 seeded-sampled requests;
+references saved from a base server, compared against seven others): PI is identical in
+all eight — chunk size 512, chunked prefill off, CUDA graphs off (eager), at most 4 running
+requests, overlap off, page size 32, and a plain restart — while the original engine fails
+11–14 comparisons in each, including the plain restart (12).
+
+**Evaluation reproducibility.** GSM8K 5-shot through lm-eval at client concurrency 1 and 16
+(`eval/accuracy.sh`, `eval/compare_accuracy.py`):
+
+| model | mode | strict acc c=1 | c=16 | generations differing c=1 vs c=16 |
+|---|---|---|---|---|
+| Qwen3-1.7B (1319) | original | 69.22 | 68.92 | 893 |
+| Qwen3-1.7B (1319) | PI | 69.45 | 69.45 | **0** |
+| Qwen3-8B (500) | original | 90.00 | 90.00 | 327 |
+| Qwen3-8B (500) | PI | 90.20 | 90.20 | **0** |
+
+With the original engine two-thirds of the generations change with client concurrency
+and the score moves by 0.3 points; with PI the evaluation is a pure function of the model.
+
+### 7.2 Accuracy
+
+Top-1 agreement with an fp32 HF reference over teacher-forced positions: original 99.22%,
+PI 99.39% (Qwen3-0.6B). GSM8K above: PI is within noise of (and slightly above) the original.
+
+### 7.3 Cost
+
+Output throughput, PI relative to the original engine (`eval/e2e_matrix.sh`, median of 3,
+32 requests per point; greedy, sampled within 2 points of greedy):
+
+| model | 64/256 c1 | 512/256 c8 | 512/256 c32 | 2048/256 c16 | 4096/128 c4 |
+|---|---|---|---|---|---|
+| 0.6B | −10.9% | −2.0% | −2.1% | −4.0% | −5.9% |
+| 1.7B | −4.3% | +1.3% | −1.5% | −3.0% | −2.7% |
+| 4B | −2.8% | +1.0% | −0.6% | −2.9% | −3.5% |
+| 8B | −4.0% | −2.3% | −1.4% | −3.9% | −3.3% |
+
+Same-GPU baselines, greedy output tok/s on Qwen3-1.7B (`eval/baselines.sh`):
+
+| engine | 64/256 c1 | 512/256 c8 | 512/256 c32 | 2048/256 c16 | 4096/128 c4 |
+|---|---|---|---|---|---|
+| original | 234 | 1394 | 3522 | 1282 | 379 |
+| **PI** | **223** | **1427** | **3537** | **1242** | **370** |
+| SGLang | 228 | 1373 | 2492 | 1282 | 380 |
+| SGLang deterministic | 65 | 502 | 959 | 692 | 174 |
+| vLLM | 198 | 1223 | 3303 | 1203 | 363 |
+| vLLM batch-invariant ‡ | 198 | 1206 | 3220 | 1190 | 362 |
+
+PI is 1.8–3.7× faster than SGLang's deterministic mode while also covering the prefix cache,
+decode/re-prefill and seeded sampling, and it is within 5% of every non-deterministic engine
+measured.
+
+**Kernels** (results/PHASE1-2_kernels.md): decode attention is 0.58–1.20× the time of
+nondeterministic FlashInfer and up to 3× faster than FlashInfer with a fixed split size at
+batch 1 and long context; prefill is 0.69–1.5×. The remaining batch-1 cost comes from the
+projections: without split-K, narrow (N=1024) GEMVs keep too few bytes in flight; deep
+cp.async pipelines reduce it to 1.1× of cuBLAS at M=1 and below 1× at M≥8.
 
 ## 8 Limitations
-Same GPU model and build only; no tensor parallelism in the engine; head_dim 128, GQA ≤ 16;
-batch-1 decode GEMMs pay for the lack of split-K on narrow projections (a K-segmented
-canonical order would recover it); FP8 not covered (sm_80/89 target).
+Same GPU model and build only (A1–A3); no tensor parallelism in the engine; head_dim 128 and
+GQA group ≤ 16; batch-1 projections still pay for the lack of split-K on narrow weights (a
+K-segmented canonical order would recover it at a prefill cost); FP8 is not covered. The
+baselines run on sm_89, where vLLM's batch invariance is outside its documented support and
+SGLang can only use its FlashInfer path; Hopper/Ampere-datacenter numbers are future work.
