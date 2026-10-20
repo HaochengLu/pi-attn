@@ -12,6 +12,11 @@ pub struct SamplingParams {
     pub top_p: f64,
     pub ignore_eos: bool,
     pub max_tokens: usize,
+    /// Request seed for deterministic-mode sampling.
+    pub seed: u64,
+    /// Absolute position of the token being sampled; set by the scheduler per
+    /// step. With `seed` it fixes the random stream of a deterministic sample.
+    pub position: u64,
 }
 
 impl Default for SamplingParams {
@@ -22,6 +27,8 @@ impl Default for SamplingParams {
             top_p: 1.0,
             ignore_eos: false,
             max_tokens: 1024,
+            seed: 0,
+            position: 0,
         }
     }
 }
@@ -340,6 +347,9 @@ impl Sampler {
         if params_list.iter().all(|params| params.temperature <= 0.0) {
             return Ok(logits.argmax(-1, false));
         }
+        if crate::kernels::pi::deterministic() {
+            return self.sample_rows_deterministic(logits, params_list);
+        }
 
         let mut groups: Vec<(SamplingParams, Vec<i64>)> = Vec::new();
         for (row, params) in params_list.iter().copied().enumerate() {
@@ -366,6 +376,67 @@ impl Sampler {
         }
         Ok(output)
     }
+}
+
+impl Sampler {
+    /// Deterministic mode: every row is sampled on its own (FlashInfer seeds a
+    /// row's Philox stream with its batch index, so rows never share a launch)
+    /// with the stream fixed by (request seed, token position). A request's
+    /// sample therefore does not depend on which requests share its batch.
+    fn sample_rows_deterministic(&self, logits: &Tensor, params_list: &[SamplingParams]) -> Result<Tensor> {
+        let greedy = logits.argmax(-1, false);
+        let rows: Vec<Tensor> = params_list
+            .iter()
+            .enumerate()
+            .map(|(row, params)| {
+                let params = params.normalized();
+                if params.temperature <= 0.0 || params.top_p == 0.0 {
+                    return Ok(greedy.narrow(0, row as i64, 1));
+                }
+                let scaled = logits.narrow(0, row as i64, 1) / params.temperature;
+                let vocab = logits.size()[1];
+                let top_k = if params.top_k > 0 { params.top_k.min(vocab) } else { vocab };
+                #[cfg(has_flashinfer)]
+                if matches!(logits.device(), tch::Device::Cuda(_)) {
+                    return sample_flashinfer_seeded(
+                        &scaled.softmax(-1, Kind::Float).contiguous(),
+                        top_k,
+                        params.top_p,
+                        params.seed,
+                        // Disjoint Philox ranges per position (one row consumes far fewer).
+                        params.position.wrapping_mul(1 << 24),
+                    );
+                }
+                let _ = (scaled, top_k);
+                Err(SamplingError::Native("deterministic sampling requires CUDA FlashInfer".into()))
+            })
+            .collect::<Result<_>>()?;
+        Ok(Tensor::cat(&rows, 0))
+    }
+}
+
+#[cfg(has_flashinfer)]
+fn sample_flashinfer_seeded(probs: &Tensor, top_k: i64, top_p: f64, seed: u64, offset: u64) -> Result<Tensor> {
+    use std::ffi::{CStr, c_void};
+    unsafe extern "C" {
+        fn sglang_sampling_flashinfer_seeded(
+            probs: *const c_void,
+            top_k: i64,
+            top_p: f64,
+            seed: u64,
+            offset: u64,
+        ) -> *mut c_void;
+        fn sglang_sampling_error() -> *const std::ffi::c_char;
+    }
+    let output = unsafe { sglang_sampling_flashinfer_seeded(probs.as_ptr().cast(), top_k, top_p, seed, offset) };
+    if output.is_null() {
+        return Err(SamplingError::Native(
+            unsafe { CStr::from_ptr(sglang_sampling_error()) }
+                .to_string_lossy()
+                .into_owned(),
+        ));
+    }
+    Ok(unsafe { Tensor::from_ptr(output.cast()) })
 }
 
 fn sampled_ids(output: &Tensor) -> Result<Vec<i64>> {

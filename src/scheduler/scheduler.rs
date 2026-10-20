@@ -380,10 +380,14 @@ impl Scheduler {
             request_ids
                 .iter()
                 .map(|uid| {
-                    self.requests
+                    let request = self
+                        .requests
                         .running_request(*uid)
-                        .expect("scheduled request is running")
-                        .sampling_params
+                        .expect("scheduled request is running");
+                    SamplingParams {
+                        position: request.input_ids.len() as u64,
+                        ..request.sampling_params
+                    }
                 })
                 .collect::<Vec<_>>()
         });
@@ -769,7 +773,7 @@ impl Scheduler {
             future.map_or(0, |relay| relay.rows().count()),
             chunk,
         );
-        let params = request_ids
+        let mut params = request_ids
             .iter()
             .map(|uid| self.requests.running_request(*uid).unwrap().sampling_params)
             .collect::<Vec<_>>();
@@ -804,6 +808,9 @@ impl Scheduler {
                 })
             })
             .collect::<std::result::Result<Vec<_>, EngineError>>()?;
+        for (params, input) in params.iter_mut().zip(&inputs) {
+            params.position = input.written_len as u64;
+        }
         let sample =
             self.engine
                 .forward_with_read_fence(&model_batch)

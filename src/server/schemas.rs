@@ -46,18 +46,24 @@ pub struct ChatCompletionRequest {
     pub stream: bool,
     #[serde(default)]
     pub ignore_eos: bool,
+    /// Sampling seed (deterministic mode).
+    #[serde(default)]
+    pub seed: Option<u64>,
 }
 
 impl ChatCompletionRequest {
     /// The newer chat API limit takes precedence over the legacy `max_tokens`.
     pub fn sampling_params(&self) -> SamplingParams {
-        sampling_params(
-            self.temperature,
-            self.top_p,
-            self.top_k,
-            self.max_completion_tokens.unwrap_or(self.max_tokens),
-            self.ignore_eos,
-        )
+        SamplingParams {
+            seed: self.seed.unwrap_or(0),
+            ..sampling_params(
+                self.temperature,
+                self.top_p,
+                self.top_k,
+                self.max_completion_tokens.unwrap_or(self.max_tokens),
+                self.ignore_eos,
+            )
+        }
     }
 }
 
@@ -90,6 +96,9 @@ pub struct CompletionRequest {
     pub stream: bool,
     #[serde(default)]
     pub ignore_eos: bool,
+    /// Sampling seed (deterministic mode).
+    #[serde(default)]
+    pub seed: Option<u64>,
 }
 
 pub fn sampling_params(
@@ -105,6 +114,7 @@ pub fn sampling_params(
         top_k,
         max_tokens: usize::try_from(max_tokens).unwrap_or(1),
         ignore_eos,
+        ..SamplingParams::default()
     }
     .normalized()
 }

@@ -209,13 +209,14 @@ async fn completions_inner(
     })?;
     let prompt_tokens = input_ids.len();
     let prompt_ids = request.return_token_ids.then(|| input_ids.clone());
-    let params = sampling_params(
+    let mut params = sampling_params(
         request.temperature,
         request.top_p,
         request.top_k,
         request.max_tokens,
         request.ignore_eos,
     );
+    params.seed = request.seed.unwrap_or(0);
     let handle = profiler
         .measure_async(RequestStage::Submit, submit(&frontend, input_ids, params))
         .await?;
