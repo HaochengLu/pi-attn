@@ -27,6 +27,7 @@ SCALE = 1 / math.sqrt(D)
 WARPS = int(__import__('os').environ.get('PI_CFG', '0'))
 DVAR = int(__import__('os').environ.get('PI_DVAR', '0'))
 KVSPLITS = int(__import__('os').environ.get('PI_KVSPLITS', '1'))
+GROUPED = __import__("os").environ.get("PI_GROUPED", "0") == "1"  # force grouped decode everywhere
 
 
 class Pool:
@@ -82,12 +83,14 @@ def prefill(pool, reqs):
     return list(out.split([r[0].shape[0] for r in reqs]))
 
 
-def decode(pool, reqs, splits):
-    """reqs: list of (q[1], pages, kv_len)."""
+def decode(pool, reqs, splits, grouped=GROUPED):
+    """reqs: list of (q[1], pages, kv_len). grouped: workspace of batch * max_groups
+    rows only, which forces grouped mode whenever the chunks do not fit."""
     q = torch.cat([r[0] for r in reqs]).contiguous()
     m = meta([r[1] for r in reqs], [r[2] for r in reqs])
     max_chunks = max((r[2] + C - 1) // C for r in reqs)
-    capacity = sum((r[2] + C - 1) // C for r in reqs)
+    min_capacity = len(reqs) * ((max_chunks + 31) // 32)
+    capacity = min_capacity if grouped else max(min_capacity, sum((r[2] + C - 1) // C for r in reqs))
     ws_o = torch.full((capacity, HQ, D), float("nan"), device=dev)
     ws_ml = torch.full((capacity, HQ, 2), float("nan"), device=dev)
     out = ext.decode(q, pool.k, pool.v, m["kv_page_indptr"], m["kv_page_indices"], m["kv_lens"],
@@ -150,10 +153,12 @@ def main():
         random.shuffle(probes)
         for i in range(0, len(probes), 9):
             group = probes[i:i + 9]
-            outs = decode(pool, [(seqs[L][0][p:p + 1].contiguous(), pages[L], p + 1) for L, p in group], splits)
-            for (L, p), out in zip(group, outs):
-                if not same(out[0], alone[L][p]):
-                    fails.append(("path/split", L, p, splits))
+            reqs = [(seqs[L][0][p:p + 1].contiguous(), pages[L], p + 1) for L, p in group]
+            for grouped in (False, True):
+                outs = decode(pool, reqs, splits, grouped)
+                for (L, p), out in zip(group, outs):
+                    if not same(out[0], alone[L][p]):
+                        fails.append(("path/split" + ("/grouped" if grouped else ""), L, p, splits))
 
     # Accuracy vs float64 and vs bf16 SDPA.
     for L in [517, 2049]:

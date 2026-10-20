@@ -119,7 +119,8 @@ at::Tensor prefill(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Ten
 }
 
 // q: [batch, Hq, 128]. Compact workspace: ws_o [capacity, Hq, 128] f32, ws_ml [capacity, Hq, 2] f32,
-// with capacity >= sum of ceil(kv_len / 64); max_chunks bounds one request (planner only).
+// with capacity >= batch * ceil(max_chunks / 32); below sum of ceil(kv_len / 64) the
+// kernels run grouped. max_chunks bounds one request.
 // splits/variant: 0 = planner.
 at::Tensor decode(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Tensor kv_page_indptr,
                   at::Tensor kv_page_indices, at::Tensor kv_lens, at::Tensor ws_o, at::Tensor ws_ml,
@@ -134,6 +135,8 @@ at::Tensor decode(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Tens
   TORCH_CHECK(ws_ml.scalar_type() == at::kFloat && ws_ml.dim() == 3 && ws_ml.size(0) == ws_o.size(0) &&
               ws_ml.size(2) == 2 && ws_ml.is_contiguous());
   const int page_size = k_cache.size(1), capacity = ws_o.size(0);
+  const int max_groups = (int)((max_chunks + kGroupChunks - 1) / kGroupChunks);
+  TORCH_CHECK((int64_t)capacity >= (int64_t)batch * max_groups, "decode workspace below batch * max_groups");
   auto chunk_offsets = at::empty({batch + 1}, kv_lens.options());
   int var = (int)variant;
   if (var == 0) var = 1;
@@ -153,7 +156,7 @@ at::Tensor decode(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Tens
         (const __nv_bfloat16*)q.data_ptr(), (const __nv_bfloat16*)k_cache.data_ptr(),
         (const __nv_bfloat16*)v_cache.data_ptr(), kv_page_indptr.data_ptr<int32_t>(),
         kv_page_indices.data_ptr<int32_t>(), (int64_t)0, kv_lens.data_ptr<int32_t>(), ws_o.data_ptr<float>(),
-        (float2*)ws_ml.data_ptr<float>(), chunk_offsets.data_ptr<int32_t>(), capacity, hq, hkv,
+        (float2*)ws_ml.data_ptr<float>(), chunk_offsets.data_ptr<int32_t>(), capacity, max_groups, hq, hkv,
         page_size, page_shift_of(page_size), (float)(sm_scale * 1.4426950408889634));
   };
 #define PI_DLAUNCH(W, B) launch(decode_partial_kernel<W, B>, W, decode_smem_elems<W, B>() * sizeof(__nv_bfloat16))
@@ -169,7 +172,7 @@ at::Tensor decode(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Tens
   C10_CUDA_KERNEL_LAUNCH_CHECK();
   decode_merge_kernel<<<dim3(hq, batch), kHeadDim, 0, stream>>>(
       ws_o.data_ptr<float>(), (const float2*)ws_ml.data_ptr<float>(), kv_lens.data_ptr<int32_t>(),
-      chunk_offsets.data_ptr<int32_t>(), capacity, (__nv_bfloat16*)out.data_ptr(), hq);
+      chunk_offsets.data_ptr<int32_t>(), capacity, max_groups, (__nv_bfloat16*)out.data_ptr(), hq);
   C10_CUDA_KERNEL_LAUNCH_CHECK();
   return out;
 }

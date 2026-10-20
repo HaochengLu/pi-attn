@@ -8,7 +8,10 @@ identical tokens no matter how the server batches, caches or chunks work.
 
   batch    each prompt alone vs. inside concurrent mixed-length traffic
   prefix   same request with its prompt uncached vs. (partially) prefix-cached
+  shared   many concurrent requests sharing one long cached prefix vs. each alone
   path     continuation through decode vs. re-prefilling the generated tokens
+  sample_path  the same with seeded sampling: holds only if the engine keys its
+           sampling stream by (seed, position), not by request start
   repeat   one prompt sent many times under varying background load
   sample   seeded temperature sampling, alone vs. under concurrent traffic
   save / compare   store greedy and seeded-sample references, then compare a
@@ -139,13 +142,26 @@ def check_prefix(srv, prompts, T, rng, flush, vocab):
     return rows
 
 
-def check_path(srv, prompts, T, rng, flush, vocab):
+def check_shared(srv, prompts, T, rng, n, vocab):
+    """n requests = one long shared prefix + distinct short suffixes, sent at once."""
+    prefix = max(prompts, key=len)
+    reqs = [prefix + [rng.randrange(1000, vocab) for _ in range(rng.randrange(1, 64))] for _ in range(n)]
+    ref = [srv.generate(r, T) for r in reqs]
+    with cf.ThreadPoolExecutor(n) as ex:
+        got = list(ex.map(lambda r: srv.generate(r, T), reqs))
+    bad = [d for d in (first_divergence(a, b) for a, b in zip(ref, got)) if d is not None]
+    return {"requests": n, "prefix_tokens": len(prefix), "mismatched": len(bad),
+            "first_divergence_tokens": sorted(bad)[:10]}
+
+
+def check_path(srv, prompts, T, rng, flush, vocab, sampling=None):
     rows = {"requests": 0, "mismatched": 0, "first_divergence_tokens": []}
-    for p in prompts:
-        full = srv.generate(p, T)
+    for i, p in enumerate(prompts):
+        sp = sampling(i) if sampling else None
+        full = srv.generate(p, T, sp)
         for k in (1, T // 4, T // 2):
             srv.flush(flush, vocab, rng)
-            cont = srv.generate(p + full[:k], T - k)    # tokens k.. via prefill of the generated prefix
+            cont = srv.generate(p + full[:k], T - k, sp)  # tokens k.. via prefill of the generated prefix
             rows["requests"] += 1
             d = first_divergence(full[k:], cont)
             if d is not None:
@@ -208,7 +224,8 @@ def main():
     ap.add_argument("--url", required=True)
     ap.add_argument("--tokenizer", required=True, help="HF tokenizer path (used only to build prompts)")
     ap.add_argument("--api", choices=["openai", "sglang"], default="openai")
-    ap.add_argument("--checks", nargs="+", default=["batch", "prefix", "path", "repeat", "sample"])
+    ap.add_argument("--checks", nargs="+", default=["batch", "prefix", "shared", "path", "sample_path", "repeat", "sample"])
+    ap.add_argument("--shared", type=int, default=32, help="concurrent requests in the shared-prefix check")
     ap.add_argument("--prompts", type=int, default=16)
     ap.add_argument("--lengths", type=int, nargs="+", default=[24, 300, 1100, 2600])
     ap.add_argument("--tokens", type=int, default=256, help="completion length")
@@ -234,9 +251,16 @@ def main():
     if "prefix" in a.checks:
         report["prefix"] = check_prefix(srv, prompts[: max(4, a.prompts // 2)], a.tokens, rng, a.flush, vocab)
         print("prefix", json.dumps(report["prefix"]), flush=True)
+    if "shared" in a.checks:
+        report["shared"] = check_shared(srv, prompts, a.tokens, rng, a.shared, vocab)
+        print("shared", json.dumps(report["shared"]), flush=True)
     if "path" in a.checks:
         report["path"] = check_path(srv, prompts[: max(4, a.prompts // 2)], a.tokens, rng, a.flush, vocab)
         print("path  ", json.dumps(report["path"]), flush=True)
+    if "sample_path" in a.checks:
+        sp = lambda i: {"temperature": 0.8, "top_p": 0.95, "top_k": 50, "seed": 3000 + i}
+        report["sample_path"] = check_path(srv, prompts[: max(4, a.prompts // 2)], a.tokens, rng, a.flush, vocab, sp)
+        print("spath ", json.dumps(report["sample_path"]), flush=True)
     if "repeat" in a.checks:
         report["repeat"] = check_repeat(srv, prompts[0], a.tokens, rng, a.repeat, vocab)
         print("repeat", json.dumps(report["repeat"]), flush=True)
@@ -256,6 +280,7 @@ def main():
     if a.out:
         json.dump(report, open(a.out, "w"), indent=1)
     failures = sum(r["mismatched"] for r in report.get("batch", [])) + report.get("path", {}).get("mismatched", 0) \
+        + report.get("shared", {}).get("mismatched", 0) + report.get("sample_path", {}).get("mismatched", 0) \
         + report.get("prefix", {}).get("full_hit", 0) + report.get("prefix", {}).get("partial_hit", 0) \
         + max(0, report.get("repeat", {}).get("unique_completions", 1) - 1) \
         + sum(r["mismatched"] for r in report.get("sample", {}).get("rows", [])) \
