@@ -4,21 +4,28 @@
 
 namespace pi_attn {
 
-// Async-load `rows` rows of a K/V chunk tile (or a Q tile). Rows at positions
-// >= kv_len are zero-filled without a global read, so stale cache contents can
-// never reach the arithmetic.
+// Async-load one K or V chunk tile. Keys at positions >= kv_len are zero-filled
+// without a global read, so stale cache contents can never reach the
+// arithmetic. nthreads is a multiple of 16, so each thread copies a fixed
+// 16-byte column of every (nthreads / 16)-th key; page_shift = log2(page_size)
+// (or -1 when page_size is not a power of two) avoids integer division.
 __device__ __forceinline__ void issue_tile(__nv_bfloat16* tile, const __nv_bfloat16* cache,
-                                           const int32_t* pages, int page_size, int num_kv_heads,
-                                           int kvh, int c, int kv_len, int tid, int nthreads) {
+                                           const int32_t* pages, int page_size, int page_shift,
+                                           int num_kv_heads, int kvh, int c, int kv_len, int tid,
+                                           int nthreads) {
   constexpr int kVecPerRow = kHeadDim / 8;
-  for (int i = tid; i < kChunk * kVecPerRow; i += nthreads) {
-    const int key = i / kVecPerRow, vec = i % kVecPerRow;
+  const int vec = tid % kVecPerRow, key_step = nthreads / kVecPerRow;
+  const int64_t row_stride = (int64_t)num_kv_heads * kHeadDim;
+  const __nv_bfloat16* head_base = cache + (int64_t)kvh * kHeadDim + vec * 8;
+  for (int key = tid / kVecPerRow; key < kChunk; key += key_step) {
     const int pos = c * kChunk + key;
     const __nv_bfloat16* src = cache;
     int bytes = 0;
     if (pos < kv_len) {
-      const int64_t page = pages[pos / page_size];
-      src = cache + ((page * page_size + pos % page_size) * num_kv_heads + kvh) * kHeadDim + vec * 8;
+      int64_t slot;
+      if (page_shift >= 0) slot = ((int64_t)pages[pos >> page_shift] << page_shift) + (pos & (page_size - 1));
+      else slot = (int64_t)pages[pos / page_size] * page_size + pos % page_size;
+      src = head_base + slot * row_stride;
       bytes = 16;
     }
     cp_async16(tile + key * kRowStride + vec * 8, src, bytes);
@@ -32,10 +39,13 @@ constexpr int prefill_smem_elems() {
   return (QS ? NWARPS * 16 * G * kRowStride : 0) + (2 + VB) * kTileElems;
 }
 
-// Prefill / extend. grid = (q tiles of 16*G*NWARPS rows, num_qo_heads, batch * kv_splits).
-// Query row i of request b sits at absolute position kv_len[b] - q_len + i.
-// NWARPS and G (16-row groups per warp sharing K/V fragments) only change how
-// work is distributed, never a row's operation sequence. With kv_splits == 1
+// Prefill / extend. grid = (row tiles of 16*G*NWARPS rows, num_kv_heads, batch * kv_splits).
+// The rows of a CTA are the (token, query head) pairs of one kv head's GQA
+// group, token-major: row r is token r / group, head kv_head * group + r % group,
+// so each K/V tile is loaded once per kv head. Token i of request b sits at
+// absolute position kv_len[b] - q_len + i. NWARPS, G (16-row groups per warp
+// sharing K/V fragments) and the packing only change how work is distributed,
+// never a row's operation sequence. With kv_splits == 1
 // the CTA runs the whole two-level fold and writes the output; otherwise CTA
 // split s covers a contiguous range of fold groups and writes, per row and
 // group, the group partial (ws_o / ws_ml indexed [row][head][group]); the
@@ -47,9 +57,9 @@ __global__ void __launch_bounds__(NWARPS * 32)
                    const __nv_bfloat16* __restrict__ v_cache, const int32_t* __restrict__ qo_indptr,
                    const int32_t* __restrict__ kv_page_indptr,
                    const int32_t* __restrict__ kv_page_indices, const int32_t* __restrict__ kv_lens,
-                   int num_qo_heads, int num_kv_heads, int page_size, float scale_log2,
-                   int kv_splits, float* __restrict__ ws_o, float2* __restrict__ ws_ml,
-                   int max_groups) {
+                   int num_qo_heads, int num_kv_heads, int page_size, int page_shift,
+                   float scale_log2, int kv_splits, float* __restrict__ ws_o,
+                   float2* __restrict__ ws_ml, int max_groups) {
   constexpr int kWarpRows = 16 * G;
   constexpr int kCtaRows = NWARPS * kWarpRows;
   static_assert(G == 1 || QS, "two row groups per warp need Q in smem");
@@ -60,33 +70,36 @@ __global__ void __launch_bounds__(NWARPS * 32)
   __nv_bfloat16* sVbuf = smem + kQElems + 2 * kTileElems;
 
   const int b = blockIdx.z / kv_splits, split = blockIdx.z % kv_splits;
-  const int h = blockIdx.y, tile = blockIdx.x;
+  const int kvh = blockIdx.y, tile = blockIdx.x;
+  const int group = num_qo_heads / num_kv_heads;
   const int q0 = qo_indptr[b], q_len = qo_indptr[b + 1] - q0;
-  if (tile * kCtaRows >= q_len) return;
+  const int rows_total = q_len * group;
+  if (tile * kCtaRows >= rows_total) return;
   const int kv_len = kv_lens[b], prefix = kv_len - q_len;
-  const int kvh = h / (num_qo_heads / num_kv_heads);
+  auto tok = [&](int r) { return r / group; };
+  auto row_q = [&](int r) { return q + (int64_t)(q0 + r / group) * num_qo_heads * kHeadDim + (kvh * group + r % group) * kHeadDim; };
   const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
   const int row_base = tile * kCtaRows + warp * kWarpRows;
   const int64_t q_stride = (int64_t)num_qo_heads * kHeadDim;
   const int32_t* pages = kv_page_indices + kv_page_indptr[b];
-  const int last_row = min(tile * kCtaRows + kCtaRows, q_len) - 1;
-  const int warp_last = min(row_base + kWarpRows, q_len) - 1;  // last valid row of this warp
+  const int last_tok = tok(min(tile * kCtaRows + kCtaRows, rows_total) - 1);
+  const int warp_last_tok = tok(min(row_base + kWarpRows, rows_total) - 1);
   // Fold groups this CTA covers: [g_begin, g_end) of the tile's visible groups.
-  const int tile_groups = (prefix + last_row) / (kChunk * kGroupChunks) + 1;
+  const int tile_groups = (prefix + last_tok) / (kChunk * kGroupChunks) + 1;
   const int per_split = (tile_groups + kv_splits - 1) / kv_splits;
   const int g_begin = split * per_split, g_end = min(tile_groups, g_begin + per_split);
   if (g_begin >= g_end) return;
   const int c_begin = g_begin * kGroupChunks;
-  const int c_last = min(g_end * kGroupChunks, (prefix + last_row) / kChunk + 1) - 1;
+  const int c_last = min(g_end * kGroupChunks, (prefix + last_tok) / kChunk + 1) - 1;
 
   auto sK = [&](int c) { return sKbuf + (c & 1) * kTileElems; };
   auto sV = [&](int c) { return sVbuf + (VB == 2 ? (c & 1) * kTileElems : 0); };
   auto issue_k = [&](int c) {
-    issue_tile(sK(c), k_cache, pages, page_size, num_kv_heads, kvh, c, kv_len, threadIdx.x, blockDim.x);
+    issue_tile(sK(c), k_cache, pages, page_size, page_shift, num_kv_heads, kvh, c, kv_len, threadIdx.x, blockDim.x);
     cp_async_commit();
   };
   auto issue_v = [&](int c) {
-    issue_tile(sV(c), v_cache, pages, page_size, num_kv_heads, kvh, c, kv_len, threadIdx.x, blockDim.x);
+    issue_tile(sV(c), v_cache, pages, page_size, page_shift, num_kv_heads, kvh, c, kv_len, threadIdx.x, blockDim.x);
     cp_async_commit();
   };
 
@@ -97,8 +110,8 @@ __global__ void __launch_bounds__(NWARPS * 32)
       const int r = i / kVecPerRow, vec = i % kVecPerRow, qi = tile * kCtaRows + r;
       const __nv_bfloat16* src = q;
       int bytes = 0;
-      if (qi < q_len) {
-        src = q + (q0 + qi) * q_stride + h * kHeadDim + vec * 8;
+      if (qi < rows_total) {
+        src = row_q(qi) + vec * 8;
         bytes = 16;
       }
       cp_async16(sQ + r * kRowStride + vec * 8, src, bytes);
@@ -108,7 +121,7 @@ __global__ void __launch_bounds__(NWARPS * 32)
     load_q(qf,
            [&](int r) -> const __nv_bfloat16* {
              const int i = row_base + r;
-             return i < q_len ? q + (q0 + i) * q_stride + h * kHeadDim : nullptr;
+             return i < rows_total ? row_q(i) : nullptr;
            },
            lane);
   }
@@ -136,8 +149,8 @@ __global__ void __launch_bounds__(NWARPS * 32)
 #pragma unroll
         for (int r = 0; r < 2; ++r) {
           const int i = row_base + gi * 16 + g + r * 8;
-          if (i >= q_len || fg * kGroupChunks * kChunk > prefix + i) continue;
-          const int64_t slot = ((int64_t)(q0 + i) * num_qo_heads + h) * max_groups + fg;
+          if (i >= rows_total || fg * kGroupChunks * kChunk > prefix + tok(i)) continue;
+          const int64_t slot = ((int64_t)(q0 + tok(i)) * num_qo_heads + kvh * group + i % group) * max_groups + fg;
           if (t == 0) ws_ml[slot] = make_float2(grp[gi].M[r], grp[gi].L[r]);
           float* dst = ws_o + slot * kHeadDim;
 #pragma unroll
@@ -162,7 +175,7 @@ __global__ void __launch_bounds__(NWARPS * 32)
     }
     __syncthreads();
     // Warps whose rows all precede this chunk would only fold identities.
-    const bool active = c * kChunk <= prefix + warp_last;
+    const bool active = c * kChunk <= prefix + warp_last_tok;
     PFrag pf[G];
     FoldScalars fs[G][2];
     if (active) {
@@ -184,9 +197,9 @@ __global__ void __launch_bounds__(NWARPS * 32)
         scores_to_p(s[gi], pf[gi], m, l, scale_log2,
                     [&](int r, int key) {
                       const int i = gbase + r;
-                      return i < q_len && c * kChunk + key <= prefix + i;
+                      return i < rows_total && c * kChunk + key <= prefix + tok(i);
                     },
-                    gbase + 15 < q_len && (c + 1) * kChunk - 1 <= prefix + gbase, lane);
+                    gbase + 15 < rows_total && (c + 1) * kChunk - 1 <= prefix + tok(gbase), lane);
 #pragma unroll
         for (int r = 0; r < 2; ++r) fs[gi][r] = fold_scalars(grp[gi].M[r], grp[gi].L[r], m[r], l[r]);
       }
@@ -215,8 +228,8 @@ __global__ void __launch_bounds__(NWARPS * 32)
 #pragma unroll
     for (int r = 0; r < 2; ++r) {
       const int i = row_base + gi * 16 + g + r * 8;
-      if (i >= q_len) continue;
-      __nv_bfloat16* o = out + (q0 + i) * q_stride + h * kHeadDim;
+      if (i >= rows_total) continue;
+      __nv_bfloat16* o = out + (row_q(i) - q);
 #pragma unroll
       for (int n = 0; n < kNTilesO; ++n) {
         __nv_bfloat162 v;
@@ -271,7 +284,7 @@ __global__ void __launch_bounds__(DW * 32)
                           const int32_t* __restrict__ kv_page_indices,
                           const int32_t* __restrict__ kv_lens, float* __restrict__ ws_o,
                           float2* __restrict__ ws_ml, int num_qo_heads, int num_kv_heads,
-                          int page_size, int max_chunks, float scale_log2) {
+                          int page_size, int page_shift, int max_chunks, float scale_log2) {
   extern __shared__ __align__(16) __nv_bfloat16 smem[];
   const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
   __nv_bfloat16* sK = smem + warp * KVB * kTileElems;
@@ -287,7 +300,7 @@ __global__ void __launch_bounds__(DW * 32)
   int c = blockIdx.z * DW + warp;
   if (c >= n_chunks) return;
   auto load = [&](__nv_bfloat16* tile, const __nv_bfloat16* cache, int chunk) {
-    issue_tile(tile, cache, pages, page_size, num_kv_heads, kvh, chunk, kv_len, lane, 32);
+    issue_tile(tile, cache, pages, page_size, page_shift, num_kv_heads, kvh, chunk, kv_len, lane, 32);
     cp_async_commit();
   };
 

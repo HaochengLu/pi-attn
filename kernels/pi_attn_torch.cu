@@ -21,6 +21,10 @@ static void check_inputs(const at::Tensor& q, const at::Tensor& k_cache, const a
   for (const auto& t : idx) TORCH_CHECK(t.is_cuda() && t.scalar_type() == at::kInt && t.is_contiguous(), "index tensors: contiguous int32 CUDA");
 }
 
+static int page_shift_of(int page_size) {
+  return page_size > 0 && (page_size & (page_size - 1)) == 0 ? __builtin_ctz(page_size) : -1;
+}
+
 static int sm_count(const at::Tensor& t) {
   int sms = 0;
   cudaDeviceGetAttribute(&sms, cudaDevAttrMultiProcessorCount, t.get_device());
@@ -51,17 +55,30 @@ at::Tensor prefill(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Ten
   int config = (int)variant;
   if (config == 0) {
     const bool big = smem_optin(q) >= (int)(prefill_smem_elems<8, 2, 2>() * sizeof(__nv_bfloat16));
-    const int64_t ctas256 = (int64_t)((max_q_len + 255) / 256) * hq * batch;
+    const int64_t ctas256 = (int64_t)((max_q_len * (hq / hkv) + 255) / 256) * hkv * batch;
     if (big && ctas256 >= sms) config = 4;
     else config = 2;
   }
   const int rows = config == 1 || config == 6 ? 64 : config == 4 ? 256 : 128;
-  const int tiles = (max_q_len + rows - 1) / rows;
+  const int group = hq / hkv;
+  const int tiles = (int)((max_q_len * group + rows - 1) / rows);
   const int max_groups = (max_kv_len - 1) / (kChunk * kGroupChunks) + 1;
   int splits = (int)kv_splits;
-  if (splits == 0) {  // split over fold groups only when the grid would leave SMs idle
-    const int64_t ctas = (int64_t)tiles * hq * batch;
-    splits = ctas >= sms ? 1 : (int)std::min<int64_t>(max_groups, (2 * sms + ctas - 1) / ctas);
+  if (splits == 0) {
+    // Wave model: one prefill CTA per SM; a CTA's time ~ chunks it folds. Pick
+    // the split count over fold groups that minimises waves x chunks per split
+    // (ties go to fewer splits: less workspace traffic).
+    const int64_t ctas = (int64_t)tiles * hkv * batch;
+    const int64_t chunks = (max_kv_len + kChunk - 1) / kChunk;
+    int64_t best = INT64_MAX;
+    splits = 1;
+    for (int sp = 1; sp <= max_groups; ++sp) {
+      const int64_t groups_per = (max_groups + sp - 1) / sp;
+      const int64_t per = std::min<int64_t>(chunks, groups_per * kGroupChunks);
+      const int64_t waves = (ctas * sp + sms - 1) / sms;
+      const int64_t cost = waves * per + (sp > 1 ? per / 8 : 0);  // + merge / workspace
+      if (cost < best) { best = cost; splits = sp; }
+    }
   }
   splits = std::max(1, std::min(splits, max_groups));
   at::Tensor ws_o, ws_ml;
@@ -72,12 +89,12 @@ at::Tensor prefill(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Ten
   auto stream = at::cuda::getCurrentCUDAStream();
   auto launch = [&](auto kernel, int warps, size_t smem) {
     cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem);
-    kernel<<<dim3(tiles, hq, batch * splits), warps * 32, smem, stream>>>(
+    kernel<<<dim3(tiles, hkv, batch * splits), warps * 32, smem, stream>>>(
         (const __nv_bfloat16*)q.data_ptr(), (__nv_bfloat16*)out.data_ptr(),
         (const __nv_bfloat16*)k_cache.data_ptr(), (const __nv_bfloat16*)v_cache.data_ptr(),
         qo_indptr.data_ptr<int32_t>(), kv_page_indptr.data_ptr<int32_t>(),
         kv_page_indices.data_ptr<int32_t>(), kv_lens.data_ptr<int32_t>(), hq, hkv, page_size,
-        (float)(sm_scale * 1.4426950408889634), splits,
+        page_shift_of(page_size), (float)(sm_scale * 1.4426950408889634), splits,
         splits > 1 ? ws_o.data_ptr<float>() : nullptr,
         splits > 1 ? (float2*)ws_ml.data_ptr<float>() : nullptr, max_groups);
   };
@@ -132,7 +149,7 @@ at::Tensor decode(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Tens
         (const __nv_bfloat16*)q.data_ptr(), (const __nv_bfloat16*)k_cache.data_ptr(),
         (const __nv_bfloat16*)v_cache.data_ptr(), kv_page_indptr.data_ptr<int32_t>(),
         kv_page_indices.data_ptr<int32_t>(), kv_lens.data_ptr<int32_t>(), ws_o.data_ptr<float>(),
-        (float2*)ws_ml.data_ptr<float>(), hq, hkv, page_size, max_chunks,
+        (float2*)ws_ml.data_ptr<float>(), hq, hkv, page_size, page_shift_of(page_size), max_chunks,
         (float)(sm_scale * 1.4426950408889634));
   };
 #define PI_DLAUNCH(W, B) launch(decode_partial_kernel<W, B>, W, decode_smem_elems<W, B>() * sizeof(__nv_bfloat16))
