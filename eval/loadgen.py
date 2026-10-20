@@ -44,9 +44,13 @@ def one(url, ids, out_len, seed=0):
     return {"ttft": ttft, "tpot": tpot, "itl": itl, "tokens": n, "e2e": end - t0}
 
 
-def run(url, in_len, out_len, conc, num, seed):
+def run(url, in_len, out_len, conc, num, seed, shared=0):
+    """shared: the first `shared` input tokens are common to every request (prefix-cache hits)."""
     rng = random.Random(seed)
-    prompts = [[rng.randrange(1000, 150000) for _ in range(in_len)] for _ in range(num)]
+    head = [rng.randrange(1000, 150000) for _ in range(shared)]
+    prompts = [head + [rng.randrange(1000, 150000) for _ in range(in_len - shared)] for _ in range(num)]
+    if shared:
+        one(url, head + [1000], 1)  # cache the shared prefix before timing
     one(url, prompts[0][:16], 4)  # warm-up
     t0 = time.perf_counter()
     with cf.ThreadPoolExecutor(conc) as ex:
@@ -54,7 +58,7 @@ def run(url, in_len, out_len, conc, num, seed):
     wall = time.perf_counter() - t0
     tokens = sum(r["tokens"] for r in res)
     itl = [x for r in res for x in r["itl"]]
-    return {"out_tok_s": tokens / wall, "ttft_ms": statistics.mean(r["ttft"] for r in res) * 1e3,
+    return {"out_tok_s": tokens / wall, "req_s": num / wall, "ttft_ms": statistics.mean(r["ttft"] for r in res) * 1e3,
             "tpot_ms": statistics.mean(r["tpot"] for r in res) * 1e3,
             "itl_ms": statistics.mean(itl) * 1e3 if itl else 0.0,
             "p99_ttft_ms": sorted(r["ttft"] for r in res)[int(0.99 * (len(res) - 1))] * 1e3,
@@ -65,7 +69,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--url", required=True)
     ap.add_argument("--workloads", nargs="+", default=["64:32:1", "64:32:8", "64:32:32", "512:256:8", "2048:128:8", "1024:512:32"],
-                    help="input:output:concurrency")
+                    help="input:output:concurrency[:shared prefix tokens]")
     ap.add_argument("--num", type=int, default=64)
     ap.add_argument("--repeats", type=int, default=3)
     ap.add_argument("--temperature", type=float, default=0.0, help="> 0: sample with top_p 0.95 and per-request seeds")
@@ -75,10 +79,11 @@ def main():
         SAMPLING.update({"temperature": a.temperature, "top_p": 0.95})
     rows = []
     for w in a.workloads:
-        i, o, c = map(int, w.split(":"))
-        reps = [run(a.url.rstrip("/"), i, o, c, max(a.num, 2 * c), seed=r) for r in range(a.repeats)]
+        i, o, c, *sh = map(int, w.split(":"))
+        sh = sh[0] if sh else 0
+        reps = [run(a.url.rstrip("/"), i, o, c, max(a.num, 2 * c), seed=r, shared=sh) for r in range(a.repeats)]
         med = {k: statistics.median(r[k] for r in reps) for k in reps[0]}
-        med.update({"in": i, "out": o, "concurrency": c, "repeats": a.repeats,
+        med.update({"in": i, "out": o, "concurrency": c, "shared": sh, "repeats": a.repeats,
                     "out_tok_s_all": [round(r["out_tok_s"], 1) for r in reps]})
         rows.append(med)
         print(json.dumps({k: (round(v, 2) if isinstance(v, float) else v) for k, v in med.items()}), flush=True)

@@ -13,9 +13,10 @@ any of those optimizations off.
 | `kernels/` | PyTorch bindings, invariance tests (`test_invariance.py`, `test_matrix.py`, `test_directed.py`, `test_gemm.py`) and microbenchmarks for the kernels (sources symlinked from the engine) |
 | `ref/` | Bit-level CPU reference model of the attention construction |
 | `detcheck/detcheck.py` | Black-box determinism checker for any OpenAI-compatible server |
-| `eval/` | Serving benchmark (`loadgen.py`), cross-configuration check (`crossconfig.sh`), end-to-end matrix (`e2e_matrix.sh`), fp32 agreement (`hf_agreement.py`) |
-| `results/` | Phase reports and raw results |
+| `eval/` | Serving benchmark (`loadgen.py`), cross-configuration check (`crossconfig.sh`), end-to-end matrices (`e2e_matrix.sh`, `e2e_extended.sh`), same-GPU SGLang/vLLM baselines (`baselines.sh`), GSM8K reproducibility (`accuracy.sh`, `compare_accuracy.py`), fp32 agreement (`fp32_agreement.sh`), kernel benchmarks (`kernel_benches.sh`), and table generators (`summarize_*.py`) |
+| `results/` | Phase reports and results; each `results/<experiment>/` holds the raw JSON/logs and a `SUMMARY.md` |
 | `paper/` | Paper draft |
+| `archive/` | Earlier kernel iterations, kept for history |
 
 ## Environment (self-contained, reproducible)
 
@@ -50,6 +51,10 @@ eval/crossconfig.sh --deterministic      # bitwise identity across server config
 ```
 
 ## Tests
+
+The kernel tests JIT-build the torch extension (`kernels/build.py`) on first import. One
+engine CUDA test, `segmented_prefill_matches_eager_logits_and_kv...` (FlashInfer backend),
+also fails on the upstream `main` branch and is unrelated to this work.
 
 ```bash
 cd kernels && python test_matrix.py && python test_directed.py && python test_gemm.py

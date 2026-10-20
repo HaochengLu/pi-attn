@@ -4,20 +4,24 @@ import json, os, sys
 
 d = sys.argv[1]
 ENG = [("rust", "llm_infer_rust (FlashInfer)"), ("rust-det", "llm_infer_rust --deterministic (PI)"),
-       ("sglang", "SGLang 0.5.5"), ("sglang-det", "SGLang 0.5.5 --enable-deterministic-inference"),
+       ("sglang", "SGLang 0.5.5"), ("sglang-det", "SGLang 0.5.5 deterministic (FlashInfer)"),
+       ("sglang-det-triton", "SGLang 0.5.5 deterministic (Triton)"),
        ("vllm", "vLLM 0.11.2"), ("vllm-det", "vLLM 0.11.2 VLLM_BATCH_INVARIANT=1")]
 loads = {}
-print("| engine | batch c4/c16 | path | repeat (unique/200) | seeded sample c4/c16 | prefix full/partial hit |")
-print("|---|---|---|---|---|---|")
+print("| engine | batch c4/c16 | shared prefix x32 | path | seeded path | repeat (unique/200) | seeded sample c4/c16 | prefix full/partial hit |")
+print("|---|---|---|---|---|---|---|---|")
 for k, name in ENG:
     p = f"{d}/{k}.detcheck.json"
     if not os.path.exists(p):
-        print(f"| {name} | not run | | | | |"); continue
+        print(f"| {name} | not run | | | | | | |"); continue
     r = json.load(open(p))
     b = "/".join(str(x["mismatched"]) for x in r["batch"])
     s = "/".join(str(x["mismatched"]) for x in r["sample"]["rows"])
     pre = f"{r['prefix']['full_hit']}/{r['prefix']['partial_hit']} (of {r['prefix']['requests']})"
-    print(f"| {name} | {b} (of 16) | {r['path']['mismatched']}/{r['path']['requests']} | {r['repeat']['unique_completions']} | {s} (of 16) | {pre} |")
+    sh = r.get("shared"); spth = r.get("sample_path")
+    sh = f"{sh['mismatched']}/{sh['requests']}" if sh else "-"
+    spth = f"{spth['mismatched']}/{spth['requests']}" if spth else "-"
+    print(f"| {name} | {b} (of 16) | {sh} | {r['path']['mismatched']}/{r['path']['requests']} | {spth} | {r['repeat']['unique_completions']} | {s} (of 16) | {pre} |")
 print()
 rows = {k: json.load(open(f"{d}/{k}.t0.json")) for k, _ in ENG if os.path.exists(f"{d}/{k}.t0.json")}
 if rows:

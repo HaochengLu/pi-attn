@@ -82,33 +82,52 @@ Contributions:
 
 ## 2 Background: where serving nondeterminism comes from
 
-[Table: optimization → reduction whose order it changes → what existing deterministic modes do]
-- Continuous batching: GEMM M changes → library heuristics pick different tiles / split-K.
-- Split-KV decode (FlashDecoding): number of splits chosen from batch and length → the
-  merge order of partial softmaxes changes.
-- Chunked prefill: cut points depend on the token budget and concurrent requests → the
-  prefill kernel's KV tiling relative to the query changes.
-- Prefix cache: a hit replaces part of a prefill with cached KV → different kernel path
-  (ragged vs paged), different tiling.
-- Prefill vs decode: the token decoded at position p is later re-processed by prefill
-  (multi-turn, re-prefill after eviction, RL scoring) → different kernels.
-- CUDA graph padding, page size, batch limits: change shapes seen by kernels.
-- Sampling: Philox streams indexed by batch row.
+A serving engine changes how work is partitioned from one step to the next, and floating-point
+reductions inherit that partition. Each optimization below changes the order of some sum:
 
-## 3 Related work (to expand)
-- Thinking Machines, *Defeating Nondeterminism in LLM Inference* (2025): batch-invariant
-  kernels, fixed split size for decode attention.
-- SGLang deterministic inference (2025): fixed split size, num_splits=1 (FA3), chunk
-  alignment to split size; radix cache disabled with the FlashInfer backend; ~34% average
-  slowdown reported on H100 (1.9–3.5× measured on our sm_89 GPU, Section 7).
-- vLLM batch invariance (`VLLM_BATCH_INVARIANT`): num_splits=1 attention, overridden aten
-  matmul/reduction kernels; documented for compute capability ≥ 9.0 in 0.11.x.
-- Vosti (arXiv 2609.38981): verified deterministic inference with a sequential running-max
-  tile loop; prefill and decode agree but decode gets no KV-split parallelism.
-- ReproFuse (arXiv 2609.25624): GEMM split-K fixed by K; TBIK (arXiv 2511.17826): TP-invariant
-  reductions; LLM-42 (arXiv 2601.17768): verification and rollback; CoRun (arXiv 2608.14376):
-  padding to fixed shapes; DeepSeek-V4 deterministic decode kernels.
-- Reproducible summation (Demmel–Nguyen), FlashAttention/FlashDecoding, FlashInfer.
+| optimization | reduction whose order changes | typical deterministic-mode remedy |
+|---|---|---|
+| continuous batching | GEMM tile and split-K choice follow M (batch tokens) | pin one GEMM config, no split-K |
+| split-KV decode | number of KV splits follows batch size and length | fixed split size, or one split |
+| chunked prefill | where a prompt's attention is cut relative to its keys | align chunks to the split size |
+| prefix cache | cached prefix is read by a different kernel / tiling | restrict or disable the cache |
+| prefill vs decode | token p is decoded by one kernel and re-processed by another | none (paths stay different) |
+| CUDA-graph padding, page size, batch limit | shapes seen by kernels | pin them |
+| sampling | random stream indexed by batch row or request start | per-request generator |
+
+The prefill/decode row is the subtle one. An online-softmax prefill kernel rounds each
+probability P = bf16(exp(s − m_run)) against a running maximum m_run that depends on every
+earlier key tile of the query; a decode kernel with a fixed split size rounds against the
+maximum of its split. The two produce different bf16 values of P for the same score, so
+fixing the split size cannot make them agree. Re-processing a decoded token by prefill
+happens whenever a conversation continues, a preempted request is recomputed, or an RL
+trainer scores a rollout.
+
+## 3 Related work
+
+*Batch-invariant kernels.* Thinking Machines [TML25] identified batch-size dependence as the
+dominant source of serving nondeterminism and proposed batch-invariant RMSNorm, matmul and
+attention with a fixed split size for decode. SGLang's deterministic inference builds on it
+(fixed split size for FlashInfer/Triton, one split for FA3, chunked-prefill alignment, the
+`pytorch` sampling backend; ~34% average slowdown reported on H100); on our GPU its
+FlashInfer path disables the radix cache. vLLM's `VLLM_BATCH_INVARIANT` overrides aten
+matmul and reductions and forces one-split attention; its 0.11.x documentation requires
+compute capability ≥ 9.0. These systems remove batch dependence by pinning the partition;
+we show the partition may stay free as long as the reduction tree is fixed, and we also make
+prefill and decode agree.
+
+*Deterministic attention.* Vosti [2609.38981] obtains prefill/decode agreement with a single
+sequential running-max loop per query, giving up split-KV parallelism in decode. FlashDecoding
+and FlashInfer already compute split partials with split-local maxima and merge them; their
+split boundaries follow the schedule, and their prefill uses a running maximum, so neither
+property we need holds. Our attention keeps FlashDecoding's partial/merge structure but makes
+the partials chunk-pure at absolute positions and uses them in prefill as well.
+
+*GEMM and other reductions.* ReproFuse [2609.25624] fixes split-K by K; TBIK [2511.17826]
+makes tensor-parallel reductions invariant; CoRun [2608.14376] pads to fixed shapes; LLM-42
+[2601.17768] verifies and rolls back nondeterministic steps; DeepSeek-V4 ships deterministic
+decode kernels. Reproducible summation [Demmel–Nguyen] makes sums order-independent at higher
+cost; we instead fix the order.
 
 ## 4 Fixed reduction trees
 
@@ -131,40 +150,79 @@ chunk partials with the per-row sequence above and (b) reduces them with this tr
 output for row i is identical, whatever rows share a kernel, how chunks are assigned to
 CTAs, where chunked prefill cuts the query range, or whether keys come from a prefix cache.
 *Proof sketch:* the per-row values entering every fold step are identical, and the tree is
-fixed by p.
+fixed by p. Folding into the identity state (M = −∞, L = O = 0) returns the partial exactly,
+so it does not matter whether the first level is folded in registers or from stored partials.
 
 **GEMM.** y_mn = round(Σ over 16-wide k steps in ascending order, from zero). **Lemma 2.** Any
 tiling of M and N that preserves this per-element order gives identical rows.
 
-**Composition.** Embedding, norms, RoPE, activations and the KV store are row-wise.
-**Theorem.** In deterministic mode every activation, KV entry and logit computed for token t
-is a function of tokens 0..t only; with per-row Philox streams indexed by (seed, position),
-sampled tokens are a function of tokens 0..t and the seed only.
+**Composition.** The remaining operators are row-wise or elementwise, but two of them are
+row-wise only under conditions worth stating. RMSNorm (with residual add) reduces within one
+row in a fixed order; q/k-norm runs one warp per head; RoPE, SiLU-and-mul, the embedding
+gather and the KV store are elementwise. The sampler's softmax reduces each vocabulary row in
+one block whose access pattern depends on the row's alignment; rows are 16-byte aligned
+because 4·|V| is a multiple of 16 (|V| = 151,936), so every row is reduced the same way.
+Greedy decoding uses argmax over bf16 logits, where exact ties are common; its cross-block
+combine is batch-dependent but selects the first maximal index, a total order, so the result
+is not. **Theorem.** In deterministic mode every activation, KV entry and logit computed for
+token t is a function of tokens 0..t only; with per-row Philox streams indexed by
+(seed, position), sampled tokens are a function of tokens 0..t and the seed only.
 
 *Why snapping the maximum to a power of two is not needed:* it would make rescaling exact,
 but invariance only needs both paths to execute the same fold; snapping forces the dominant
 weight to be rounded to bf16 and doubled error for peaked attention in our reference model.
 
 ## 5 PI-Attn kernels
-- Shared warp-level functions: `chunk_qk` (G row groups share each K fragment), `scores_to_p`,
-  `chunk_pv` (accumulators for NB n-tiles, folded immediately), `fold_*`.
-- Prefill: rows are (token, head) pairs of one KV head's GQA group; K/V double-buffered via
-  cp.async with zero-filled invalid positions; two-level fold in registers; optional split
-  over fold groups with group partials and a merge kernel; wave-model planner.
-- Decode: one warp per chunk computes the GQA group's partials into a compact workspace
-  indexed by per-request chunk offsets; merge kernel realises the tree; split count free.
-- Signed zeros canonicalised (masked 0·v products), NaN-safe masking, page-table addressing
-  by shifts.
-- Inherent cost: per-row chunk partials make split prefill expensive for many rows; the
-  two-level tree confines it to group partials.
+
+All kernels target sm_80/89 with `mma.sync` m16n8k16 (bf16 in, fp32 accumulate) and share
+four warp-level functions: `chunk_qk` computes one 64-key chunk's scores for G 16-row groups
+that share each K fragment; `scores_to_p` masks, takes the chunk-local maximum, and rounds
+P to bf16; `chunk_pv` accumulates P·V over the chunk's four 16-key steps in ascending order;
+`fold_*` applies the fold with explicit `__fmaf_rn`/`__fmul_rn` and `ex2.approx`. A kernel
+is free to choose how rows and chunks map to warps and CTAs; it is not free to change any of
+these per-row sequences.
+
+*Prefill and extend.* A CTA's rows are the (token, head) pairs of one KV head's GQA group, so
+each K/V tile is loaded once for the whole group. K and V tiles stream through shared memory
+with `cp.async`; positions past the KV length are zero-filled without a global read, so
+stale cache contents never reach the arithmetic, and masked products are canonicalised to
++0. Both fold levels run in registers. For long prefixes with few query rows the planner
+splits the KV range over fold groups: each CTA writes group partials and a merge kernel
+applies the second tree level. A wave model picks the split count from SM count and work.
+
+*Decode.* One warp computes one chunk's partials for all heads of a GQA group; chunks of a
+request are strided over the CTAs of a split, so the split count is a free scheduling
+parameter. Partials go to a compact workspace indexed by an exclusive scan of per-request
+chunk counts, and a merge kernel applies both tree levels. Because requests that share
+radix-cache pages each count their chunks, the scan can exceed a workspace sized from the KV
+pool; the kernels detect this on device and switch to grouped mode — one warp folds a whole
+fold group in registers and the merge applies only the second level — which by Lemma 1 gives
+the same bits. Graph replay needs no host planning: page table, lengths and the scan are
+read or computed on device.
+
+*Cost.* Chunk-pure partials cost little in decode, where FlashDecoding already computes split
+partials. In prefill they replace one running-max online softmax per query row with a fold
+per chunk, and the canonical tree removes FlashInfer's freedom to choose KV tiling; with many
+query rows over a long cached prefix this is PI's slowest case (Section 7.3).
+
+*Row-invariant GEMM.* Hand-written weight-streaming kernels for small M (16–64 rows per CTA,
+deep `cp.async` pipelines of 128–256 k per stage) and CUTLASS 2.x sm80 tensor-op tiles for
+large M all accumulate k in ascending 16-wide MMA steps with no split-K, so they are bitwise
+identical (Lemma 2) and an autotuner picks the fastest per (N, K, M-bucket) with no
+numerical effect.
 
 ## 6 Engine integration
-- llm_infer_rust: Rust scheduler, radix prefix cache, chunked prefill, mixed batches, decode
-  CUDA graphs, segmented prefill graphs, CPU/GPU overlap. `--deterministic` switches the
-  attention backend, routes every projection through the row-invariant GEMM, and samples
-  with per-row streams. Graph replay needs no host planning (page table and lengths read on
-  device); one workspace serves eager decode and all graphs; GEMM tiles tuned during graph
-  warm-ups with a cold L2.
+
+We implement the mode in llm_infer_rust, a Rust/libtorch serving engine with a radix prefix
+cache, chunked prefill, mixed prefill/decode batches, decode CUDA graphs, segmented prefill
+graphs and CPU/GPU overlap. `--deterministic` changes three things and disables nothing:
+attention uses PI-Attn for prefill, extend and decode; every projection, including the LM
+head, goes through the row-invariant GEMM; and sampling uses a batched fork of FlashInfer's
+top-k/top-p kernel whose Philox stream for a row is keyed by (request seed, position) rather
+than by batch row. Requests without a seed get a random one, echoed in the response so any
+output can be reproduced. Sampling parameters are packed into two pinned, non-blocking
+uploads per step. GEMM tiles are tuned lazily per shape with an L2 flush, outside graph
+capture, and tuning failures fall back to a heuristic choice that is numerically identical.
 
 ## 7 Evaluation
 
