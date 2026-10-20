@@ -1,0 +1,6 @@
+Qwen3-0.6B flashinfer t=0 done
+Qwen3-0.6B flashinfer t=0.8 done
+Qwen3-0.6B deterministic t=0 done
+Qwen3-0.6B deterministic t=0.8 done
+Qwen3-1.7B flashinfer t=0 done
+Qwen3-1.7B flashinfer t=0.8 done

@@ -14,9 +14,12 @@ import time
 import requests
 
 
-def one(url, ids, out_len):
+SAMPLING = {"temperature": 0}
+
+
+def one(url, ids, out_len, seed=0):
     t0 = time.perf_counter()
-    r = requests.post(url + "/v1/completions", json={"prompt": ids, "max_tokens": out_len, "temperature": 0,
+    r = requests.post(url + "/v1/completions", json={"prompt": ids, "max_tokens": out_len, **SAMPLING, "seed": seed,
                                                      "ignore_eos": True, "stream": True,
                                                      "stream_options": {"include_usage": True}},
                       stream=True, timeout=1200)
@@ -47,7 +50,7 @@ def run(url, in_len, out_len, conc, num, seed):
     one(url, prompts[0][:16], 4)  # warm-up
     t0 = time.perf_counter()
     with cf.ThreadPoolExecutor(conc) as ex:
-        res = list(ex.map(lambda p: one(url, p, out_len), prompts))
+        res = list(ex.map(lambda ip: one(url, ip[1], out_len, ip[0]), enumerate(prompts)))
     wall = time.perf_counter() - t0
     tokens = sum(r["tokens"] for r in res)
     itl = [x for r in res for x in r["itl"]]
@@ -65,8 +68,11 @@ def main():
                     help="input:output:concurrency")
     ap.add_argument("--num", type=int, default=64)
     ap.add_argument("--repeats", type=int, default=3)
+    ap.add_argument("--temperature", type=float, default=0.0, help="> 0: sample with top_p 0.95 and per-request seeds")
     ap.add_argument("--out")
     a = ap.parse_args()
+    if a.temperature > 0:
+        SAMPLING.update({"temperature": a.temperature, "top_p": 0.95})
     rows = []
     for w in a.workloads:
         i, o, c = map(int, w.split(":"))
