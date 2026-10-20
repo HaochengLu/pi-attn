@@ -93,8 +93,8 @@ at::Tensor prefill(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Ten
         (const __nv_bfloat16*)q.data_ptr(), (__nv_bfloat16*)out.data_ptr(),
         (const __nv_bfloat16*)k_cache.data_ptr(), (const __nv_bfloat16*)v_cache.data_ptr(),
         qo_indptr.data_ptr<int32_t>(), kv_page_indptr.data_ptr<int32_t>(),
-        kv_page_indices.data_ptr<int32_t>(), kv_lens.data_ptr<int32_t>(), hq, hkv, page_size,
-        page_shift_of(page_size), (float)(sm_scale * 1.4426950408889634), splits,
+        kv_page_indices.data_ptr<int32_t>(), (int64_t)0, kv_lens.data_ptr<int32_t>(), nullptr, hq, hkv,
+        page_size, page_shift_of(page_size), (float)(sm_scale * 1.4426950408889634), splits,
         splits > 1 ? ws_o.data_ptr<float>() : nullptr,
         splits > 1 ? (float2*)ws_ml.data_ptr<float>() : nullptr, max_groups);
   };
@@ -112,7 +112,7 @@ at::Tensor prefill(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Ten
   if (splits > 1) {
     prefill_merge_kernel<<<dim3(hq, q.size(0)), kHeadDim, 0, stream>>>(
         ws_o.data_ptr<float>(), (const float2*)ws_ml.data_ptr<float>(), qo_indptr.data_ptr<int32_t>(),
-        kv_lens.data_ptr<int32_t>(), batch, (__nv_bfloat16*)out.data_ptr(), hq, max_groups);
+        kv_lens.data_ptr<int32_t>(), nullptr, batch, (__nv_bfloat16*)out.data_ptr(), hq, max_groups);
     C10_CUDA_KERNEL_LAUNCH_CHECK();
   }
   return out;
@@ -148,7 +148,7 @@ at::Tensor decode(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Tens
     kernel<<<dim3(hkv, batch, sp), warps * 32, smem, stream>>>(
         (const __nv_bfloat16*)q.data_ptr(), (const __nv_bfloat16*)k_cache.data_ptr(),
         (const __nv_bfloat16*)v_cache.data_ptr(), kv_page_indptr.data_ptr<int32_t>(),
-        kv_page_indices.data_ptr<int32_t>(), kv_lens.data_ptr<int32_t>(), ws_o.data_ptr<float>(),
+        kv_page_indices.data_ptr<int32_t>(), (int64_t)0, kv_lens.data_ptr<int32_t>(), ws_o.data_ptr<float>(),
         (float2*)ws_ml.data_ptr<float>(), hq, hkv, page_size, page_shift_of(page_size), max_chunks,
         (float)(sm_scale * 1.4426950408889634));
   };

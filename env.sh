@@ -14,3 +14,6 @@ export TMPDIR=/uniparser/users/luhaocheng/pi_attn/env/tmp
 export CC=/uniparser/users/luhaocheng/pi_attn/env/gcc13/bin/x86_64-conda-linux-gnu-gcc CXX=/uniparser/users/luhaocheng/pi_attn/env/gcc13/bin/x86_64-conda-linux-gnu-g++
 export NVCC_CCBIN=$CXX CUDAHOSTCXX=$CXX
 export FLASHINFER_NVCC=/uniparser/users/luhaocheng/pi_attn/env/bin/nvcc-nocompress FLASHINFER_WORKSPACE_BASE=/uniparser/users/luhaocheng/pi_attn/env/flashinfer-home
+# Host-level CXXFLAGS/CFLAGS (this dev box exports CXXFLAGS=-std=c++17) would override the
+# engine build.rs C++20 flags; builds must not depend on them.
+unset CXXFLAGS CFLAGS NVCC_PREPEND_FLAGS NVCC_APPEND_FLAGS

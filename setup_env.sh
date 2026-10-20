@@ -84,6 +84,9 @@ export TMPDIR=$ENV/tmp
 export CC=$ENV/gcc13/bin/x86_64-conda-linux-gnu-gcc CXX=$ENV/gcc13/bin/x86_64-conda-linux-gnu-g++
 export NVCC_CCBIN=\$CXX CUDAHOSTCXX=\$CXX
 export FLASHINFER_NVCC=$ENV/bin/nvcc-nocompress FLASHINFER_WORKSPACE_BASE=$ENV/flashinfer-home
+# Host-level CXXFLAGS/CFLAGS (this dev box exports CXXFLAGS=-std=c++17) would override the
+# engine build.rs C++20 flags; builds must not depend on them.
+unset CXXFLAGS CFLAGS NVCC_PREPEND_FLAGS NVCC_APPEND_FLAGS
 EOS
 source $ROOT/env.sh
 {
