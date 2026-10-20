@@ -1,0 +1,28 @@
+decode hq=16 b=1 kv=1024: {'fi_default': 31.3, 'fi_tc': 35.2, 'fi_fixed2048': 'err: ValueError: fixed_split_size is only supported by tensor core decode for now.', 'fi_nosplit': 31.4, 'pi_best': 21.9}
+decode hq=16 b=1 kv=8192: {'fi_default': 33.9, 'fi_tc': 38.6, 'fi_fixed2048': 'err: ValueError: fixed_split_size is only supported by tensor core decode for now.', 'fi_nosplit': 33.5, 'pi_best': 75.3}
+decode hq=16 b=1 kv=32768: {'fi_default': 170.0, 'fi_tc': 171.3, 'fi_fixed2048': 'err: ValueError: fixed_split_size is only supported by tensor core decode for now.', 'fi_nosplit': 170.0, 'pi_best': 374.2}
+decode hq=16 b=8 kv=2048: {'fi_default': 41.8, 'fi_tc': 45.9, 'fi_fixed2048': 'err: ValueError: fixed_split_size is only supported by tensor core decode for now.', 'fi_nosplit': 42.0, 'pi_best': 105.5}
+decode hq=16 b=8 kv=16384: {'fi_default': 585.1, 'fi_tc': 597.1, 'fi_fixed2048': 'err: ValueError: fixed_split_size is only supported by tensor core decode for now.', 'fi_nosplit': 585.2, 'pi_best': 1179.4}
+decode hq=16 b=32 kv=1024: {'fi_default': 169.3, 'fi_tc': 173.7, 'fi_fixed2048': 'err: ValueError: fixed_split_size is only supported by tensor core decode for now.', 'fi_nosplit': 168.3, 'pi_best': 299.6}
+decode hq=16 b=32 kv=8192: {'fi_default': 1134.7, 'fi_tc': 1170.2, 'fi_fixed2048': 'err: ValueError: fixed_split_size is only supported by tensor core decode for now.', 'fi_nosplit': 1134.9, 'pi_best': 2288.0}
+decode hq=16 b=128 kv=1024: {'fi_default': 581.3, 'fi_tc': 585.9, 'fi_fixed2048': 'err: ValueError: fixed_split_size is only supported by tensor core decode for now.', 'fi_nosplit': 581.8, 'pi_best': 1148.8}
+decode hq=16 b=128 kv=4096: {'fi_default': 2222.7, 'fi_tc': 2234.3, 'fi_fixed2048': 'err: ValueError: fixed_split_size is only supported by tensor core decode for now.', 'fi_nosplit': 2224.6, 'pi_best': 4552.2}
+prefill hq=16 b=1 q=512 prefix=0: fi 78.9us pi 49.7us ratio 0.63
+prefill hq=16 b=1 q=2048 prefix=0: fi 261.3us pi 287.7us ratio 1.10
+prefill hq=16 b=1 q=8192 prefix=0: fi 2488.0us pi 3350.7us ratio 1.35
+prefill hq=16 b=8 q=1024 prefix=0: fi 368.7us pi 499.8us ratio 1.36
+prefill hq=16 b=1 q=512 prefix=8192: fi 385.6us pi 693.4us ratio 1.80
+decode hq=32 b=1 kv=1024: {'fi_default': 31.2, 'fi_tc': 34.6, 'fi_fixed2048': 'err: ValueError: fixed_split_size is only supported by tensor core decode for now.', 'fi_nosplit': 31.1, 'pi_best': 21.5}
+decode hq=32 b=1 kv=8192: {'fi_default': 36.4, 'fi_tc': 38.0, 'fi_fixed2048': 'err: ValueError: fixed_split_size is only supported by tensor core decode for now.', 'fi_nosplit': 36.5, 'pi_best': 73.2}
+decode hq=32 b=1 kv=32768: {'fi_default': 173.2, 'fi_tc': 171.1, 'fi_fixed2048': 'err: ValueError: fixed_split_size is only supported by tensor core decode for now.', 'fi_nosplit': 173.3, 'pi_best': 379.8}
+decode hq=32 b=8 kv=2048: {'fi_default': 47.3, 'fi_tc': 46.3, 'fi_fixed2048': 'err: ValueError: fixed_split_size is only supported by tensor core decode for now.', 'fi_nosplit': 47.1, 'pi_best': 111.6}
+decode hq=32 b=8 kv=16384: {'fi_default': 594.4, 'fi_tc': 589.8, 'fi_fixed2048': 'err: ValueError: fixed_split_size is only supported by tensor core decode for now.', 'fi_nosplit': 594.5, 'pi_best': 1210.7}
+decode hq=32 b=32 kv=1024: {'fi_default': 171.0, 'fi_tc': 171.6, 'fi_fixed2048': 'err: ValueError: fixed_split_size is only supported by tensor core decode for now.', 'fi_nosplit': 172.8, 'pi_best': 306.8}
+decode hq=32 b=32 kv=8192: {'fi_default': 1153.1, 'fi_tc': 1168.5, 'fi_fixed2048': 'err: ValueError: fixed_split_size is only supported by tensor core decode for now.', 'fi_nosplit': 1150.8, 'pi_best': 2371.0}
+decode hq=32 b=128 kv=1024: {'fi_default': 594.6, 'fi_tc': 588.9, 'fi_fixed2048': 'err: ValueError: fixed_split_size is only supported by tensor core decode for now.', 'fi_nosplit': 596.9, 'pi_best': 1187.7}
+decode hq=32 b=128 kv=4096: {'fi_default': 2271.8, 'fi_tc': 2234.9, 'fi_fixed2048': 'err: ValueError: fixed_split_size is only supported by tensor core decode for now.', 'fi_nosplit': 2278.8, 'pi_best': 4708.7}
+prefill hq=32 b=1 q=512 prefix=0: fi 88.3us pi 56.8us ratio 0.64
+prefill hq=32 b=1 q=2048 prefix=0: fi 411.3us pi 480.4us ratio 1.17
+prefill hq=32 b=1 q=8192 prefix=0: fi 4512.4us pi 6275.0us ratio 1.39
+prefill hq=32 b=8 q=1024 prefix=0: fi 645.6us pi 911.1us ratio 1.41
+prefill hq=32 b=1 q=512 prefix=8192: fi 1004.9us pi 1330.3us ratio 1.32

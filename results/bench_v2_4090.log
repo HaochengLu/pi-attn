@@ -1,0 +1,28 @@
+decode hq=16 b=1 kv=1024: {'fi_default': 31.5, 'fi_tc': 34.5, 'fi_tc_fixed2048': 37.0, 'fi_nosplit': 30.4, 'pi_best': 19.7}
+decode hq=16 b=1 kv=8192: {'fi_default': 32.3, 'fi_tc': 37.0, 'fi_tc_fixed2048': 124.2, 'fi_nosplit': 31.7, 'pi_best': 66.3}
+decode hq=16 b=1 kv=32768: {'fi_default': 168.8, 'fi_tc': 172.9, 'fi_tc_fixed2048': 514.3, 'fi_nosplit': 169.6, 'pi_best': 217.6}
+decode hq=16 b=8 kv=2048: {'fi_default': 40.2, 'fi_tc': 45.0, 'fi_tc_fixed2048': 48.9, 'fi_nosplit': 40.6, 'pi_best': 98.4}
+decode hq=16 b=8 kv=16384: {'fi_default': 583.0, 'fi_tc': 588.0, 'fi_tc_fixed2048': 588.8, 'fi_nosplit': 582.6, 'pi_best': 694.2}
+decode hq=16 b=32 kv=1024: {'fi_default': 168.7, 'fi_tc': 169.8, 'fi_tc_fixed2048': 169.8, 'fi_nosplit': 168.0, 'pi_best': 190.6}
+decode hq=16 b=32 kv=8192: {'fi_default': 1133.6, 'fi_tc': 1166.6, 'fi_tc_fixed2048': 1166.9, 'fi_nosplit': 1133.1, 'pi_best': 1350.9}
+decode hq=16 b=128 kv=1024: {'fi_default': 579.3, 'fi_tc': 584.6, 'fi_tc_fixed2048': 584.6, 'fi_nosplit': 579.8, 'pi_best': 691.9}
+decode hq=16 b=128 kv=4096: {'fi_default': 2220.4, 'fi_tc': 2231.5, 'fi_tc_fixed2048': 2232.9, 'fi_nosplit': 2219.5, 'pi_best': 2683.7}
+prefill hq=16 b=1 q=512 prefix=0: fi 75.8us pi 48.0us ratio 0.63
+prefill hq=16 b=1 q=2048 prefix=0: fi 261.6us pi 395.4us ratio 1.51
+prefill hq=16 b=1 q=8192 prefix=0: fi 2472.9us pi 4975.1us ratio 2.01
+prefill hq=16 b=8 q=1024 prefix=0: fi 370.8us pi 705.4us ratio 1.90
+prefill hq=16 b=1 q=512 prefix=8192: fi 384.5us pi 1070.7us ratio 2.78
+decode hq=32 b=1 kv=1024: {'fi_default': 30.3, 'fi_tc': 33.2, 'fi_tc_fixed2048': 35.8, 'fi_nosplit': 30.5, 'pi_best': 19.3}
+decode hq=32 b=1 kv=8192: {'fi_default': 35.7, 'fi_tc': 37.5, 'fi_tc_fixed2048': 121.2, 'fi_nosplit': 36.1, 'pi_best': 64.4}
+decode hq=32 b=1 kv=32768: {'fi_default': 172.7, 'fi_tc': 171.9, 'fi_tc_fixed2048': 501.8, 'fi_nosplit': 172.2, 'pi_best': 225.9}
+decode hq=32 b=8 kv=2048: {'fi_default': 46.6, 'fi_tc': 44.9, 'fi_tc_fixed2048': 49.2, 'fi_nosplit': 46.4, 'pi_best': 99.2}
+decode hq=32 b=8 kv=16384: {'fi_default': 593.1, 'fi_tc': 588.3, 'fi_tc_fixed2048': 589.4, 'fi_nosplit': 592.5, 'pi_best': 717.2}
+decode hq=32 b=32 kv=1024: {'fi_default': 170.7, 'fi_tc': 172.1, 'fi_tc_fixed2048': 170.6, 'fi_nosplit': 170.6, 'pi_best': 197.5}
+decode hq=32 b=32 kv=8192: {'fi_default': 1149.8, 'fi_tc': 1168.8, 'fi_tc_fixed2048': 1171.7, 'fi_nosplit': 1157.9, 'pi_best': 1404.1}
+decode hq=32 b=128 kv=1024: {'fi_default': 591.3, 'fi_tc': 588.3, 'fi_tc_fixed2048': 587.8, 'fi_nosplit': 590.6, 'pi_best': 718.7}
+decode hq=32 b=128 kv=4096: {'fi_default': 2269.4, 'fi_tc': 2233.2, 'fi_tc_fixed2048': 2234.4, 'fi_nosplit': 2307.0, 'pi_best': 2784.2}
+prefill hq=32 b=1 q=512 prefix=0: fi 87.5us pi 74.1us ratio 0.85
+prefill hq=32 b=1 q=2048 prefix=0: fi 412.1us pi 702.7us ratio 1.71
+prefill hq=32 b=1 q=8192 prefix=0: fi 4498.3us pi 9638.5us ratio 2.14
+prefill hq=32 b=8 q=1024 prefix=0: fi 644.6us pi 1357.1us ratio 2.11
+prefill hq=32 b=1 q=512 prefix=8192: fi 1003.0us pi 1613.5us ratio 1.61

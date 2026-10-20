@@ -1,0 +1,14 @@
+Using Python 3.12.13 environment at: env/venv
+Checked 1 package in 292ms
+Using Python 3.12.13 environment at: env/venv
+Checked 11 packages in 341ms
+# Recorded versions (2026-10-20T02:53:40Z, host di-20260821152609-xvtzc)
+driver: NVIDIA GeForce RTX 4090 D, 535.154.05
+nvcc: Build cuda_12.6.r12.6/compiler.35059454_0
+rustc: rustc 1.95.0 (59807616e 2026-04-14)
+cargo: cargo 1.95.0 (f2d3ce0bd 2026-03-21)
+python: Python 3.12.13
+torch 2.13.0+cu126 cuda 12.6
+flashinfer 0.6.18
+host gcc: gcc (Debian 14.2.0-19) 14.2.0
+build g++: x86_64-conda-linux-gnu-g++ (conda-forge gcc 13.4.0-20) 13.4.0

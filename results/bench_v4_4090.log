@@ -1,0 +1,28 @@
+decode hq=16 b=1 kv=1024: {'fi_default': 31.3, 'fi_tc': 33.5, 'fi_tc_fixed2048': 36.2, 'fi_nosplit': 30.0, 'pi_v1': 19.5, 'pi_v2': 19.6, 'pi_v3': 19.4, 'pi_v4': 19.4, 'pi_best': 19.4}
+decode hq=16 b=1 kv=8192: {'fi_default': 32.5, 'fi_tc': 37.1, 'fi_tc_fixed2048': 124.3, 'fi_nosplit': 32.2, 'pi_v1': 36.1, 'pi_v2': 44.4, 'pi_v3': 44.6, 'pi_v4': 63.3, 'pi_best': 36.1}
+decode hq=16 b=1 kv=32768: {'fi_default': 169.7, 'fi_tc': 171.1, 'fi_tc_fixed2048': 498.5, 'fi_nosplit': 168.5, 'pi_v1': 195.7, 'pi_v2': 194.5, 'pi_v3': 195.2, 'pi_v4': 220.9, 'pi_best': 194.5}
+decode hq=16 b=8 kv=2048: {'fi_default': 40.7, 'fi_tc': 45.1, 'fi_tc_fixed2048': 48.9, 'fi_nosplit': 40.0, 'pi_v1': 50.1, 'pi_v2': 59.0, 'pi_v3': 59.2, 'pi_v4': 97.1, 'pi_best': 50.1}
+decode hq=16 b=8 kv=16384: {'fi_default': 584.2, 'fi_tc': 590.6, 'fi_tc_fixed2048': 589.4, 'fi_nosplit': 583.0, 'pi_v1': 627.4, 'pi_v2': 627.6, 'pi_v3': 629.2, 'pi_v4': 720.1, 'pi_best': 627.4}
+decode hq=16 b=32 kv=1024: {'fi_default': 166.8, 'fi_tc': 170.3, 'fi_tc_fixed2048': 171.2, 'fi_nosplit': 166.8, 'pi_v1': 163.0, 'pi_v2': 164.4, 'pi_v3': 166.4, 'pi_v4': 193.0, 'pi_best': 163.0}
+decode hq=16 b=32 kv=8192: {'fi_default': 1132.8, 'fi_tc': 1167.4, 'fi_tc_fixed2048': 1167.3, 'fi_nosplit': 1131.5, 'pi_v1': 1224.5, 'pi_v2': 1226.5, 'pi_v3': 1228.6, 'pi_v4': 1410.4, 'pi_best': 1224.5}
+decode hq=16 b=128 kv=1024: {'fi_default': 581.3, 'fi_tc': 584.6, 'fi_tc_fixed2048': 585.0, 'fi_nosplit': 581.5, 'pi_v1': 619.0, 'pi_v2': 626.3, 'pi_v3': 625.7, 'pi_v4': 717.3, 'pi_best': 619.0}
+decode hq=16 b=128 kv=4096: {'fi_default': 2227.0, 'fi_tc': 2233.0, 'fi_tc_fixed2048': 2231.8, 'fi_nosplit': 2225.9, 'pi_v1': 2443.2, 'pi_v2': 2458.4, 'pi_v3': 2454.1, 'pi_v4': 2808.1, 'pi_best': 2443.2}
+prefill hq=16 b=1 q=512 prefix=0: fi 74.3us pi 49.1us ratio 0.66
+prefill hq=16 b=1 q=2048 prefix=0: fi 262.6us pi 313.9us ratio 1.20
+prefill hq=16 b=1 q=8192 prefix=0: fi 2492.5us pi 3388.7us ratio 1.36
+prefill hq=16 b=8 q=1024 prefix=0: fi 371.1us pi 490.8us ratio 1.32
+prefill hq=16 b=1 q=512 prefix=8192: fi 387.5us pi 698.8us ratio 1.80
+decode hq=32 b=1 kv=1024: {'fi_default': 29.7, 'fi_tc': 33.5, 'fi_tc_fixed2048': 35.1, 'fi_nosplit': 29.6, 'pi_v1': 19.3, 'pi_v2': 19.1, 'pi_v3': 19.0, 'pi_v4': 19.1, 'pi_best': 19.0}
+decode hq=32 b=1 kv=8192: {'fi_default': 36.2, 'fi_tc': 36.7, 'fi_tc_fixed2048': 121.2, 'fi_nosplit': 35.2, 'pi_v1': 36.4, 'pi_v2': 44.7, 'pi_v3': 45.0, 'pi_v4': 63.8, 'pi_best': 36.4}
+decode hq=32 b=1 kv=32768: {'fi_default': 172.3, 'fi_tc': 170.4, 'fi_tc_fixed2048': 500.9, 'fi_nosplit': 171.7, 'pi_v1': 201.3, 'pi_v2': 200.2, 'pi_v3': 199.9, 'pi_v4': 226.8, 'pi_best': 199.9}
+decode hq=32 b=8 kv=2048: {'fi_default': 46.4, 'fi_tc': 44.8, 'fi_tc_fixed2048': 48.9, 'fi_nosplit': 46.0, 'pi_v1': 51.0, 'pi_v2': 60.1, 'pi_v3': 60.2, 'pi_v4': 98.6, 'pi_best': 51.0}
+decode hq=32 b=8 kv=16384: {'fi_default': 593.3, 'fi_tc': 590.1, 'fi_tc_fixed2048': 589.6, 'fi_nosplit': 594.1, 'pi_v1': 661.0, 'pi_v2': 659.3, 'pi_v3': 661.2, 'pi_v4': 738.0, 'pi_best': 659.3}
+decode hq=32 b=32 kv=1024: {'fi_default': 170.3, 'fi_tc': 170.8, 'fi_tc_fixed2048': 170.5, 'fi_nosplit': 169.8, 'pi_v1': 169.1, 'pi_v2': 171.6, 'pi_v3': 171.0, 'pi_v4': 198.6, 'pi_best': 169.1}
+decode hq=32 b=32 kv=8192: {'fi_default': 1146.4, 'fi_tc': 1167.6, 'fi_tc_fixed2048': 1166.6, 'fi_nosplit': 1145.4, 'pi_v1': 1304.5, 'pi_v2': 1306.4, 'pi_v3': 1307.5, 'pi_v4': 1457.3, 'pi_best': 1304.5}
+decode hq=32 b=128 kv=1024: {'fi_default': 592.0, 'fi_tc': 589.2, 'fi_tc_fixed2048': 589.4, 'fi_nosplit': 591.6, 'pi_v1': 659.0, 'pi_v2': 665.9, 'pi_v3': 666.5, 'pi_v4': 739.1, 'pi_best': 659.0}
+decode hq=32 b=128 kv=4096: {'fi_default': 2276.9, 'fi_tc': 2236.7, 'fi_tc_fixed2048': 2237.1, 'fi_nosplit': 2290.7, 'pi_v1': 2603.7, 'pi_v2': 2618.4, 'pi_v3': 2614.9, 'pi_v4': 2891.3, 'pi_best': 2603.7}
+prefill hq=32 b=1 q=512 prefix=0: fi 84.5us pi 61.2us ratio 0.72
+prefill hq=32 b=1 q=2048 prefix=0: fi 410.5us pi 503.0us ratio 1.23
+prefill hq=32 b=1 q=8192 prefix=0: fi 4526.9us pi 6358.1us ratio 1.40
+prefill hq=32 b=8 q=1024 prefix=0: fi 648.5us pi 915.0us ratio 1.41
+prefill hq=32 b=1 q=512 prefix=8192: fi 1007.4us pi 1355.9us ratio 1.35
