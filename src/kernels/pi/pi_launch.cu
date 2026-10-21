@@ -15,6 +15,7 @@
 
 #include "gemm_cutlass.cuh"
 #include "gemm_inv.cuh"
+
 #include "pi_attn_kernels.cu"
 
 using namespace pi_attn;
@@ -119,36 +120,11 @@ const char* pi_attn_decode(const void* q, const void* k_cache, const void* v_cac
   return check_launch("pi decode");
 }
 
-// Prefill planner: split count over fold groups (wave model: two CTAs per SM, a
-// CTA's time ~ the tiles it runs) and max_groups for the split workspace.
+// Prefill planner: split count over fold groups and max_groups for the split
+// workspace (prefill_plan in pi_attn_kernels.cu).
 void pi_attn_prefill_plan(int batch, int num_qo_heads, int num_kv_heads, int max_q_len,
                           int max_kv_len, int* splits, int* max_groups) {
-  const DeviceInfo dev = device_info();
-  const int group = num_qo_heads / std::max(num_kv_heads, 1);
-  const int64_t rows = (int64_t)max_q_len * group;
-  const int64_t ctas = (rows + kPrefillWarps * 16 - 1) / (kPrefillWarps * 16) * num_kv_heads * batch;
-  const int64_t slots = 2 * (int64_t)dev.sms;
-  *max_groups = (max_kv_len - 1) / kGroupKeys + 1;
-  const int64_t tiles = (max_kv_len + kTile - 1) / kTile;
-  int64_t best = INT64_MAX;
-  *splits = 1;
-  // Split mode keeps one f32 partial per (row, head, fold group); stay within the
-  // same 256 MiB a FlashInfer float workspace typically takes.
-  const int64_t ws_bytes = (int64_t)batch * max_q_len * num_qo_heads * *max_groups * (kHeadDim + 2) * 4;
-  // Splitting only pays when the row tiles alone leave SM slots idle (short
-  // extends over long prefixes); otherwise the per-group workspace traffic and
-  // the causal imbalance the wave model ignores make it a loss.
-  const int max_splits = ws_bytes <= (256ll << 20) && ctas < slots ? *max_groups : 1;
-  for (int sp = 1; sp <= max_splits; ++sp) {
-    const int64_t groups_per = (*max_groups + sp - 1) / sp;
-    const int64_t per = std::min<int64_t>(tiles, groups_per * kGroupTiles);
-    const int64_t waves = (ctas * sp + slots - 1) / slots;
-    const int64_t cost = waves * per + (sp > 1 ? per / 8 : 0);  // + workspace / merge
-    if (cost < best) {
-      best = cost;
-      *splits = sp;
-    }
-  }
+  prefill_plan(batch, num_qo_heads, num_kv_heads, max_q_len, max_kv_len, device_info().sms, splits, max_groups);
 }
 
 // q/out: [total_q, Hq, 128] bf16 contiguous; qo_indptr: [batch + 1] int32;
@@ -192,16 +168,17 @@ namespace {
 
 // Kernel ids: 1/2/4 small (4 warps, G = 1/2/4), 6..9 small narrow, 20..25 small with
 // deep weight-streaming pipelines, 30..33 balanced (one CTA per SM; 30/31 M <= 16,
-// 32 M <= 32, 33 M <= 64), 10..13 CUTLASS. All realise the same k order.
+// 32 M <= 32, 33 M <= 64), 40..43 stream-K (M <= 8), 10..13 CUTLASS. All realise the
+// same k order.
 const std::vector<int>& small_kernels() {
-  static const std::vector<int> v{1, 2, 4, 20, 21, 22, 24, 25, 30, 31, 32, 33};
+  static const std::vector<int> v{1, 2, 4, 20, 21, 22, 24, 25, 30, 31, 32, 33, 40, 41, 42, 43};
   return v;
 }
 // Largest M a kernel id supports (balanced kernels hold all rows in one pass).
-int kernel_max_m(int k) { return k == 30 || k == 31 ? 16 : k == 32 ? 32 : k == 33 ? 64 : 1 << 30; }
+int kernel_max_m(int k) { return k == 30 || k == 31 ? 16 : k == 32 ? 32 : k == 33 ? 64 : k >= 40 ? 8 : 1 << 30; }
 
 // K granularity a kernel id requires.
-int kernel_bk(int k) { return k == 21 || k == 22 || k == 30 ? 256 : k >= 20 && k <= 33 ? 128 : 64; }
+int kernel_bk(int k) { return k == 21 || k == 22 || k == 30 || k == 43 ? 256 : k >= 20 ? 128 : 64; }
 const std::vector<int>& large_kernels() {
   static const std::vector<int> v{10, 11, 12, 13};
   return v;
@@ -251,6 +228,10 @@ cudaError_t run_gemm(int k, const void* x, int64_t ldx, const void* w, OutT* y, 
     case 31: return run_balanced<OutT, 1, 128, 6>(x, ldx, w, y, ldy, M, N, K, device_info().sms, device_info().smem_optin, st);
     case 32: return run_balanced<OutT, 2, 128, 4>(x, ldx, w, y, ldy, M, N, K, device_info().sms, device_info().smem_optin, st);
     case 33: return run_balanced<OutT, 4, 128, 3>(x, ldx, w, y, ldy, M, N, K, device_info().sms, device_info().smem_optin, st);
+    case 40: return run_streamk<OutT, 128, 4>(x, ldx, w, y, ldy, M, N, K, 2, device_info().sms, st);
+    case 41: return run_streamk<OutT, 128, 4>(x, ldx, w, y, ldy, M, N, K, 3, device_info().sms, st);
+    case 42: return run_streamk<OutT, 128, 4>(x, ldx, w, y, ldy, M, N, K, 4, device_info().sms, st);
+    case 43: return run_streamk<OutT, 256, 3>(x, ldx, w, y, ldy, M, N, K, 3, device_info().sms, st);
     case 10: return CutlassGemm<OutT, 128, 256, 32, 64, 64, 3>::run(x, ldx, w, y, ldy, M, N, K, st);
     case 11: return CutlassGemm<OutT, 128, 128, 32, 64, 64, 4>::run(x, ldx, w, y, ldy, M, N, K, st);
     case 12: return CutlassGemm<OutT, 64, 128, 32, 32, 64, 4>::run(x, ldx, w, y, ldy, M, N, K, st);

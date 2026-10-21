@@ -292,4 +292,126 @@ cudaError_t run_balanced(const void* x, int64_t ldx, const void* w, OutT* y, int
   return cudaGetLastError();
 }
 
+// ------------------------------------------------------------- stream-K, M <= 8 ----
+// Decode GEMMs whose n8 tiles divide unevenly over the SMs (8B down: 512 tiles on 114
+// SMs) leave the busiest SMs streaming one tile more than the average. Here the work
+// is the (n8 tile, k tile) steps of all tiles, split into equal contiguous ranges over
+// one warp-sized worker per (SM, warp). A tile cut between workers w and w + 1 is
+// still one canonical chain: w runs its first k steps from zero and hands its fp32
+// accumulator to w + 1, which continues the chain from it; bits are those of the
+// uncut chain. Each worker runs its handed-off prefix first and the continuation
+// last, so the wait is short, and waits only on a lower worker whose prefix never
+// waits, so it cannot deadlock (all CTAs are resident: grid <= SMs). Only for S = 1
+// shapes. Workers have their own cp.async rings (8 X rows, 8 W rows; rows 8..15 of the
+// MMA's A operand are zero, as the zero-filled rows of the other kernels). The
+// handoff state is per device and per translation unit, as g_seg_ws.
+constexpr int kSkMaxWorkers = 2048;
+static __device__ float g_sk_acc[kSkMaxWorkers * 128];
+static __device__ int g_sk_flag[kSkMaxWorkers];
+
+template <typename OutT, int BK, int STAGES>
+__global__ void gemm_streamk_kernel(const __nv_bfloat16* __restrict__ x, int64_t ldx,
+                                    const __nv_bfloat16* __restrict__ w, OutT* __restrict__ y,
+                                    int64_t ldy, int M, int N, int K, int workers) {
+  constexpr int kStride = BK + 8, kStage = 16 * kStride;
+  extern __shared__ __align__(16) __nv_bfloat16 smem[];
+  const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
+  const int wid = blockIdx.x * (blockDim.x >> 5) + warp;
+  if (wid >= workers) return;
+  __nv_bfloat16* ring = smem + warp * STAGES * kStage;
+  const int kt_n = K / BK;
+  const int64_t total = (int64_t)(N / 8) * kt_n;
+  const int64_t s0 = wid * total / workers, s1 = (wid + 1) * total / workers;
+  const int g = lane >> 2, t = lane & 3, mat = lane >> 3, r8 = lane & 7;
+
+  // Tile u, k tiles [ka, kb): from zero (ka == 0) or from worker wid - 1's
+  // accumulator; writes y (kb == kt_n) or hands the accumulator to wid + 1.
+  auto piece = [&](int u, int ka, int kb) {
+    auto issue = [&](int kt) {
+      __nv_bfloat16* st = ring + (kt % STAGES) * kStage;
+      constexpr int kVec = BK / 8;
+#pragma unroll
+      for (int i = lane; i < 16 * kVec; i += 32) {
+        const int r = i / kVec, v = i % kVec, kc = kt * BK + v * 8;
+        if (r >= 8) cp_async16(st + r * kStride + v * 8, w + ((int64_t)u * 8 + r - 8) * K + kc, 16);
+        else if (r < M) cp_async16(st + r * kStride + v * 8, x + (int64_t)r * ldx + kc, 16);
+        else cp_async16(st + r * kStride + v * 8, x, 0);
+      }
+    };
+#pragma unroll
+    for (int s = 0; s < STAGES - 1; ++s) {
+      if (ka + s < kb) issue(ka + s);
+      cp_async_commit();
+    }
+    float acc[4] = {0.f, 0.f, 0.f, 0.f};
+    if (ka > 0) {
+      if (lane == 0) {
+        while (atomicAdd(g_sk_flag + wid - 1, 0) == 0) {}
+        g_sk_flag[wid - 1] = 0;  // ready for the next launch
+      }
+      __syncwarp();
+      __threadfence();
+#pragma unroll
+      for (int i = 0; i < 4; ++i) acc[i] = __ldcg(g_sk_acc + (wid - 1) * 128 + lane * 4 + i);
+    }
+    for (int kt = ka; kt < kb; ++kt) {
+      cp_async_wait<STAGES - 2>();
+      __syncwarp();
+      if (kt + STAGES - 1 < kb) issue(kt + STAGES - 1);
+      cp_async_commit();
+      const __nv_bfloat16* sx = ring + (kt % STAGES) * kStage;
+      const __nv_bfloat16* sw = sx + 8 * kStride;
+#pragma unroll
+      for (int ks = 0; ks < BK / 16; ks += 2) {
+        uint32_t b[4];
+        ldmatrix_x4(b, sw + r8 * kStride + ks * 16 + mat * 8);
+#pragma unroll
+        for (int kk = 0; kk < 2; ++kk) {
+          uint32_t a[4];
+          ldmatrix_x4(a, sx + r8 * kStride + (ks + kk) * 16 + (mat >> 1) * 8);
+          a[1] = a[3] = 0u;
+          mma_bf16(acc, a, b[2 * kk], b[2 * kk + 1]);
+        }
+      }
+      __syncwarp();
+    }
+    cp_async_wait<0>();
+    __syncwarp();
+    if (kb < kt_n) {
+#pragma unroll
+      for (int i = 0; i < 4; ++i) g_sk_acc[wid * 128 + lane * 4 + i] = acc[i];
+      __threadfence();
+      __syncwarp();
+      if (lane == 0) atomicExch(g_sk_flag + wid, 1);
+    } else if (g < M) {
+      const int n = u * 8 + t * 2;
+      if constexpr (sizeof(OutT) == 2) {
+        *reinterpret_cast<__nv_bfloat162*>(y + (int64_t)g * ldy + n) = __floats2bfloat162_rn(acc[0], acc[1]);
+      } else {
+        *reinterpret_cast<float2*>(y + (int64_t)g * ldy + n) = make_float2(acc[0], acc[1]);
+      }
+    }
+  };
+
+  const int64_t h_end = min(s1, (s0 + kt_n - 1) / kt_n * kt_n);  // end of the continuation
+  const int64_t tail0 = max(h_end, s1 / kt_n * kt_n);            // start of the handed-off prefix
+  if (tail0 < s1) piece((int)(tail0 / kt_n), 0, (int)(s1 - tail0));
+  for (int64_t s = h_end; s < tail0; s += kt_n) piece((int)(s / kt_n), 0, kt_n);
+  if (s0 < h_end) piece((int)(s0 / kt_n), (int)(s0 % kt_n), (int)((h_end - 1) % kt_n) + 1);
+}
+
+// Launch: `warps` workers per SM, one CTA per SM; at most one worker per n8 tile, so
+// a tile is cut at most once.
+template <typename OutT, int BK, int STAGES>
+cudaError_t run_streamk(const void* x, int64_t ldx, const void* w, OutT* y, int64_t ldy, int M, int N,
+                        int K, int warps, int sms, cudaStream_t st) {
+  if (M > 8 || K % BK || gemm_segments(N, K) != 1) return cudaErrorInvalidValue;
+  const int workers = min(min(N / 8, sms * warps), kSkMaxWorkers);
+  const size_t smem = (size_t)warps * STAGES * 16 * (BK + 8) * sizeof(__nv_bfloat16);
+  cudaFuncSetAttribute(gemm_streamk_kernel<OutT, BK, STAGES>, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)smem);
+  gemm_streamk_kernel<OutT, BK, STAGES><<<(workers + warps - 1) / warps, warps * 32, smem, st>>>(
+      (const __nv_bfloat16*)x, ldx, (const __nv_bfloat16*)w, y, ldy, M, N, K, workers);
+  return cudaGetLastError();
+}
+
 }  // namespace pi_gemm

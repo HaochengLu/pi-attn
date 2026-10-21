@@ -1,5 +1,12 @@
 // PI-Attn kernels: paged prefill / extend, decode (one CTA per fold group), merges.
 // KV cache layout per layer: [num_pages, page_size, num_kv_heads, 128] bf16.
+#include <algorithm>
+#include <mutex>
+#include <map>
+#include <queue>
+#include <tuple>
+#include <vector>
+
 #include "pi_attn.cuh"
 
 namespace pi_attn {
@@ -204,6 +211,92 @@ __global__ void __launch_bounds__(kHeadDim)
     O = fold_elem(O, ws_o[(base + fg) * kHeadDim + d], f);
   }
   out[((int64_t)row * num_qo_heads + h) * kHeadDim + d] = finish(O, L);
+}
+
+
+// Causal prefill makespan in key-tile units for `sp` splits: CTAs are dispatched in
+// launch order (tile fastest) to the earliest free of `slots` slots; a CTA costs the
+// key tiles it runs plus a fixed 4, and split mode adds the partial-workspace write and
+// merge (0.02 per 1000 row-head-groups). Fitted on results/kernels/prefill_configs.txt.
+inline double prefill_makespan(int batch, int num_qo_heads, int num_kv_heads, int max_q_len, int max_kv_len,
+                        int sp, int64_t slots) {
+  const int group = num_qo_heads / std::max(num_kv_heads, 1), rows = max_q_len * group;
+  const int row_tiles = (rows + kPrefillWarps * 16 - 1) / (kPrefillWarps * 16), prefix = max_kv_len - max_q_len;
+  std::priority_queue<double, std::vector<double>, std::greater<double>> free_at;
+  for (int64_t i = 0; i < slots; ++i) free_at.push(0.0);
+  double end = 0.0;
+  for (int z = 0; z < batch * sp; ++z)
+    for (int y = 0; y < num_kv_heads; ++y)
+      for (int x = 0; x < row_tiles; ++x) {
+        const int last_pos = prefix + (std::min((x + 1) * kPrefillWarps * 16, rows) - 1) / group;
+        const int tg = last_pos / kGroupKeys + 1, per = (tg + sp - 1) / sp, gb = (z % sp) * per;
+        const int ge = std::min(tg, gb + per);
+        if (gb >= ge) continue;
+        const int work = std::min(ge * kGroupTiles, last_pos / kTile + 1) - gb * kGroupTiles + 4;
+        const double t = free_at.top() + work;
+        free_at.pop();
+        free_at.push(t);
+        end = std::max(end, t);
+      }
+  if (sp > 1) end += 0.02e-3 * batch * max_q_len * num_qo_heads * ((max_kv_len - 1) / kGroupKeys + 1);
+  return end;
+}
+
+// Prefill planner: split count over fold groups and max_groups for the split
+// workspace. Splits never change bits, only speed.
+inline void prefill_plan(int batch, int num_qo_heads, int num_kv_heads, int max_q_len, int max_kv_len,
+                         int sms, int* splits, int* max_groups) {
+  const int group = num_qo_heads / std::max(num_kv_heads, 1);
+  const int64_t rows = (int64_t)max_q_len * group;
+  const int64_t ctas = (rows + kPrefillWarps * 16 - 1) / (kPrefillWarps * 16) * num_kv_heads * batch;
+  const int64_t slots = 2 * (int64_t)sms;
+  *max_groups = (max_kv_len - 1) / kGroupKeys + 1;
+  const int64_t tiles = (max_kv_len + kTile - 1) / kTile;
+  *splits = 1;
+  // Split mode keeps one f32 partial per (row, head, fold group); stay within the
+  // same 256 MiB a FlashInfer float workspace typically takes.
+  const int64_t ws_bytes = (int64_t)batch * max_q_len * num_qo_heads * *max_groups * (kHeadDim + 2) * 4;
+  if (ws_bytes > (256ll << 20)) return;
+  if (ctas < slots) {
+    // Row tiles alone leave SM slots idle (short extends over long prefixes): a
+    // wave model over every split count (a CTA's time ~ the tiles it runs).
+    int64_t best = INT64_MAX;
+    for (int sp = 1; sp <= *max_groups; ++sp) {
+      const int64_t groups_per = (*max_groups + sp - 1) / sp;
+      const int64_t per = std::min<int64_t>(tiles, groups_per * kGroupTiles);
+      const int64_t waves = (ctas * sp + slots - 1) / slots;
+      const int64_t cost = waves * per + (sp > 1 ? per / 8 : 0);  // + workspace / merge
+      if (cost < best) {
+        best = cost;
+        *splits = sp;
+      }
+    }
+  } else if (ctas <= 4 * slots) {
+    // A few waves: the causal tail (late row tiles run the most key tiles) can
+    // still leave SMs idle; simulate the dispatch for 1, 2, 4, 8 splits. The
+    // simulation costs more host time than a short kernel, so decisions are
+    // memoised per shape, with the prefix rounded up to whole fold groups.
+    const int kv_key = *max_groups * kGroupKeys;
+    const auto key = std::make_tuple(batch, num_qo_heads, num_kv_heads, max_q_len, kv_key);
+    static std::mutex mu;
+    static std::map<std::tuple<int, int, int, int, int>, int> memo;
+    std::lock_guard<std::mutex> lock(mu);
+    auto it = memo.find(key);
+    if (it != memo.end()) {
+      *splits = it->second;
+      return;
+    }
+    const int q_key = std::min(max_q_len, kv_key);
+    double best = prefill_makespan(batch, num_qo_heads, num_kv_heads, q_key, kv_key, 1, slots);
+    for (int sp = 2; sp <= 8 && sp <= *max_groups; sp *= 2) {
+      const double c = prefill_makespan(batch, num_qo_heads, num_kv_heads, q_key, kv_key, sp, slots);
+      if (c < best) {
+        best = c;
+        *splits = sp;
+      }
+    }
+    if (memo.size() < 4096) memo.emplace(key, *splits);
+  }
 }
 
 
