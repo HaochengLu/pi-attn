@@ -18,7 +18,7 @@ def burst(fn, Ws, n=32, reps=7):
     return sorted(ts[1:])[reps // 2]
 
 M = int(sys.argv[1]) if len(sys.argv) > 1 else 1
-shapes = {"0.6B down": (1024, 3072), "1.7B qkv": (4096, 2048), "1.7B o": (2048, 2048), "1.7B gateup": (12288, 2048),
+shapes = {"0.6B lm_head": (151936, 1024), "1.7B lm_head": (151936, 2048), "8B lm_head": (151936, 4096), "0.6B down": (1024, 3072), "1.7B qkv": (4096, 2048), "1.7B o": (2048, 2048), "1.7B gateup": (12288, 2048),
           "1.7B down": (2048, 6144), "8B qkv": (6144, 4096), "8B o": (4096, 4096), "8B gateup": (24576, 4096),
           "8B down": (4096, 12288)}
 for name, (N, K) in shapes.items():

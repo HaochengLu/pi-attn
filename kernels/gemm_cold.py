@@ -29,15 +29,28 @@ SHAPES = {"0.6B qkv": (4096, 1024), "0.6B o": (1024, 2048), "0.6B gateup": (6144
           "1.7B gateup": (12288, 2048), "1.7B down": (2048, 6144), "1.7B lm_head": (151936, 2048),
           "8B qkv": (6144, 4096), "8B o": (4096, 4096), "8B gateup": (24576, 4096), "8B down": (4096, 12288),
           "8B lm_head": (151936, 4096)}
-KERNELS = (1, 2, 4, 6, 7, 8, 9, 10, 11, 12, 13, 20, 21, 22, 23, 24, 25, 30, 31, 32, 33)
-BK = {20: 128, 21: 256, 22: 256, 23: 256, 24: 128, 25: 128, 30: 256, 31: 128, 32: 128, 33: 128}
-for M in [int(a) for a in sys.argv[1:]] or (1, 8, 32):
-    for name, (N, K) in SHAPES.items():
-        W = (torch.randn(N, K, device="cuda") * 0.02).bfloat16()
-        X = torch.randn(M, K, device="cuda").bfloat16()
-        cb = cold(lambda: torch.matmul(X, W.T))
-        res = {k: cold(lambda: G.ext.linear(X, W, k, False)) for k in KERNELS if K % BK.get(k, 64) == 0 and M <= {30: 16, 31: 16, 32: 32, 33: 64}.get(k, 1 << 30)}
-        best = min(res, key=res.get)
-        mb = N * K * 2 / 1e6
-        print(f"M={M:2d} {name:13s} {mb:6.1f}MB cublas {cb:7.1f}us ({mb / cb * 1e3:5.0f} GB/s) | best pi k{best} {res[best]:7.1f}us "
-              f"({mb / res[best] * 1e3:5.0f} GB/s) ratio {res[best] / cb:.2f} | bal {min((res[k], k) for k in res if k >= 30)[1] if any(k >= 30 for k in res) else 0}:{min((res[k] for k in res if k >= 30), default=0):.1f} k13 {res.get(13, 0):.1f}", flush=True)
+KERNELS = (1, 2, 4, 6, 7, 8, 9, 10, 11, 12, 13, 20, 21, 22, 23, 24, 25, 30, 31, 32, 33, 40, 41, 42, 43)
+BK = {20: 128, 21: 256, 22: 256, 23: 256, 24: 128, 25: 128, 30: 256, 31: 128, 32: 128, 33: 128,
+      40: 128, 41: 128, 42: 128, 43: 256}
+MAX_M = {30: 16, 31: 16, 32: 32, 33: 64, 40: 8, 41: 8, 42: 8, 43: 8}
+
+
+def usable(k, M, N, K):  # the kernel ids that run this shape (stream-K: unsegmented shapes only)
+    return K % BK.get(k, 64) == 0 and M <= MAX_M.get(k, 1 << 30) and not (k >= 40 and G.gemm_segments(N, K) > 1)
+
+
+def main():
+    for M in [int(a) for a in sys.argv[1:]] or (1, 8, 32):
+        for name, (N, K) in SHAPES.items():
+            W = (torch.randn(N, K, device="cuda") * 0.02).bfloat16()
+            X = torch.randn(M, K, device="cuda").bfloat16()
+            cb = cold(lambda: torch.matmul(X, W.T))
+            res = {k: cold(lambda: G.ext.linear(X, W, k, False)) for k in KERNELS if usable(k, M, N, K)}
+            best = min(res, key=res.get)
+            mb = N * K * 2 / 1e6
+            print(f"M={M:2d} {name:13s} {mb:6.1f}MB cublas {cb:7.1f}us ({mb / cb * 1e3:5.0f} GB/s) | best pi k{best} {res[best]:7.1f}us "
+                  f"({mb / res[best] * 1e3:5.0f} GB/s) ratio {res[best] / cb:.2f} | bal {min((res[k], k) for k in res if k >= 30)[1] if any(k >= 30 for k in res) else 0}:{min((res[k] for k in res if k >= 30), default=0):.1f} k13 {res.get(13, 0):.1f}", flush=True)
+
+
+if __name__ == "__main__":
+    main()

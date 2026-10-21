@@ -6,9 +6,9 @@ import sys
 import torch
 
 import test_gemm as G
-from gemm_cold import BK, KERNELS, SHAPES
+from gemm_cold import KERNELS, SHAPES, usable
 
-POOL = 192 << 20  # > 2x L2
+POOL = 600 << 20  # > 8x L2: every launch streams its weights from DRAM
 
 
 def burst(fn, Ws, X, n=64, reps=5):
@@ -26,15 +26,12 @@ def burst(fn, Ws, X, n=64, reps=5):
 
 for M in [int(a) for a in sys.argv[1:]] or (1,):
     for name, (N, K) in SHAPES.items():
-        if "lm_head" in name:
-            continue
-        copies = max(2, POOL // (N * K * 2))
+        copies = max(4, POOL // (N * K * 2))
         Ws = [(torch.randn(N, K, device="cuda") * 0.02).bfloat16() for _ in range(copies)]
         X = torch.randn(M, K, device="cuda").bfloat16()
         cb = burst(lambda x, w: torch.matmul(x, w.T), Ws, X)
-        res = {k: burst(lambda x, w: G.ext.linear(x, w, k, False), Ws, X) for k in KERNELS
-               if K % BK.get(k, 64) == 0 and M <= {30: 16, 31: 16, 32: 32, 33: 64}.get(k, 1 << 30)}
+        res = {k: burst(lambda x, w: G.ext.linear(x, w, k, False), Ws, X) for k in KERNELS if usable(k, M, N, K)}
         top = sorted(res, key=res.get)[:4]
         print(f"M={M} {name:12s} cublas {cb:6.2f}us | " + " ".join(f"k{k} {res[k]:6.2f}" for k in top)
               + f" | ratio {res[top[0]] / cb:.2f}", flush=True)
-        del Ws
+        del Ws; torch.cuda.empty_cache()

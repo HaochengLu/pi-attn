@@ -63,6 +63,18 @@ at::Tensor linear(at::Tensor x, at::Tensor w, int64_t kernel, bool out_fp32) {
       else e = run_balanced<OutT, 4, 128, 3>(xp, ld, wp, out, N, M, N, K, sms, optin, stream);
       TORCH_CHECK(e == cudaSuccess, "balanced gemm ", k, " failed (M too large for it?)");
     }
+    // 40..43: stream-K, M <= 8, S = 1 shapes: (BK, STAGES, warps per SM) = (128,4,2) (128,4,3) (128,4,4) (256,3,3).
+    else if (k >= 40 && k <= 43) {
+      int sms = 0;
+      cudaDeviceGetAttribute(&sms, cudaDevAttrMultiProcessorCount, x.get_device());
+      const void* xp = x.data_ptr();
+      const void* wp = w.data_ptr();
+      const int64_t ld = x.stride(0);
+      cudaError_t e;
+      if (k == 43) e = run_streamk<OutT, 256, 3>(xp, ld, wp, out, N, M, N, K, 3, sms, stream);
+      else e = run_streamk<OutT, 128, 4>(xp, ld, wp, out, N, M, N, K, k - 38, sms, stream);
+      TORCH_CHECK(e == cudaSuccess, "stream-K gemm ", k, " failed (M > 8 or a segmented shape?)");
+    }
     else if (k >= 10 && k < 20) {
       cudaError_t e = cudaSuccess;
       const void* xp = x.data_ptr();

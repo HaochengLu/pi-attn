@@ -55,12 +55,16 @@ def fi_try(fn):
         return f"err:{type(e).__name__}"
 
 
+def best_fi(r):  # fastest non-deterministic FlashInfer decode (CUDA-core or tensor-core)
+    return min(v for k, v in r.items() if k in ("fi", "fi_tc") and isinstance(v, (int, float)))
+
+
 def bench_decode(batch, kv_len, hq, hkv, shared=False):
     k, v, indptr, indices, last, lens = make_cache(batch, kv_len, hkv, shared)
     q = torch.randn(batch, hq, D, device=dev, dtype=torch.bfloat16)
     ws = torch.empty(256 << 20, device=dev, dtype=torch.uint8)
     res = {}
-    for name, kw, tc in [("fi", {}, False), ("fi_det_fixed2048", {"fixed_split_size": 2048}, True),
+    for name, kw, tc in [("fi", {}, False), ("fi_tc", {}, True), ("fi_det_fixed2048", {"fixed_split_size": 2048}, True),
                          ("fi_nosplit", {"disable_split_kv": True}, False)]:
         def run():
             w = flashinfer.BatchDecodeWithPagedKVCacheWrapper(ws, "NHD", use_tensor_cores=tc)
@@ -110,12 +114,12 @@ def main():
             r = bench_decode(batch, kv, hq, hkv)
             rows.append({"kind": "decode", "hq": hq, "hkv": hkv, "batch": batch, "kv_len": kv, **r})
             print(f"decode  hq={hq:2d} b={batch:3d} kv={kv:5d}: " + " ".join(f"{k}={v}" for k, v in r.items())
-                  + f" | pi/fi={r['pi'] / r['fi']:.2f}", flush=True)
+                  + f" | pi/fi={r['pi'] / r['fi']:.2f} pi/best_fi={r['pi'] / best_fi(r):.2f}", flush=True)
         for batch, kv in DECODE_SHARED:
             r = bench_decode(batch, kv, hq, hkv, shared=True)
             rows.append({"kind": "decode_shared", "hq": hq, "hkv": hkv, "batch": batch, "kv_len": kv, **r})
             print(f"decode  hq={hq:2d} b={batch:3d} kv={kv:5d} shared: " + " ".join(f"{k}={v}" for k, v in r.items())
-                  + f" | pi/fi={r['pi'] / r['fi']:.2f}", flush=True)
+                  + f" | pi/fi={r['pi'] / r['fi']:.2f} pi/best_fi={r['pi'] / best_fi(r):.2f}", flush=True)
         for batch, ql, pre in PREFILL:
             r = bench_prefill(batch, ql, pre, hq, hkv)
             rows.append({"kind": "prefill", "hq": hq, "hkv": hkv, "batch": batch, "q_len": ql, "prefix": pre, **r})

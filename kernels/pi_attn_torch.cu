@@ -32,8 +32,8 @@ static int sm_count(const at::Tensor& t) {
 }
 
 // q: [total_q, Hq, 128]; k/v_cache: [pages, page_size, Hkv, 128]. kv_lens[b] >= q_len[b] >= 1.
-// kv_splits: 0 = the engine planner's choice (same wave model and workspace
-// budget), n >= 1 forces n splits over fold groups.
+// kv_splits: 0 = the engine planner's choice (prefill_plan), n >= 1 forces n
+// splits over fold groups.
 at::Tensor prefill(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Tensor qo_indptr,
                    at::Tensor kv_page_indptr, at::Tensor kv_page_indices, at::Tensor kv_lens,
                    int64_t max_q_len, int64_t max_kv_len, double sm_scale, int64_t kv_splits) {
@@ -47,20 +47,8 @@ at::Tensor prefill(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Ten
   constexpr int kRows = kPrefillWarps * 16;
   const int tiles = (int)((max_q_len * group + kRows - 1) / kRows);
   const int max_groups = (int)((max_kv_len - 1) / kGroupKeys + 1);
-  int splits = (int)kv_splits;
-  if (splits == 0) {  // as pi_attn_prefill_plan
-    const int64_t ctas = (int64_t)tiles * hkv * batch, slots = 2 * (int64_t)sm_count(q);
-    const int64_t n_tiles = (max_kv_len + kTile - 1) / kTile;
-    const int64_t ws_bytes = (int64_t)batch * max_q_len * hq * max_groups * (kHeadDim + 2) * 4;
-    const int max_splits = ws_bytes <= (256ll << 20) && ctas < slots ? max_groups : 1;
-    int64_t best = INT64_MAX;
-    splits = 1;
-    for (int sp = 1; sp <= max_splits; ++sp) {
-      const int64_t per = std::min<int64_t>(n_tiles, (int64_t)((max_groups + sp - 1) / sp) * kGroupTiles);
-      const int64_t cost = (ctas * sp + slots - 1) / slots * per + (sp > 1 ? per / 8 : 0);
-      if (cost < best) { best = cost; splits = sp; }
-    }
-  }
+  int splits = (int)kv_splits, plan_groups = 0;
+  if (splits == 0) prefill_plan(batch, hq, hkv, (int)max_q_len, (int)max_kv_len, sm_count(q), &splits, &plan_groups);
   splits = std::max(1, std::min(splits, max_groups));
   at::Tensor ws_o, ws_ml;
   if (splits > 1) {
