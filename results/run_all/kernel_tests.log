@@ -26,9 +26,9 @@ long ctx 32768/20001: failures 0 []
 TOTAL FAILURES: 0
 test_matrix exit=0
 0.6B qkv      N=  4096 K= 1024: max|err| pi(fp32 out) 6.22e-06 pi(bf16) 7.81e-03 cublas(bf16) 1.16e-02
-0.6B o        N=  1024 K= 2048: max|err| pi(fp32 out) 1.29e-05 pi(bf16) 1.38e-02 cublas(bf16) 1.74e-02
+0.6B o        N=  1024 K= 2048: max|err| pi(fp32 out) 6.16e-06 pi(bf16) 1.38e-02 cublas(bf16) 1.74e-02
 0.6B gateup   N=  6144 K= 1024: max|err| pi(fp32 out) 5.96e-06 pi(bf16) 7.82e-03 cublas(bf16) 1.15e-02
-0.6B down     N=  1024 K= 3072: max|err| pi(fp32 out) 2.99e-05 pi(bf16) 1.56e-02 cublas(bf16) 2.14e-02
+0.6B down     N=  1024 K= 3072: max|err| pi(fp32 out) 1.31e-05 pi(bf16) 1.56e-02 cublas(bf16) 2.14e-02
 0.6B lm_head  N=151936 K= 1024: max|err| pi(fp32 out) 7.17e-06 pi(bf16) 7.82e-03 cublas(bf16) 7.82e-03
 1.7B qkv      N=  4096 K= 2048: max|err| pi(fp32 out) 1.75e-05 pi(bf16) 1.34e-02 cublas(bf16) 1.87e-02
 1.7B down     N=  2048 K= 6144: max|err| pi(fp32 out) 7.71e-05 pi(bf16) 1.57e-02 cublas(bf16) 4.63e-02

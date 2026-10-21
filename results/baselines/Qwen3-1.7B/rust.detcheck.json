@@ -12,9 +12,10 @@
   {
    "concurrency": 4,
    "requests": 16,
-   "mismatched": 2,
+   "mismatched": 3,
    "first_divergence_tokens": [
     14,
+    15,
     44
    ]
   },
@@ -23,7 +24,7 @@
    "requests": 16,
    "mismatched": 1,
    "first_divergence_tokens": [
-    14
+    9
    ]
   }
  ],
@@ -35,18 +36,18 @@
  "shared": {
   "requests": 32,
   "prefix_tokens": 2616,
-  "mismatched": 13,
+  "mismatched": 12,
   "first_divergence_tokens": [
    1,
    1,
    5,
    17,
    18,
-   18,
    52,
    56,
    63,
-   65
+   65,
+   70
   ]
  },
  "path": {
@@ -58,19 +59,20 @@
  },
  "sample_path": {
   "requests": 24,
-  "mismatched": 6,
+  "mismatched": 7,
   "first_divergence_tokens": [
-   1,
-   66,
-   130,
-   3,
-   75,
-   129
+   2,
+   70,
+   132,
+   92,
+   5,
+   65,
+   131
   ]
  },
  "repeat": {
   "samples": 200,
-  "unique_completions": 11
+  "unique_completions": 14
  },
  "sample": {
   "rows": [
@@ -82,10 +84,10 @@
      0,
      2,
      3,
-     15,
+     5,
      17,
      27,
-     40
+     92
     ]
    },
    {
@@ -93,10 +95,10 @@
     "requests": 16,
     "mismatched": 6,
     "first_divergence_tokens": [
-     0,
      1,
      2,
      3,
+     7,
      17,
      27
     ]
@@ -104,5 +106,5 @@
   ],
   "distinct_reference_samples": 16
  },
- "seconds": 313.8
+ "seconds": 313.9
 }

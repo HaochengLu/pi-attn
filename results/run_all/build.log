@@ -1,4 +1,3 @@
-   Compiling sglang-rust v0.1.0 (/uniparser/users/luhaocheng/pi_attn/llm_infer_rust)
 warning: sglang-rust@0.1.0: In file included from /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/c10/cuda/CUDACachingAllocator.h:5,
 warning: sglang-rust@0.1.0:                  from /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/ATen/cuda/CUDAGraph.h:6,
 warning: sglang-rust@0.1.0:                  from src/engine/cuda_graph_bridge.cpp:1:
@@ -143,4 +142,4 @@ warning: sglang-rust@0.1.0:     const uint32_t batch_size = gridDim.x;
 warning: sglang-rust@0.1.0:                    ^
 warning: sglang-rust@0.1.0:           detected during instantiation of "cudaError_t flashinfer::sampling::TopPSamplingFromProb(T *, IdType *, __nv_bool *, IdType *, T *, uint32_t, T, uint32_t, __nv_bool, uint64_t *, uint64_t, uint64_t *, uint64_t, cudaStream_t) [with T=float, IdType=int64_t]" at line 15 of src/engine/sampling_flashinfer.cu
 warning: sglang-rust@0.1.0: 
-    Finished `release` profile [optimized] target(s) in 2m 20s
+    Finished `release` profile [optimized] target(s) in 0.28s

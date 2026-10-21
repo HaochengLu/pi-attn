@@ -7,8 +7,8 @@
  },
  "/uniparser/users/luhaocheng/pi_attn/results/fp32_agreement/Qwen3-0.6B.deterministic.gen.json": {
   "tokens": 1152,
-  "agree_fp32_argmax": 0.9913194444444444,
-  "disagreements": 10,
-  "max_margin_at_disagreement": 0.09383392333984375
+  "agree_fp32_argmax": 0.9973958333333334,
+  "disagreements": 3,
+  "max_margin_at_disagreement": 0.16796493530273438
  }
 }
