@@ -1,0 +1,6 @@
+attention exit=0
+gemm exit=0
+gemm_cold exit=0
+gemm_step_graph exit=0
+prefill exit=0
+KB_DONE

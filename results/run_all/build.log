@@ -1,0 +1,146 @@
+   Compiling sglang-rust v0.1.0 (/uniparser/users/luhaocheng/pi_attn/llm_infer_rust)
+warning: sglang-rust@0.1.0: In file included from /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/c10/cuda/CUDACachingAllocator.h:5,
+warning: sglang-rust@0.1.0:                  from /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/ATen/cuda/CUDAGraph.h:6,
+warning: sglang-rust@0.1.0:                  from src/engine/cuda_graph_bridge.cpp:1:
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/c10/core/CachingDeviceAllocator.h: In member function 'virtual std::pair<long unsigned int, long unsigned int> c10::DeviceAllocator::getMemoryInfo(c10::DeviceIndex)':
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/c10/core/CachingDeviceAllocator.h:248:68: warning: unused parameter 'device' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   248 |   virtual std::pair<size_t, size_t> getMemoryInfo(c10::DeviceIndex device) {
+warning: sglang-rust@0.1.0:       |                                                   ~~~~~~~~~~~~~~~~~^~~~~~
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/c10/cuda/CUDACachingAllocator.h: In member function 'virtual void c10::cuda::CUDACachingAllocator::CUDAAllocator::createOrIncrefPool(c10::DeviceIndex, c10::MempoolId_t, std::shared_ptr<c10::cuda::CUDACachingAllocator::CUDAAllocator>)':
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/c10/cuda/CUDACachingAllocator.h:176:38: warning: unused parameter 'allocator' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   176 |       std::shared_ptr<CUDAAllocator> allocator = nullptr) {
+warning: sglang-rust@0.1.0:       |       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/c10/cuda/CUDACachingAllocator.h: In member function 'virtual void c10::cuda::CUDACachingAllocator::CUDAAllocator::setUseOnOOM(c10::DeviceIndex, c10::MempoolId_t, bool)':
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/c10/cuda/CUDACachingAllocator.h:184:24: warning: unused parameter 'device' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   184 |       c10::DeviceIndex device,
+warning: sglang-rust@0.1.0:       |       ~~~~~~~~~~~~~~~~~^~~~~~
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/c10/cuda/CUDACachingAllocator.h:185:19: warning: unused parameter 'mempool_id' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   185 |       MempoolId_t mempool_id,
+warning: sglang-rust@0.1.0:       |       ~~~~~~~~~~~~^~~~~~~~~~
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/c10/cuda/CUDACachingAllocator.h:186:12: warning: unused parameter 'use_on_oom' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   186 |       bool use_on_oom) {
+warning: sglang-rust@0.1.0:       |       ~~~~~^~~~~~~~~~
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/c10/cuda/CUDACachingAllocator.h: In member function 'virtual void c10::cuda::CUDACachingAllocator::CUDAAllocator::setNoSplit(c10::DeviceIndex, c10::MempoolId_t)':
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/c10/cuda/CUDACachingAllocator.h:193:44: warning: unused parameter 'device' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   193 |   virtual void setNoSplit(c10::DeviceIndex device, MempoolId_t mempool_id) {
+warning: sglang-rust@0.1.0:       |                           ~~~~~~~~~~~~~~~~~^~~~~~
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/c10/cuda/CUDACachingAllocator.h:193:64: warning: unused parameter 'mempool_id' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   193 |   virtual void setNoSplit(c10::DeviceIndex device, MempoolId_t mempool_id) {
+warning: sglang-rust@0.1.0:       |                                                    ~~~~~~~~~~~~^~~~~~~~~~
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/c10/cuda/CUDACachingAllocator.h: In member function 'virtual std::shared_ptr<c10::GatheredContext> c10::cuda::CUDACachingAllocator::CUDAAllocator::getContextForPointer(const void*)':
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/c10/cuda/CUDACachingAllocator.h:222:19: warning: unused parameter 'ptr' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   222 |       const void* ptr) {
+warning: sglang-rust@0.1.0:       |       ~~~~~~~~~~~~^~~
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/c10/cuda/CUDACachingAllocator.h: In member function 'virtual void c10::cuda::CUDACachingAllocator::CUDAAllocator::pushCompileContext(std::string&)':
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/c10/cuda/CUDACachingAllocator.h:234:48: warning: unused parameter 'md' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   234 |   virtual void pushCompileContext(std::string& md) {}
+warning: sglang-rust@0.1.0:       |                                   ~~~~~~~~~~~~~^~
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/c10/cuda/CUDACachingAllocator.h: In member function 'virtual void c10::cuda::CUDACachingAllocator::CUDAAllocator::setUserMetadata(const std::string&)':
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/c10/cuda/CUDACachingAllocator.h:236:51: warning: unused parameter 'metadata' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   236 |   virtual void setUserMetadata(const std::string& metadata) {}
+warning: sglang-rust@0.1.0:       |                                ~~~~~~~~~~~~~~~~~~~^~~~~~~~
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/c10/cuda/CUDACachingAllocator.h: In member function 'virtual c10::DataPtr c10::cuda::CUDACachingAllocator::CUDAAllocator::allocateWithAddress(size_t, void*)':
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/c10/cuda/CUDACachingAllocator.h:280:46: warning: unused parameter 'size' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   280 |   virtual DataPtr allocateWithAddress(size_t size, void* addr) {
+warning: sglang-rust@0.1.0:       |                                       ~~~~~~~^~~~
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/c10/cuda/CUDACachingAllocator.h:280:58: warning: unused parameter 'addr' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   280 |   virtual DataPtr allocateWithAddress(size_t size, void* addr) {
+warning: sglang-rust@0.1.0:       |                                                    ~~~~~~^~~~
+warning: sglang-rust@0.1.0: In file included from /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/ATen/Context.h:21,
+warning: sglang-rust@0.1.0:                  from /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/ATen/ATen.h:8,
+warning: sglang-rust@0.1.0:                  from src/engine/cuda_graph_bridge.cpp:2:
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h: In member function 'virtual PyObject* at::MTIAHooksInterface::getDeviceProperties(c10::DeviceIndex) const':
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h:118:53: warning: unused parameter 'device' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   118 |   virtual PyObject* getDeviceProperties(DeviceIndex device) const {
+warning: sglang-rust@0.1.0:       |                                         ~~~~~~~~~~~~^~~~~~
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h: In member function 'virtual PyObject* at::MTIAHooksInterface::memorySnapshot(const std::optional<std::__cxx11::basic_string<char> >&) const':
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h:133:70: warning: unused parameter 'local_path' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   133 |   virtual PyObject* memorySnapshot(const std::optional<std::string>& local_path) const {
+warning: sglang-rust@0.1.0:       |                                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h: In member function 'virtual void at::MTIAHooksInterface::attachOutOfMemoryObserver(PyObject*) const':
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h:147:52: warning: unused parameter 'observer' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   147 |   virtual void attachOutOfMemoryObserver(PyObject* observer) const {
+warning: sglang-rust@0.1.0:       |                                          ~~~~~~~~~~^~~~~~~~
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h: In member function 'virtual int64_t at::MTIAHooksInterface::mtiagraphCreate(bool) const':
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h:155:40: warning: unused parameter 'keep_graph' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   155 |   virtual int64_t mtiagraphCreate(bool keep_graph = false) const {
+warning: sglang-rust@0.1.0:       |                                   ~~~~~^~~~~~~~~~~~~~~~~~
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h: In member function 'virtual void at::MTIAHooksInterface::mtiagraphDestroy(int64_t) const':
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h:160:41: warning: unused parameter 'handle' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   160 |   virtual void mtiagraphDestroy(int64_t handle) const {
+warning: sglang-rust@0.1.0:       |                                 ~~~~~~~~^~~~~~
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h: In member function 'virtual void at::MTIAHooksInterface::mtiagraphCaptureBegin(int64_t, c10::MempoolId_t) const':
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h:164:46: warning: unused parameter 'handle' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   164 |   virtual void mtiagraphCaptureBegin(int64_t handle, MempoolId_t pool) const {
+warning: sglang-rust@0.1.0:       |                                      ~~~~~~~~^~~~~~
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h:164:66: warning: unused parameter 'pool' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   164 |   virtual void mtiagraphCaptureBegin(int64_t handle, MempoolId_t pool) const {
+warning: sglang-rust@0.1.0:       |                                                      ~~~~~~~~~~~~^~~~
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h: In member function 'virtual void at::MTIAHooksInterface::mtiagraphCaptureEnd(int64_t) const':
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h:168:44: warning: unused parameter 'handle' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   168 |   virtual void mtiagraphCaptureEnd(int64_t handle) const {
+warning: sglang-rust@0.1.0:       |                                    ~~~~~~~~^~~~~~
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h: In member function 'virtual void at::MTIAHooksInterface::mtiagraphInstantiate(int64_t) const':
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h:172:45: warning: unused parameter 'handle' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   172 |   virtual void mtiagraphInstantiate(int64_t handle) const {
+warning: sglang-rust@0.1.0:       |                                     ~~~~~~~~^~~~~~
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h: In member function 'virtual void at::MTIAHooksInterface::mtiagraphReplay(int64_t) const':
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h:176:40: warning: unused parameter 'handle' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   176 |   virtual void mtiagraphReplay(int64_t handle) const {
+warning: sglang-rust@0.1.0:       |                                ~~~~~~~~^~~~~~
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h: In member function 'virtual void at::MTIAHooksInterface::mtiagraphReset(int64_t) const':
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h:180:39: warning: unused parameter 'handle' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   180 |   virtual void mtiagraphReset(int64_t handle) const {
+warning: sglang-rust@0.1.0:       |                               ~~~~~~~~^~~~~~
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h: In member function 'virtual c10::MempoolId_t at::MTIAHooksInterface::mtiagraphPool(int64_t) const':
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h:184:45: warning: unused parameter 'handle' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   184 |   virtual MempoolId_t mtiagraphPool(int64_t handle) const {
+warning: sglang-rust@0.1.0:       |                                     ~~~~~~~~^~~~~~
+warning: sglang-rust@0.1.0: In file included from src/engine/cuda_graph_bridge.cpp:4:
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/ATen/core/CachingHostAllocator.h: At global scope:
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/ATen/core/CachingHostAllocator.h:47:16: warning: use of 'std::hardware_destructive_interference_size' [-Winterference-size]
+warning: sglang-rust@0.1.0:    47 | struct alignas(hardware_destructive_interference_size) FreeBlockList {
+warning: sglang-rust@0.1.0:       |                ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/ATen/core/CachingHostAllocator.h:47:16: note: its value can vary between compiler versions or with different '-mtune' or '-mcpu' flags
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/ATen/core/CachingHostAllocator.h:47:16: note: if this use is part of a public ABI, change it to instead use a constant variable you define
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/ATen/core/CachingHostAllocator.h:47:16: note: the default value for the current CPU tuning is 64 bytes
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/ATen/core/CachingHostAllocator.h:47:16: note: you can stabilize this value with '--param hardware_destructive_interference_size=64', or disable this warning with '-Wno-interference-size'
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/ATen/core/CachingHostAllocator.h:130:16: warning: use of 'std::hardware_destructive_interference_size' [-Winterference-size]
+warning: sglang-rust@0.1.0:   130 | struct alignas(hardware_destructive_interference_size) HostStatsStaged {
+warning: sglang-rust@0.1.0:       |                ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/ATen/core/CachingHostAllocator.h:236:11: warning: use of 'std::hardware_destructive_interference_size' [-Winterference-size]
+warning: sglang-rust@0.1.0:   236 |   alignas(hardware_destructive_interference_size) std::mutex blocks_mutex_;
+warning: sglang-rust@0.1.0:       |           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/ATen/core/CachingHostAllocator.h:241:11: warning: use of 'std::hardware_destructive_interference_size' [-Winterference-size]
+warning: sglang-rust@0.1.0:   241 |   alignas(hardware_destructive_interference_size) std::vector<FreeBlockList<B_>> free_list_ =
+warning: sglang-rust@0.1.0:       |           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/ATen/core/CachingHostAllocator.h:245:11: warning: use of 'std::hardware_destructive_interference_size' [-Winterference-size]
+warning: sglang-rust@0.1.0:   245 |   alignas(hardware_destructive_interference_size) std::mutex events_mutex_;
+warning: sglang-rust@0.1.0:       |           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/ATen/core/CachingHostAllocator.h:973:11: warning: use of 'std::hardware_destructive_interference_size' [-Winterference-size]
+warning: sglang-rust@0.1.0:   973 |   alignas(hardware_destructive_interference_size) mutable std::shared_mutex instance_mutex_;
+warning: sglang-rust@0.1.0:       |           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/ATen/core/CachingHostAllocator.h:1004:11: warning: use of 'std::hardware_destructive_interference_size' [-Winterference-size]
+warning: sglang-rust@0.1.0:  1004 |   alignas(hardware_destructive_interference_size) HostStatsStaged stats_;
+warning: sglang-rust@0.1.0:       |           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+warning: sglang-rust@0.1.0: In file included from /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/ATen/cuda/CUDAEvent.h:7,
+warning: sglang-rust@0.1.0:                  from src/engine/cuda_graph_bridge.cpp:206:
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/c10/cuda/CUDAEvent.h:363:23: warning: use of 'std::hardware_destructive_interference_size' [-Winterference-size]
+warning: sglang-rust@0.1.0:   363 |   struct alignas(c10::hardware_destructive_interference_size) PerDevicePool {
+warning: sglang-rust@0.1.0:       |                       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/torch/include/c10/cuda/CUDAEvent.h:364:18: warning: use of 'std::hardware_destructive_interference_size' [-Winterference-size]
+warning: sglang-rust@0.1.0:   364 |     alignas(c10::hardware_destructive_interference_size) std::mutex mutex_;
+warning: sglang-rust@0.1.0:       |                  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/flashinfer/data/include/flashinfer/sampling.cuh(1206): warning #177-D: variable "batch_size" was declared but never referenced
+warning: sglang-rust@0.1.0:     const uint32_t batch_size = gridDim.x;
+warning: sglang-rust@0.1.0:                    ^
+warning: sglang-rust@0.1.0:           detected during instantiation of "cudaError_t flashinfer::sampling::TopKTopPSamplingFromProb(T *, IdType *, T *, IdType *, __nv_bool *, IdType *, uint32_t, IdType, T, uint32_t, __nv_bool, uint64_t *, uint64_t, uint64_t *, uint64_t, cudaStream_t) [with T=float, IdType=int64_t]" at line 11 of src/engine/sampling_flashinfer.cu
+warning: sglang-rust@0.1.0: 
+warning: sglang-rust@0.1.0: Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+warning: sglang-rust@0.1.0: 
+warning: sglang-rust@0.1.0: /uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/flashinfer/data/include/flashinfer/sampling.cuh(985): warning #177-D: variable "batch_size" was declared but never referenced
+warning: sglang-rust@0.1.0:     const uint32_t batch_size = gridDim.x;
+warning: sglang-rust@0.1.0:                    ^
+warning: sglang-rust@0.1.0:           detected during instantiation of "cudaError_t flashinfer::sampling::TopPSamplingFromProb(T *, IdType *, __nv_bool *, IdType *, T *, uint32_t, T, uint32_t, __nv_bool, uint64_t *, uint64_t, uint64_t *, uint64_t, cudaStream_t) [with T=float, IdType=int64_t]" at line 15 of src/engine/sampling_flashinfer.cu
+warning: sglang-rust@0.1.0: 
+    Finished `release` profile [optimized] target(s) in 2m 20s

@@ -12,10 +12,9 @@
   {
    "concurrency": 4,
    "requests": 16,
-   "mismatched": 3,
+   "mismatched": 2,
    "first_divergence_tokens": [
-    9,
-    15,
+    14,
     44
    ]
   },
@@ -41,13 +40,13 @@
    1,
    1,
    5,
-   9,
    17,
+   18,
    18,
    52,
    56,
    63,
-   70
+   65
   ]
  },
  "path": {
@@ -59,24 +58,19 @@
  },
  "sample_path": {
   "requests": 24,
-  "mismatched": 11,
+  "mismatched": 6,
   "first_divergence_tokens": [
    1,
-   70,
-   129,
-   29,
-   92,
-   92,
-   135,
+   66,
+   130,
    3,
-   70,
-   128,
-   40
+   75,
+   129
   ]
  },
  "repeat": {
   "samples": 200,
-  "unique_completions": 15
+  "unique_completions": 11
  },
  "sample": {
   "rows": [
@@ -86,28 +80,29 @@
     "mismatched": 7,
     "first_divergence_tokens": [
      0,
-     1,
      2,
-     4,
+     3,
+     15,
      17,
      27,
-     29
+     40
     ]
    },
    {
     "concurrency": 16,
     "requests": 16,
-    "mismatched": 5,
+    "mismatched": 6,
     "first_divergence_tokens": [
+     0,
      1,
      2,
-     2,
-     4,
-     29
+     3,
+     17,
+     27
     ]
    }
   ],
   "distinct_reference_samples": 16
  },
- "seconds": 314.0
+ "seconds": 313.8
 }

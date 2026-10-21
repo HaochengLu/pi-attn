@@ -1,0 +1,5 @@
+Qwen3-1.7B rust detcheck exit=1
+Qwen3-1.7B rust loadgen exit=0
+Qwen3-1.7B rust-det detcheck exit=0
+Qwen3-1.7B rust-det loadgen exit=0
+BASELINES_DONE

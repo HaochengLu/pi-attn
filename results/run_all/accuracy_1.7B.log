@@ -1,0 +1,4 @@
+Qwen3-1.7B deterministic c=1: |gsm8k| 3|flexible-extract| 5|exact_match|↑ |0.0425|± |0.0056| | | |strict-match | 5|exact_match|↑ |0.6907|± |0.0127| 
+Qwen3-1.7B deterministic c=16: |gsm8k| 3|flexible-extract| 5|exact_match|↑ |0.0425|± |0.0056| | | |strict-match | 5|exact_match|↑ |0.6907|± |0.0127| 
+Qwen3-1.7B flashinfer c=1: |gsm8k| 3|flexible-extract| 5|exact_match|↑ |0.0425|± |0.0056| | | |strict-match | 5|exact_match|↑ |0.6922|± |0.0127| 
+Qwen3-1.7B flashinfer c=16: |gsm8k| 3|flexible-extract| 5|exact_match|↑ |0.0409|± |0.0055| | | |strict-match | 5|exact_match|↑ |0.6937|± |0.0127| 

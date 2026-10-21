@@ -1,0 +1,40 @@
+decode  hq=16 b=  1 kv= 1024: fi=33.1 fi_det_fixed2048=37.7 fi_nosplit=29.7 pi=22.0 | pi/fi=0.66
+decode  hq=16 b=  1 kv= 8192: fi=31.9 fi_det_fixed2048=125.5 fi_nosplit=33.0 pi=27.6 | pi/fi=0.87
+decode  hq=16 b=  1 kv=32768: fi=173.9 fi_det_fixed2048=518.1 fi_nosplit=173.3 pi=158.8 | pi/fi=0.91
+decode  hq=16 b=  8 kv= 2048: fi=41.3 fi_det_fixed2048=53.2 fi_nosplit=42.3 pi=30.4 | pi/fi=0.74
+decode  hq=16 b=  8 kv=16384: fi=589.4 fi_det_fixed2048=590.3 fi_nosplit=588.3 pi=578.4 | pi/fi=0.98
+decode  hq=16 b= 32 kv= 1024: fi=171.6 fi_det_fixed2048=174.2 fi_nosplit=170.8 pi=152.2 | pi/fi=0.89
+decode  hq=16 b= 32 kv= 8192: fi=1134.4 fi_det_fixed2048=1170.5 fi_nosplit=1132.5 pi=1132.8 | pi/fi=1.00
+decode  hq=16 b=128 kv= 1024: fi=581.3 fi_det_fixed2048=586.3 fi_nosplit=581.0 pi=575.1 | pi/fi=0.99
+decode  hq=16 b=128 kv= 4096: fi=2224.2 fi_det_fixed2048=2236.1 fi_nosplit=2270.7 pi=2256.2 | pi/fi=1.01
+decode  hq=16 b=  8 kv= 4096 shared: fi=58.6 fi_det_fixed2048=75.6 fi_nosplit=58.6 pi=43.9 | pi/fi=0.75
+decode  hq=16 b= 32 kv= 4096 shared: fi=156.7 fi_det_fixed2048=185.8 fi_nosplit=160.9 pi=129.0 | pi/fi=0.82
+prefill hq=16 b=1 q= 512 prefix=    0: fi=76.2 fi_det_fixed2048=61.8 pi=42.5 | pi/fi=0.56
+prefill hq=16 b=1 q=2048 prefix=    0: fi=261.0 fi_det_fixed2048=255.8 pi=204.3 | pi/fi=0.78
+prefill hq=16 b=1 q=8192 prefix=    0: fi=2483.6 fi_det_fixed2048=2475.2 pi=2521.1 | pi/fi=1.02
+prefill hq=16 b=8 q=1024 prefix=    0: fi=372.6 fi_det_fixed2048=375.7 pi=360.6 | pi/fi=0.97
+prefill hq=16 b=32 q= 512 prefix=    0: fi=388.3 fi_det_fixed2048=389.8 pi=378.6 | pi/fi=0.98
+prefill hq=16 b=1 q= 512 prefix= 8192: fi=388.1 fi_det_fixed2048=561.5 pi=391.3 | pi/fi=1.01
+prefill hq=16 b=1 q= 128 prefix= 4096: fi=78.4 fi_det_fixed2048=290.0 pi=70.4 | pi/fi=0.90
+prefill hq=16 b=1 q= 128 prefix=16384: fi=178.3 fi_det_fixed2048=1027.6 pi=189.3 | pi/fi=1.06
+prefill hq=16 b=4 q=2048 prefix= 2048: fi=1745.0 fi_det_fixed2048=1737.2 pi=1821.5 | pi/fi=1.04
+decode  hq=32 b=  1 kv= 1024: fi=29.5 fi_det_fixed2048=35.9 fi_nosplit=29.1 pi=21.8 | pi/fi=0.74
+decode  hq=32 b=  1 kv= 8192: fi=36.0 fi_det_fixed2048=123.8 fi_nosplit=35.8 pi=26.7 | pi/fi=0.74
+decode  hq=32 b=  1 kv=32768: fi=172.1 fi_det_fixed2048=503.6 fi_nosplit=172.0 pi=159.9 | pi/fi=0.93
+decode  hq=32 b=  8 kv= 2048: fi=46.3 fi_det_fixed2048=49.9 fi_nosplit=46.8 pi=29.5 | pi/fi=0.64
+decode  hq=32 b=  8 kv=16384: fi=596.0 fi_det_fixed2048=597.5 fi_nosplit=595.1 pi=582.8 | pi/fi=0.98
+decode  hq=32 b= 32 kv= 1024: fi=172.8 fi_det_fixed2048=170.7 fi_nosplit=170.2 pi=153.5 | pi/fi=0.89
+decode  hq=32 b= 32 kv= 8192: fi=1148.4 fi_det_fixed2048=1169.5 fi_nosplit=1147.2 pi=1147.3 | pi/fi=1.00
+decode  hq=32 b=128 kv= 1024: fi=592.3 fi_det_fixed2048=590.5 fi_nosplit=592.1 pi=582.5 | pi/fi=0.98
+decode  hq=32 b=128 kv= 4096: fi=2313.3 fi_det_fixed2048=2240.2 fi_nosplit=2313.2 pi=2283.1 | pi/fi=0.99
+decode  hq=32 b=  8 kv= 4096 shared: fi=68.6 fi_det_fixed2048=74.3 fi_nosplit=67.6 pi=43.3 | pi/fi=0.63
+decode  hq=32 b= 32 kv= 4096 shared: fi=203.2 fi_det_fixed2048=209.0 fi_nosplit=204.7 pi=130.6 | pi/fi=0.64
+prefill hq=32 b=1 q= 512 prefix=    0: fi=85.2 fi_det_fixed2048=85.2 pi=47.9 | pi/fi=0.56
+prefill hq=32 b=1 q=2048 prefix=    0: fi=416.3 fi_det_fixed2048=413.2 pi=451.4 | pi/fi=1.08
+prefill hq=32 b=1 q=8192 prefix=    0: fi=4517.0 fi_det_fixed2048=4522.3 pi=4742.4 | pi/fi=1.05
+prefill hq=32 b=8 q=1024 prefix=    0: fi=648.5 fi_det_fixed2048=645.8 pi=670.8 | pi/fi=1.03
+prefill hq=32 b=32 q= 512 prefix=    0: fi=727.0 fi_det_fixed2048=728.6 pi=720.3 | pi/fi=0.99
+prefill hq=32 b=1 q= 512 prefix= 8192: fi=1015.0 fi_det_fixed2048=1009.2 pi=821.5 | pi/fi=0.81
+prefill hq=32 b=1 q= 128 prefix= 4096: fi=115.2 fi_det_fixed2048=289.3 pi=106.0 | pi/fi=0.92
+prefill hq=32 b=1 q= 128 prefix=16384: fi=315.4 fi_det_fixed2048=1022.8 pi=385.0 | pi/fi=1.22
+prefill hq=32 b=4 q=2048 prefix= 2048: fi=3272.5 fi_det_fixed2048=3267.1 pi=3533.6 | pi/fi=1.08
