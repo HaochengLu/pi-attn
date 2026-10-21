@@ -1,17 +1,18 @@
 // Partition-Invariant Attention (PI-Attn), sm80+ (bf16, head_dim 128).
 //
-// Contract: KV positions are cut into chunks of kChunk keys at absolute
-// positions. A chunk partial (m, l, o) for one query row is a pure function of
-// (q row, chunk K/V, visible-key mask): m is the chunk-local row max, P is
-// rounded to bf16 against it, l sums the rounded P, o = P V from a zero
-// accumulator. Partials are reduced by one fixed two-level tree that depends
-// only on positions: chunks are folded sequentially (ascending) within absolute
-// groups of kGroupChunks chunks, and the group partials are folded
-// sequentially (ascending). Prefill folds in registers or, split over groups,
-// writes group partials; decode writes chunk partials. The merge kernels
-// realise the same tree. Every kernel goes through `scores_to_p`,
-// `chunk_scores`, `chunk_values` and the fold functions below, which fix each
-// row's operation sequence; kernels differ only in how work is distributed.
+// Contract: every query row runs one canonical operation sequence that depends
+// only on its position and the keys it sees. Keys are cut into tiles of kTile
+// positions and fold groups of kGroupTiles tiles at absolute positions. Within a
+// group the row runs an online softmax over the group's tiles in ascending
+// order, from the empty state at the group start (`online_step`: P rounded to
+// bf16 against the running max, o += P V on the tensor cores). The group
+// partials (m, d, o) are folded in ascending group order (`fold_scalars` /
+// `fold_elem`) and normalised by `finish`. Prefill folds the groups in
+// registers or, split over groups, writes group partials that a merge kernel
+// folds; decode runs each group in one CTA, the tile split across warps without
+// changing any element's sequence, and its merge folds the groups. A row's bits
+// therefore do not depend on batching, chunked-prefill cuts, prefix caching,
+// split counts, or whether it is prefilled or decoded.
 #pragma once
 #include <cuda_bf16.h>
 #include <cstdint>
@@ -19,14 +20,13 @@
 namespace pi_attn {
 
 constexpr int kHeadDim = 128;
-constexpr int kChunk = 64;                // keys per chunk (multiple of page size)
-constexpr int kGroupChunks = 32;          // chunks per fold group (2048 keys)
-constexpr int kRowStride = kHeadDim + 8;  // smem row padding (bf16), conflict-free
-constexpr int kNTilesS = kChunk / 8;      // 8 n-tiles of S per chunk
-constexpr int kKStepsQK = kHeadDim / 16;  // 8 k-steps over head_dim
-constexpr int kKStepsPV = kChunk / 16;    // 4 k-steps over keys
-constexpr int kNTilesO = kHeadDim / 8;    // 16 n-tiles of O
-constexpr int kTileElems = kChunk * kRowStride;  // one K or V chunk tile in smem
+constexpr int kTile = 32;                        // keys per online-softmax step
+constexpr int kGroupTiles = 16;                  // tiles per fold group
+constexpr int kGroupKeys = kTile * kGroupTiles;  // 512 keys per fold group
+constexpr int kTileNS = kTile / 8;               // 4 n-tiles of S per tile
+constexpr int kTileKS = kTile / 16;              // 2 key k-steps of P V per tile
+constexpr int kKStepsQK = kHeadDim / 16;         // 8 k-steps over head_dim
+constexpr int kNTilesO = kHeadDim / 8;           // 16 n-tiles of O
 
 // Exact, contraction-free primitives shared by every kernel.
 __device__ __forceinline__ float ex2(float x) {
@@ -101,131 +101,6 @@ __device__ __forceinline__ void load_q(QFrag& q, RowPtr row_ptr, int lane) {
   }
 }
 
-// P of one 16-row group as A-fragments for the P V product.
-struct PFrag {
-  uint32_t a[kKStepsPV][4];
-};
-
-// Per-row numerics of a chunk partial, from raw scores S (mma C layout) of one
-// 16-row group: scale, mask, chunk-local max (exact, order-free), P rounded to
-// bf16, l = fixed-order sum of rounded P. `visible(row, key)`; `all_visible`
-// is a hint that skips the test without changing any value.
-template <typename Visible>
-__device__ __forceinline__ void scores_to_p(float (&s)[kNTilesS][4], PFrag& pf, float (&m)[2],
-                                            float (&l)[2], float scale_log2, Visible visible,
-                                            bool all_visible, int lane) {
-  const int g = lane >> 2, t = lane & 3;
-  float mx[2] = {-INFINITY, -INFINITY};
-#pragma unroll
-  for (int n = 0; n < kNTilesS; ++n) {
-#pragma unroll
-    for (int i = 0; i < 4; ++i) {
-      const int row = g + (i >> 1) * 8, key = n * 8 + t * 2 + (i & 1);
-      const float v = (all_visible || visible(row, key)) ? mul(s[n][i], scale_log2) : -INFINITY;
-      s[n][i] = v;
-      mx[i >> 1] = fmaxf(mx[i >> 1], v);
-    }
-  }
-#pragma unroll
-  for (int r = 0; r < 2; ++r) {
-    mx[r] = fmaxf(mx[r], __shfl_xor_sync(0xffffffffu, mx[r], 1));
-    mx[r] = fmaxf(mx[r], __shfl_xor_sync(0xffffffffu, mx[r], 2));
-  }
-  float lsum[2] = {0.f, 0.f};
-#pragma unroll
-  for (int n = 0; n < kNTilesS; ++n) {
-    float pv[4];
-#pragma unroll
-    for (int i = 0; i < 4; ++i) {
-      const float mm = mx[i >> 1] == -INFINITY ? 0.f : mx[i >> 1];
-      pv[i] = round_bf16(ex2(sub(s[n][i], mm)));
-      lsum[i >> 1] = add(lsum[i >> 1], pv[i]);
-    }
-    // C layout of n-tiles (2j, 2j+1) is the A layout of k-step j.
-    const int j = n >> 1, h = (n & 1) * 2;
-    pf.a[j][h + 0] = pack_bf16(pv[0], pv[1]);
-    pf.a[j][h + 1] = pack_bf16(pv[2], pv[3]);
-  }
-#pragma unroll
-  for (int r = 0; r < 2; ++r) {
-    lsum[r] = add(lsum[r], __shfl_xor_sync(0xffffffffu, lsum[r], 1));
-    lsum[r] = add(lsum[r], __shfl_xor_sync(0xffffffffu, lsum[r], 2));
-    m[r] = mx[r];
-    l[r] = lsum[r];
-  }
-}
-
-// S = Q K^T for G row groups sharing each K fragment; per element the k-steps
-// over head_dim accumulate in ascending order from zero. qa(grp, ks, a) yields
-// the query A-fragment (from registers or smem; contents are what matter).
-template <int G, typename QA>
-__device__ __forceinline__ void chunk_qk(float (&s)[G][kNTilesS][4], QA qa,
-                                         const __nv_bfloat16* sK, int lane) {
-#pragma unroll
-  for (int grp = 0; grp < G; ++grp)
-#pragma unroll
-    for (int n = 0; n < kNTilesS; ++n) s[grp][n][0] = s[grp][n][1] = s[grp][n][2] = s[grp][n][3] = 0.f;
-  const int mat = lane >> 3, r8 = lane & 7;  // ldmatrix.x4: {n lo-d, n hi-d, n+1 lo-d, n+1 hi-d}
-#pragma unroll
-  for (int ks = 0; ks < kKStepsQK; ++ks) {
-    uint32_t a[G][4];
-#pragma unroll
-    for (int grp = 0; grp < G; ++grp) qa(grp, ks, a[grp]);
-#pragma unroll
-    for (int n = 0; n < kNTilesS; n += 2) {
-      uint32_t b[4];
-      ldmatrix_x4(b, sK + ((n + (mat >> 1)) * 8 + r8) * kRowStride + ks * 16 + (mat & 1) * 8);
-#pragma unroll
-      for (int grp = 0; grp < G; ++grp) {
-        mma_bf16(s[grp][n], a[grp], b[0], b[1]);
-        mma_bf16(s[grp][n + 1], a[grp], b[2], b[3]);
-      }
-    }
-  }
-}
-
-// o_c = P V for G row groups, produced NB n-tiles at a time (NB independent
-// accumulator chains per row group keep the tensor pipe busy): each element
-// accumulates the 4 key k-steps in ascending order from zero, then signed
-// zeros are canonicalized (masked 0*v products must not leave a -0) and the
-// tile is handed to sink(grp, n, o[4]). NB changes scheduling only.
-template <int G, typename Sink, int NB = 8>
-__device__ __forceinline__ void chunk_pv(const PFrag (&pf)[G], const __nv_bfloat16* sV, int lane,
-                                         Sink sink) {
-  static_assert(NB % 2 == 0 && kNTilesO % NB == 0, "NB must split the n-tiles in pairs");
-  const int mat = lane >> 3, r8 = lane & 7;  // .trans: {keys lo n, keys hi n, keys lo n+1, keys hi n+1}
-#pragma unroll
-  for (int n0 = 0; n0 < kNTilesO; n0 += NB) {
-    float o[G][NB][4];
-#pragma unroll
-    for (int grp = 0; grp < G; ++grp)
-#pragma unroll
-      for (int nn = 0; nn < NB; ++nn) o[grp][nn][0] = o[grp][nn][1] = o[grp][nn][2] = o[grp][nn][3] = 0.f;
-#pragma unroll
-    for (int j = 0; j < kKStepsPV; ++j) {
-#pragma unroll
-      for (int nn = 0; nn < NB; nn += 2) {
-        uint32_t b[4];
-        ldmatrix_x4_trans(b, sV + (j * 16 + (mat & 1) * 8 + r8) * kRowStride + (n0 + nn + (mat >> 1)) * 8);
-#pragma unroll
-        for (int grp = 0; grp < G; ++grp) {
-          mma_bf16(o[grp][nn], pf[grp].a[j], b[0], b[1]);
-          mma_bf16(o[grp][nn + 1], pf[grp].a[j], b[2], b[3]);
-        }
-      }
-    }
-#pragma unroll
-    for (int grp = 0; grp < G; ++grp) {
-#pragma unroll
-      for (int nn = 0; nn < NB; ++nn) {
-#pragma unroll
-        for (int i = 0; i < 4; ++i) o[grp][nn][i] = add(o[grp][nn][i], 0.f);
-        sink(grp, n0 + nn, o[grp][nn]);
-      }
-    }
-  }
-}
-
 // One canonical fold step. Every fold (registers or merge kernel) goes through
 // these functions. A partial with m == -inf is the identity.
 struct FoldScalars {
@@ -247,30 +122,98 @@ __device__ __forceinline__ float fold_elem(float o, float o_c, FoldScalars f) {
   return __fmaf_rn(o, f.alpha, mul(o_c, f.beta));
 }
 
-// Register fold state for the two 16-row-group rows a thread holds.
-struct RowFold {
-  float M[2], L[2], O[kNTilesO][4];
-  __device__ __forceinline__ void reset() {
-    M[0] = M[1] = -INFINITY;
-    L[0] = L[1] = 0.f;
-#pragma unroll
-    for (int n = 0; n < kNTilesO; ++n) O[n][0] = O[n][1] = O[n][2] = O[n][3] = 0.f;
-  }
-  // Fold another state (a finished group) into this one.
-  __device__ __forceinline__ void absorb(const RowFold& g) {
-#pragma unroll
-    for (int r = 0; r < 2; ++r) {
-      const FoldScalars f = fold_scalars(M[r], L[r], g.M[r], g.L[r]);
-#pragma unroll
-      for (int n = 0; n < kNTilesO; ++n) {
-        O[n][2 * r] = fold_elem(O[n][2 * r], g.O[n][2 * r], f);
-        O[n][2 * r + 1] = fold_elem(O[n][2 * r + 1], g.O[n][2 * r + 1], f);
-      }
-    }
-  }
-};
 __device__ __forceinline__ __nv_bfloat16 finish(float o, float L) {
   return __float2bfloat16_rn(__fdiv_rn(o, L));
+}
+
+
+// Swizzled [rows][128] bf16: 16-byte chunk j of row r at r * 16 + (j ^ (r & 7)).
+__device__ __forceinline__ int swz(int row, int chunk) { return row * kHeadDim + ((chunk ^ (row & 7)) << 3); }
+
+// Online-softmax state of the two rows (g, g + 8) of one 16-row group.
+struct OnlineState {
+  float m[2], d[2], o[kNTilesO][4];
+  __device__ __forceinline__ void reset() {
+    m[0] = m[1] = -INFINITY;
+    d[0] = d[1] = 0.f;
+#pragma unroll
+    for (int n = 0; n < kNTilesO; ++n) o[n][0] = o[n][1] = o[n][2] = o[n][3] = 0.f;
+  }
+};
+
+// One canonical online step on a tile's scaled+masked scores v (C layout,
+// kTileNS n-tiles). Returns P as A fragments (kTileKS k-steps) and rescales o
+// with fma(o, scale, +0), so o never holds -0: a fully masked step (prefill rows
+// before the tile) then leaves the state bit-identical, as if skipped.
+// Row max exact; P = bf16(2^(v - m_new)); d = fma(d, 2^(m - m_new), sum P) with
+// the sum in the fixed order (own keys n = 0.., then lane xor 1, xor 2).
+__device__ __forceinline__ void online_step(OnlineState& st, float (&v)[kTileNS][4],
+                                            uint32_t (&pa)[kTileKS][4]) {
+  float mx[2] = {-INFINITY, -INFINITY};
+#pragma unroll
+  for (int n = 0; n < kTileNS; ++n)
+#pragma unroll
+    for (int i = 0; i < 4; ++i) mx[i >> 1] = fmaxf(mx[i >> 1], v[n][i]);
+  float mm[2], scale[2];
+#pragma unroll
+  for (int r = 0; r < 2; ++r) {
+    mx[r] = fmaxf(mx[r], __shfl_xor_sync(0xffffffffu, mx[r], 1));
+    mx[r] = fmaxf(mx[r], __shfl_xor_sync(0xffffffffu, mx[r], 2));
+    const float mn = fmaxf(st.m[r], mx[r]);
+    mm[r] = mn == -INFINITY ? 0.f : mn;
+    scale[r] = ex2(sub(st.m[r], mm[r]));
+    st.m[r] = mn;
+  }
+  float ls[2] = {0.f, 0.f};
+#pragma unroll
+  for (int n = 0; n < kTileNS; ++n) {
+    float p[4];
+#pragma unroll
+    for (int i = 0; i < 4; ++i) {
+      p[i] = round_bf16(ex2(sub(v[n][i], mm[i >> 1])));
+      ls[i >> 1] = add(ls[i >> 1], p[i]);
+    }
+    pa[n >> 1][(n & 1) * 2 + 0] = pack_bf16(p[0], p[1]);
+    pa[n >> 1][(n & 1) * 2 + 1] = pack_bf16(p[2], p[3]);
+  }
+#pragma unroll
+  for (int r = 0; r < 2; ++r) {
+    ls[r] = add(ls[r], __shfl_xor_sync(0xffffffffu, ls[r], 1));
+    ls[r] = add(ls[r], __shfl_xor_sync(0xffffffffu, ls[r], 2));
+    st.d[r] = __fmaf_rn(st.d[r], scale[r], ls[r]);
+  }
+#pragma unroll
+  for (int n = 0; n < kNTilesO; ++n)
+#pragma unroll
+    for (int i = 0; i < 4; ++i) st.o[n][i] = __fmaf_rn(st.o[n][i], scale[i >> 1], 0.f);  // -0 -> +0
+}
+
+// Cache slots of the 4 keys this thread copies for tile t (-1 = position >= kv_len),
+// computed ahead of the copies so the page-table reads are off the critical path.
+__device__ __forceinline__ void tile_slots(int (&slot)[kTile / 8], const int32_t* pages, int page_size,
+                                           int page_shift, int t, int kv_len, int tid) {
+#pragma unroll
+  for (int i = 0; i < kTile / 8; ++i) {
+    const int pos = t * kTile + (tid >> 4) + 8 * i;
+    if (pos >= kv_len) slot[i] = -1;
+    else if (page_shift >= 0) slot[i] = (pages[pos >> page_shift] << page_shift) + (pos & (page_size - 1));
+    else slot[i] = pages[pos / page_size] * page_size + pos % page_size;
+  }
+}
+
+// Async load of one kTile x 128 K or V tile (swizzled), 128 threads; keys with
+// slot -1 are zero-filled without a global read.
+__device__ __forceinline__ void issue_tile(__nv_bfloat16* tile, const __nv_bfloat16* cache,
+                                            const int (&slot)[kTile / 8], int num_kv_heads, int kvh, int tid) {
+  const int chunk = tid & 15;
+  const int64_t row_stride = (int64_t)num_kv_heads * kHeadDim;
+  const __nv_bfloat16* head_base = cache + (int64_t)kvh * kHeadDim + chunk * 8;
+#pragma unroll
+  for (int i = 0; i < kTile / 8; ++i) {
+    const int key = (tid >> 4) + 8 * i;
+    cp_async16(tile + swz(key, chunk), slot[i] >= 0 ? head_base + (int64_t)slot[i] * row_stride : cache,
+               slot[i] >= 0 ? 16 : 0);
+  }
 }
 
 }  // namespace pi_attn

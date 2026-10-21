@@ -378,7 +378,6 @@ impl ModelExecutor for Qwen3ForCausalLM {
             }
         }
         self.attention.bind_cache_layout(cache.page_size as i64);
-        self.attention.bind_cache_pages(pages);
         for (layer, view) in self.layers.iter().zip(cache.layers) {
             layer
                 .base_attention

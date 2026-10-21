@@ -57,7 +57,7 @@ mod ffi {
             flush_bytes: i64,
             stream: *mut c_void,
         ) -> *const c_char;
-        pub fn pi_attn_decode_splits(batch: i32, num_kv_heads: i32, max_chunks: i32) -> i32;
+        pub fn pi_attn_decode_groups(max_kv_len: i64) -> i32;
         pub fn pi_attn_decode(
             q: *const c_void,
             k_cache: *const c_void,
@@ -67,14 +67,12 @@ mod ffi {
             seqlens: *const i32,
             ws_o: *mut f32,
             ws_ml: *mut f32,
-            chunk_offsets: *mut i32,
-            capacity: i32,
+            ws_rows: i64,
             out: *mut c_void,
             batch: i32,
             num_qo_heads: i32,
             num_kv_heads: i32,
             page_size: i32,
-            splits: i32,
             sm_scale: f64,
             stream: *mut c_void,
         ) -> *const c_char;
@@ -84,7 +82,6 @@ mod ffi {
             num_kv_heads: i32,
             max_q_len: i32,
             max_kv_len: i32,
-            variant: *mut i32,
             splits: *mut i32,
             max_groups: *mut i32,
         );
@@ -104,7 +101,6 @@ mod ffi {
             page_size: i32,
             max_q_len: i32,
             sm_scale: f64,
-            variant: i32,
             splits: i32,
             ws_o: *mut f32,
             ws_ml: *mut f32,
@@ -247,56 +243,34 @@ pub fn linear_shape_supported(n: i64, k: i64) -> bool {
     k % 64 == 0 && n % 32 == 0
 }
 
-/// Chunk capacity of a dense page table: chunks of 64 keys covering every column.
-pub(crate) fn max_chunks(table_columns: i64, page_size: i64) -> i64 {
-    (table_columns * page_size + 63) / 64
-}
-
-pub(crate) fn decode_splits(batch: i64, num_kv_heads: i64, max_chunks: i64) -> i32 {
+/// Fold groups (512 keys) covering a dense page table row of `table_columns` pages.
+pub(crate) fn decode_groups(table_columns: i64, page_size: i64) -> i64 {
     #[cfg(has_pi)]
-    return unsafe { ffi::pi_attn_decode_splits(batch as i32, num_kv_heads as i32, max_chunks as i32) };
+    return unsafe { ffi::pi_attn_decode_groups(table_columns * page_size) } as i64;
     #[cfg(not(has_pi))]
     {
-        let _ = (batch, num_kv_heads, max_chunks);
+        let _ = (table_columns, page_size);
         1
     }
 }
 
-/// Compact per-chunk decode partials: o `[capacity, Hq, 128]`, ml `[capacity, Hq, 2]`
-/// f32, and `offsets [rows + 1]` int32 (each request's first partial row, filled on
-/// the GPU). `capacity` bounds the batch's total KV chunks, so it scales with the
-/// KV pool, not with rows x max sequence length.
+/// Decode group partials: o `[rows, Hq, 128]` and ml `[rows, Hq, 2]` f32, one row
+/// per (request, fold group), so `rows = batch * decode_groups(..)`.
 pub(crate) struct DecodeWorkspace {
     pub o: Tensor,
     pub ml: Tensor,
-    pub offsets: Tensor,
 }
 
 impl DecodeWorkspace {
-    pub fn new(rows: i64, capacity: i64, num_heads: i64, device: Device) -> Self {
+    pub fn new(rows: i64, num_heads: i64, device: Device) -> Self {
         Self {
-            o: Tensor::empty([capacity, num_heads, 128], (Kind::Float, device)),
-            ml: Tensor::empty([capacity, num_heads, 2], (Kind::Float, device)),
-            offsets: Tensor::empty([rows + 1], (Kind::Int, device)),
+            o: Tensor::empty([rows, num_heads, 128], (Kind::Float, device)),
+            ml: Tensor::empty([rows, num_heads, 2], (Kind::Float, device)),
         }
     }
     pub fn rows(&self) -> i64 {
-        self.offsets.size()[0] - 1
-    }
-    pub fn capacity(&self) -> i64 {
         self.o.size()[0]
     }
-}
-
-/// Workspace rows for a decode batch of `rows`. Requests with disjoint KV need at
-/// most the pool's chunks plus one partial chunk per row; when shared prefix pages
-/// push the batch past that, the kernels switch to grouped mode (same bits), which
-/// needs one row per (request, fold group), so the capacity never drops below that.
-pub(crate) fn decode_capacity(rows: i64, table_columns: i64, page_size: i64, pool_tokens: Option<i64>) -> i64 {
-    let chunks = max_chunks(table_columns, page_size);
-    let dense = rows * chunks;
-    let grouped = rows * ((chunks + 31) / 32);
-    pool_tokens.map_or(dense, |tokens| dense.min((tokens + 63) / 64 + rows)).max(grouped)
 }
 
 /// Decode attention for `q [batch, Hq, 128]` against the paged caches; writes `out [batch, Hq*128]`.
@@ -308,15 +282,14 @@ pub(crate) fn decode(
     page_table: &Tensor,
     seqlens: &Tensor,
     workspace: &DecodeWorkspace,
-    splits: i32,
     num_kv_heads: i64,
     out: &Tensor,
 ) -> Result<(), String> {
     let (batch, num_heads) = (q.size()[0], q.size()[1]);
     require(page_table, Kind::Int, "page table")?;
     require(seqlens, Kind::Int, "sequence lengths")?;
-    if page_table.size()[0] < batch || page_table.stride()[1] != 1 || workspace.rows() < batch {
-        return Err("decode page table or workspace smaller than the batch".into());
+    if page_table.size()[0] < batch || page_table.stride()[1] != 1 {
+        return Err("decode page table smaller than the batch".into());
     }
     let page_size = k_cache.size()[1];
     #[cfg(has_pi)]
@@ -330,28 +303,25 @@ pub(crate) fn decode(
             seqlens.data_ptr().cast(),
             workspace.o.data_ptr().cast(),
             workspace.ml.data_ptr().cast(),
-            workspace.offsets.data_ptr().cast(),
-            workspace.capacity() as i32,
+            workspace.rows(),
             out.data_ptr(),
             batch as i32,
             num_heads as i32,
             num_kv_heads as i32,
             page_size as i32,
-            splits,
             1.0 / (q.size()[2] as f64).sqrt(),
             stream_of(q)?,
         )
     });
     #[cfg(not(has_pi))]
     {
-        let _ = (k_cache, v_cache, seqlens, workspace, splits, num_kv_heads, out, num_heads);
+        let _ = (k_cache, v_cache, seqlens, workspace, num_kv_heads, out, num_heads);
         Err("PI kernels were not built".into())
     }
 }
 
 /// Host-side prefill plan; all fields come from host metadata (no GPU reads).
 pub(crate) struct PrefillPlan {
-    pub variant: i32,
     pub splits: i32,
     pub max_groups: i32,
     pub max_q_len: i32,
@@ -375,7 +345,7 @@ pub(crate) fn plan_prefill(
         .unwrap_or(1)
         .max(1) as i32;
     let total_q: i64 = q_lens.iter().sum();
-    let (mut variant, mut splits, mut max_groups) = (2, 1, 1);
+    let (mut splits, mut max_groups) = (1, 1);
     #[cfg(has_pi)]
     unsafe {
         ffi::pi_attn_prefill_plan(
@@ -384,7 +354,6 @@ pub(crate) fn plan_prefill(
             num_kv_heads as i32,
             max_q_len,
             max_kv_len,
-            &mut variant,
             &mut splits,
             &mut max_groups,
         )
@@ -396,7 +365,6 @@ pub(crate) fn plan_prefill(
         )
     });
     PrefillPlan {
-        variant,
         splits,
         max_groups,
         max_q_len,
@@ -449,7 +417,6 @@ pub(crate) fn prefill(
             k_cache.size()[1] as i32,
             plan.max_q_len,
             1.0 / (q.size()[2] as f64).sqrt(),
-            plan.variant,
             plan.splits,
             ws_o,
             ws_ml,

@@ -85,73 +85,61 @@ void pi_set_device(int device) {
 
 // ------------------------------------------------------------------ attention
 
-// Decode planner: split CTAs so the batch's chunks are covered ~8 warps per SM.
-// Depends only on (batch, kv heads, workspace chunk capacity, device): fixed per
-// CUDA-graph bucket.
-int pi_attn_decode_splits(int batch, int num_kv_heads, int max_chunks) {
-  const int64_t want = (int64_t)8 * device_info().sms;
-  const int64_t per = (int64_t)num_kv_heads * std::max(batch, 1);
-  return (int)std::max<int64_t>(1, std::min<int64_t>(max_chunks, (want + per - 1) / per));
-}
-
 // q: [batch, Hq, 128] bf16 contiguous; out: [batch, Hq, 128] bf16; caches:
 // [pages, page_size, Hkv, 128] bf16; page table: dense [batch, table_stride]
 // int32; seqlens: [batch] int32 (KV length including the decoded token).
-// Compact workspace: ws_o [capacity, Hq, 128] f32, ws_ml [capacity, Hq, 2] f32 and
-// chunk_offsets [batch + 1] int32 (filled here). capacity >= batch * max_groups is
-// required; when the sum of ceil(seqlen / 64) exceeds capacity (shared prefix pages)
-// the kernels switch to grouped mode on device, with identical results.
+// Workspace: ws_o [batch * max_groups, Hq, 128] f32 and ws_ml [.., Hq, 2] f32 with
+// max_groups = pi_attn_decode_groups(table_stride * page_size). The grid depends
+// only on (batch, table_stride), so it is fixed per CUDA-graph bucket.
+int pi_attn_decode_groups(int64_t max_kv_len) {
+  return (int)((max_kv_len + kGroupKeys - 1) / kGroupKeys);
+}
+
 const char* pi_attn_decode(const void* q, const void* k_cache, const void* v_cache,
                            const int32_t* page_table, int64_t table_stride, const int32_t* seqlens,
-                           float* ws_o, float* ws_ml, int32_t* chunk_offsets, int capacity,
-                           void* out, int batch, int num_qo_heads, int num_kv_heads, int page_size,
-                           int splits, double sm_scale, void* stream) {
+                           float* ws_o, float* ws_ml, int64_t ws_rows, void* out, int batch,
+                           int num_qo_heads, int num_kv_heads, int page_size, double sm_scale,
+                           void* stream) {
   if (num_kv_heads <= 0 || num_qo_heads % num_kv_heads || num_qo_heads / num_kv_heads > 16)
     return fail("PI attention needs num_qo_heads = g * num_kv_heads with g <= 16");
   if (batch == 0) return nullptr;
-  const int64_t max_chunks = (table_stride * page_size + kChunk - 1) / kChunk;
-  const int max_groups = (int)((max_chunks + kGroupChunks - 1) / kGroupChunks);
-  if ((int64_t)capacity < (int64_t)batch * max_groups)
+  const int max_groups = pi_attn_decode_groups(table_stride * page_size);
+  if (ws_rows < (int64_t)batch * max_groups)
     return fail("PI decode workspace smaller than batch * fold groups per request");
   auto st = (cudaStream_t)stream;
-  decode_chunk_offsets_kernel<<<1, 32, 0, st>>>(seqlens, batch, chunk_offsets);
-  if (auto e = check_launch("pi decode offsets")) return e;
-  constexpr int W = 1, B = 1;  // 1 warp per CTA, one shared K/V tile: best on Ampere/Ada tested
-  const size_t smem = decode_smem_elems<W, B>() * sizeof(__nv_bfloat16);
-  set_smem(decode_partial_kernel<W, B>, smem);
-  decode_partial_kernel<W, B><<<dim3(num_kv_heads, batch, splits), W * 32, smem, st>>>(
+  set_smem(decode_kernel, decode_smem_bytes());
+  decode_kernel<<<dim3(max_groups, num_kv_heads, batch), kDecodeWarps * 32, decode_smem_bytes(), st>>>(
       (const __nv_bfloat16*)q, (const __nv_bfloat16*)k_cache, (const __nv_bfloat16*)v_cache,
-      nullptr, page_table, table_stride, seqlens, ws_o, (float2*)ws_ml, chunk_offsets, capacity,
-      max_groups, num_qo_heads, num_kv_heads, page_size, page_shift_of(page_size),
-      (float)(sm_scale * 1.4426950408889634));
-  if (auto e = check_launch("pi decode partials")) return e;
+      nullptr, page_table, table_stride, seqlens, ws_o, (float2*)ws_ml, max_groups, num_qo_heads,
+      num_kv_heads, page_size, page_shift_of(page_size), (float)(sm_scale * 1.4426950408889634));
+  if (auto e = check_launch("pi decode")) return e;
   decode_merge_kernel<<<dim3(num_qo_heads, batch), kHeadDim, 0, st>>>(
-      ws_o, (const float2*)ws_ml, seqlens, chunk_offsets, capacity, max_groups,
-      (__nv_bfloat16*)out, num_qo_heads);
+      ws_o, (const float2*)ws_ml, seqlens, max_groups, (__nv_bfloat16*)out, num_qo_heads);
   return check_launch("pi decode merge");
 }
 
-// Prefill planner. Returns variant (2 = 8 warps x 16 rows; 4 = 8 warps x 32
-// rows on big-smem GPUs) and the split count over fold groups (wave model).
+// Prefill planner: split count over fold groups (wave model: two CTAs per SM, a
+// CTA's time ~ the tiles it runs) and max_groups for the split workspace.
 void pi_attn_prefill_plan(int batch, int num_qo_heads, int num_kv_heads, int max_q_len,
-                          int max_kv_len, int* variant, int* splits, int* max_groups) {
+                          int max_kv_len, int* splits, int* max_groups) {
   const DeviceInfo dev = device_info();
   const int group = num_qo_heads / std::max(num_kv_heads, 1);
-  const bool big = dev.smem_optin >= (int)(prefill_smem_elems<8, 2, 2>() * sizeof(__nv_bfloat16));
   const int64_t rows = (int64_t)max_q_len * group;
-  const int64_t ctas256 = (rows + 255) / 256 * num_kv_heads * batch;
-  *variant = big && ctas256 >= dev.sms ? 4 : 2;
-  const int tile_rows = *variant == 4 ? 256 : 128;
-  const int64_t ctas = (rows + tile_rows - 1) / tile_rows * num_kv_heads * batch;
-  *max_groups = (max_kv_len - 1) / (kChunk * kGroupChunks) + 1;
-  const int64_t chunks = (max_kv_len + kChunk - 1) / kChunk;
+  const int64_t ctas = (rows + kPrefillWarps * 16 - 1) / (kPrefillWarps * 16) * num_kv_heads * batch;
+  const int64_t slots = 2 * (int64_t)dev.sms;
+  *max_groups = (max_kv_len - 1) / kGroupKeys + 1;
+  const int64_t tiles = (max_kv_len + kTile - 1) / kTile;
   int64_t best = INT64_MAX;
   *splits = 1;
-  for (int sp = 1; sp <= *max_groups; ++sp) {
+  // Split mode keeps one f32 partial per (row, head, fold group); stay within the
+  // same 256 MiB a FlashInfer float workspace typically takes.
+  const int64_t ws_bytes = (int64_t)batch * max_q_len * num_qo_heads * *max_groups * (kHeadDim + 2) * 4;
+  const int max_splits = ws_bytes <= (256ll << 20) ? *max_groups : 1;
+  for (int sp = 1; sp <= max_splits; ++sp) {
     const int64_t groups_per = (*max_groups + sp - 1) / sp;
-    const int64_t per = std::min<int64_t>(chunks, groups_per * kGroupChunks);
-    const int64_t waves = (ctas * sp + dev.sms - 1) / dev.sms;
-    const int64_t cost = waves * per + (sp > 1 ? per / 8 : 0);
+    const int64_t per = std::min<int64_t>(tiles, groups_per * kGroupTiles);
+    const int64_t waves = (ctas * sp + slots - 1) / slots;
+    const int64_t cost = waves * per + (sp > 1 ? per / 8 : 0);  // + workspace / merge
     if (cost < best) {
       best = cost;
       *splits = sp;
@@ -167,25 +155,21 @@ const char* pi_attn_prefill(const void* q, const void* k_cache, const void* v_ca
                             const int32_t* qo_indptr, const int32_t* page_table,
                             int64_t table_stride, const int32_t* prefix_lens, void* out, int batch,
                             int total_q, int num_qo_heads, int num_kv_heads, int page_size,
-                            int max_q_len, double sm_scale, int variant, int splits, float* ws_o,
-                            float* ws_ml, int max_groups, void* stream) {
+                            int max_q_len, double sm_scale, int splits, float* ws_o, float* ws_ml,
+                            int max_groups, void* stream) {
   if (num_kv_heads <= 0 || num_qo_heads % num_kv_heads || num_qo_heads / num_kv_heads > 16)
     return fail("PI attention needs num_qo_heads = g * num_kv_heads with g <= 16");
   if (batch == 0 || total_q == 0) return nullptr;
   if (splits > 1 && (!ws_o || !ws_ml)) return fail("PI prefill split mode needs a workspace");
   auto st = (cudaStream_t)stream;
   const int group = num_qo_heads / num_kv_heads;
-  auto launch = [&](auto kernel, int warps, int rows, size_t smem) {
-    set_smem(kernel, smem);
-    const int tiles = (int)(((int64_t)max_q_len * group + rows - 1) / rows);
-    kernel<<<dim3(tiles, num_kv_heads, batch * splits), warps * 32, smem, st>>>(
-        (const __nv_bfloat16*)q, (__nv_bfloat16*)out, (const __nv_bfloat16*)k_cache,
-        (const __nv_bfloat16*)v_cache, qo_indptr, nullptr, page_table, table_stride, nullptr,
-        prefix_lens, num_qo_heads, num_kv_heads, page_size, page_shift_of(page_size),
-        (float)(sm_scale * 1.4426950408889634), splits, ws_o, (float2*)ws_ml, max_groups);
-  };
-  if (variant == 4) launch(prefill_kernel<8, 2, 2>, 8, 256, prefill_smem_elems<8, 2, 2>() * sizeof(__nv_bfloat16));
-  else launch(prefill_kernel<8, 1, 2>, 8, 128, prefill_smem_elems<8, 1, 2>() * sizeof(__nv_bfloat16));
+  const int tiles = (int)(((int64_t)max_q_len * group + kPrefillWarps * 16 - 1) / (kPrefillWarps * 16));
+  set_smem(prefill_kernel, prefill_smem_bytes());
+  prefill_kernel<<<dim3(tiles, num_kv_heads, batch * splits), kPrefillWarps * 32, prefill_smem_bytes(), st>>>(
+      (const __nv_bfloat16*)q, (__nv_bfloat16*)out, (const __nv_bfloat16*)k_cache,
+      (const __nv_bfloat16*)v_cache, qo_indptr, nullptr, page_table, table_stride, nullptr, prefix_lens,
+      num_qo_heads, num_kv_heads, page_size, page_shift_of(page_size),
+      (float)(sm_scale * 1.4426950408889634), splits, ws_o, (float2*)ws_ml, max_groups);
   if (auto e = check_launch("pi prefill")) return e;
   if (splits > 1) {
     prefill_merge_kernel<<<dim3(num_qo_heads, total_q), kHeadDim, 0, st>>>(

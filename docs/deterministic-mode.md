@@ -21,14 +21,17 @@ Nondeterminism comes from reductions whose order depends on how work is
 partitioned. Deterministic mode fixes every reduction tree by problem shape and
 positions only, never by batch or schedule:
 
-- **Attention** (`pi` backend, `src/kernels/pi/`): KV is cut into 64-key chunks at
-  absolute positions. A chunk partial (chunk-local max, bf16 probabilities, row sum,
-  P·V from a zero accumulator) is a pure function of the query row and the chunk;
-  partials are folded in a fixed two-level tree (ascending within 2048-key groups,
-  then ascending over groups). The prefill kernel folds in registers or splits over
-  groups; decode computes chunk partials in parallel (any number of KV splits) into a
-  compact workspace and a merge kernel folds them. Both paths execute the same
-  operation sequence per row, so prefill and decode agree bitwise.
+- **Attention** (`pi` backend, `src/kernels/pi/`): keys are cut into 32-key tiles and
+  512-key fold groups at absolute positions. Within a group each query row runs an
+  online softmax over the group's tiles in ascending order, starting from the empty
+  state at the group start (P rounded to bf16 against the running max, P·V
+  accumulated on the tensor cores); the group results are then folded in ascending
+  order. Prefill folds the groups in registers or, for long prefixes with few
+  queries, splits the groups over CTAs and merges them; decode runs each group of a
+  request in one CTA (the tile split across warps without changing any element's
+  sequence) and merges the groups. Every path executes the same operation sequence
+  per row, so batched, chunked, prefix-cached, prefilled and decoded rows agree
+  bitwise.
 - **Projections** (`src/kernels/pi.rs`, `gemm_inv.cuh`, `gemm_cutlass.cuh`): every
   output element accumulates `k` in ascending 16-wide MMA steps from zero, with no
   split-K. Small-M kernels and CUTLASS tiles realise the same order, so the tile can
