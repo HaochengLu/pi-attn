@@ -12,9 +12,11 @@
   {
    "concurrency": 4,
    "requests": 16,
-   "mismatched": 1,
+   "mismatched": 3,
    "first_divergence_tokens": [
-    14
+    9,
+    15,
+    44
    ]
   },
   {
@@ -31,6 +33,23 @@
   "partial_hit": 0,
   "requests": 8
  },
+ "shared": {
+  "requests": 32,
+  "prefix_tokens": 2616,
+  "mismatched": 13,
+  "first_divergence_tokens": [
+   1,
+   1,
+   5,
+   9,
+   17,
+   18,
+   52,
+   56,
+   63,
+   70
+  ]
+ },
  "path": {
   "requests": 24,
   "mismatched": 1,
@@ -38,41 +57,57 @@
    9
   ]
  },
+ "sample_path": {
+  "requests": 24,
+  "mismatched": 11,
+  "first_divergence_tokens": [
+   1,
+   70,
+   129,
+   29,
+   92,
+   92,
+   135,
+   3,
+   70,
+   128,
+   40
+  ]
+ },
  "repeat": {
   "samples": 200,
-  "unique_completions": 14
+  "unique_completions": 15
  },
  "sample": {
   "rows": [
    {
     "concurrency": 4,
     "requests": 16,
-    "mismatched": 6,
+    "mismatched": 7,
     "first_divergence_tokens": [
-     1,
+     0,
      1,
      2,
      4,
+     17,
      27,
-     126
+     29
     ]
    },
    {
     "concurrency": 16,
     "requests": 16,
-    "mismatched": 7,
+    "mismatched": 5,
     "first_divergence_tokens": [
      1,
      2,
-     3,
-     5,
-     17,
-     29,
-     30
+     2,
+     4,
+     29
     ]
    }
   ],
   "distinct_reference_samples": 16
  },
- "seconds": 198.2
+ "seconds": 314.0
 }

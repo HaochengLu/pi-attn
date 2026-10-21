@@ -8,3 +8,7 @@ logs/
 results/detcheck/*.json
 results/**/*.server.log
 results/accuracy/*/*/
+*.nsys-rep
+*.sqlite
+*.server.log
+results/*.out

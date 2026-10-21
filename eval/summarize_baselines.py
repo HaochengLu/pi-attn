@@ -13,7 +13,10 @@ print("|---|---|---|---|---|---|---|---|")
 for k, name in ENG:
     p = f"{d}/{k}.detcheck.json"
     if not os.path.exists(p):
-        print(f"| {name} | not run | | | | | | |"); continue
+        log = f"{d}/{k}.detcheck.log"
+        stalled = os.path.exists(log) and "ReadTimeout" in open(log).read()
+        print(f"| {name} | {'server stalled (request timed out after 1200 s)' if stalled else 'not run'} | | | | | | |")
+        continue
     r = json.load(open(p))
     b = "/".join(str(x["mismatched"]) for x in r["batch"])
     s = "/".join(str(x["mismatched"]) for x in r["sample"]["rows"])

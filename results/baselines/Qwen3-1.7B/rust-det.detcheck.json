@@ -27,7 +27,18 @@
   "partial_hit": 0,
   "requests": 8
  },
+ "shared": {
+  "requests": 32,
+  "prefix_tokens": 2616,
+  "mismatched": 0,
+  "first_divergence_tokens": []
+ },
  "path": {
+  "requests": 24,
+  "mismatched": 0,
+  "first_divergence_tokens": []
+ },
+ "sample_path": {
   "requests": 24,
   "mismatched": 0,
   "first_divergence_tokens": []
@@ -53,5 +64,5 @@
   ],
   "distinct_reference_samples": 16
  },
- "seconds": 207.6
+ "seconds": 330.5
 }

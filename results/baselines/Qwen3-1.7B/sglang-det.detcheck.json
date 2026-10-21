@@ -27,11 +27,42 @@
   "partial_hit": 0,
   "requests": 8
  },
+ "shared": {
+  "requests": 32,
+  "prefix_tokens": 2616,
+  "mismatched": 14,
+  "first_divergence_tokens": [
+   0,
+   3,
+   10,
+   13,
+   15,
+   17,
+   20,
+   31,
+   37,
+   51
+  ]
+ },
  "path": {
   "requests": 24,
   "mismatched": 1,
   "first_divergence_tokens": [
    9
+  ]
+ },
+ "sample_path": {
+  "requests": 24,
+  "mismatched": 8,
+  "first_divergence_tokens": [
+   68,
+   68,
+   130,
+   199,
+   231,
+   6,
+   117,
+   189
   ]
  },
  "repeat": {
@@ -43,9 +74,8 @@
    {
     "concurrency": 4,
     "requests": 16,
-    "mismatched": 2,
+    "mismatched": 1,
     "first_divergence_tokens": [
-     34,
      69
     ]
    },
@@ -60,5 +90,5 @@
   ],
   "distinct_reference_samples": 16
  },
- "seconds": 456.9
+ "seconds": 686.1
 }

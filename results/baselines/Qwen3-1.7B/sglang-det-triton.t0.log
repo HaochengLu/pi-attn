@@ -1,0 +1,71 @@
+{"out_tok_s": 65.05, "req_s": 0.25, "ttft_ms": 57.11, "tpot_ms": 15.21, "itl_ms": 15.21, "p99_ttft_ms": 57.9, "e2e_ms": 3935.54, "tokens": 8192, "in": 64, "out": 256, "concurrency": 1, "shared": 0, "repeats": 3, "out_tok_s_all": [65.1, 65.0, 65.0]}
+{"out_tok_s": 502.13, "req_s": 1.96, "ttft_ms": 125.36, "tpot_ms": 15.5, "itl_ms": 15.5, "p99_ttft_ms": 169.12, "e2e_ms": 4077.31, "tokens": 8192, "in": 512, "out": 256, "concurrency": 8, "shared": 0, "repeats": 3, "out_tok_s_all": [439.3, 502.1, 502.8]}
+{"out_tok_s": 1788.09, "req_s": 6.98, "ttft_ms": 215.87, "tpot_ms": 17.07, "itl_ms": 17.07, "p99_ttft_ms": 552.16, "e2e_ms": 4569.73, "tokens": 16384, "in": 512, "out": 256, "concurrency": 32, "shared": 0, "repeats": 3, "out_tok_s_all": [1752.7, 1789.5, 1788.1]}
+{"out_tok_s": 675.91, "req_s": 2.64, "ttft_ms": 678.4, "tpot_ms": 21.08, "itl_ms": 21.08, "p99_ttft_ms": 1233.74, "e2e_ms": 6053.16, "tokens": 8192, "in": 2048, "out": 256, "concurrency": 16, "shared": 0, "repeats": 3, "out_tok_s_all": [685.5, 675.9, 675.9]}
+Traceback (most recent call last):
+  File "/uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/urllib3/response.py", line 929, in _error_catcher
+    yield
+  File "/uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/urllib3/response.py", line 1459, in read_chunked
+    self._update_chunk_length()
+  File "/uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/urllib3/response.py", line 1367, in _update_chunk_length
+    line = self._fp.fp.readline(_MAX_CHUNK_LINE_LENGTH + 1)  # type: ignore[union-attr]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/uniparser/users/luhaocheng/pi_attn/env/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/socket.py", line 720, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+TimeoutError: timed out
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/requests/models.py", line 937, in generate
+    yield from self.raw.stream(chunk_size, decode_content=True)
+  File "/uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/urllib3/response.py", line 1284, in stream
+    yield from self.read_chunked(amt, decode_content=decode_content)
+  File "/uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/urllib3/response.py", line 1436, in read_chunked
+    with self._error_catcher():
+         ^^^^^^^^^^^^^^^^^^^^^
+  File "/uniparser/users/luhaocheng/pi_attn/env/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "/uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/urllib3/response.py", line 934, in _error_catcher
+    raise ReadTimeoutError(self._pool, None, "Read timed out.") from e  # type: ignore[arg-type]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+urllib3.exceptions.ReadTimeoutError: HTTPConnectionPool(host='127.0.0.1', port=18098): Read timed out.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/uniparser/users/luhaocheng/pi_attn/eval/loadgen.py", line 95, in <module>
+    main()
+  File "/uniparser/users/luhaocheng/pi_attn/eval/loadgen.py", line 84, in main
+    reps = [run(a.url.rstrip("/"), i, o, c, max(a.num, 2 * c), seed=r, shared=sh) for r in range(a.repeats)]
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/uniparser/users/luhaocheng/pi_attn/eval/loadgen.py", line 57, in run
+    res = list(ex.map(lambda ip: one(url, ip[1], out_len, ip[0]), enumerate(prompts)))
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/uniparser/users/luhaocheng/pi_attn/env/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/concurrent/futures/_base.py", line 619, in result_iterator
+    yield _result_or_cancel(fs.pop())
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/uniparser/users/luhaocheng/pi_attn/env/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/concurrent/futures/_base.py", line 317, in _result_or_cancel
+    return fut.result(timeout)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/uniparser/users/luhaocheng/pi_attn/env/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/concurrent/futures/_base.py", line 456, in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/uniparser/users/luhaocheng/pi_attn/env/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/concurrent/futures/_base.py", line 401, in __get_result
+    raise self._exception
+  File "/uniparser/users/luhaocheng/pi_attn/env/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/uniparser/users/luhaocheng/pi_attn/eval/loadgen.py", line 57, in <lambda>
+    res = list(ex.map(lambda ip: one(url, ip[1], out_len, ip[0]), enumerate(prompts)))
+                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/uniparser/users/luhaocheng/pi_attn/eval/loadgen.py", line 28, in one
+    for line in r.iter_lines():
+                ^^^^^^^^^^^^^^
+  File "/uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/requests/models.py", line 1008, in iter_lines
+    for chunk in self.iter_content(
+                 ^^^^^^^^^^^^^^^^^^
+  File "/uniparser/users/luhaocheng/pi_attn/env/venv/lib/python3.12/site-packages/requests/models.py", line 943, in generate
+    raise ConnectionError(e)
+requests.exceptions.ConnectionError: HTTPConnectionPool(host='127.0.0.1', port=18098): Read timed out.

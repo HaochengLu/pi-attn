@@ -2,7 +2,7 @@
 
 Five partition changes must leave every output bit unchanged:
   batch    : a request computed alone vs inside a mixed batch
-  split    : decode with 1..many split CTAs
+  split    : prefill split over fold groups (1..many CTAs per row tile)
   chunk    : prefill in one call vs chunked prefill with arbitrary cut points
   prefix   : prefix KV already cached (different physical pages) vs computed now
   path     : prefill row at position p vs decode of the token at position p
@@ -17,17 +17,13 @@ import torch
 from build import build
 
 ext = build()
-C = ext.CHUNK
 dev = "cuda"
 torch.manual_seed(0)
 random.seed(0)
 PAGE = 16
 HQ, HKV, D = 16, 8, 128
 SCALE = 1 / math.sqrt(D)
-WARPS = int(__import__('os').environ.get('PI_CFG', '0'))
-DVAR = int(__import__('os').environ.get('PI_DVAR', '0'))
 KVSPLITS = int(__import__('os').environ.get('PI_KVSPLITS', '1'))
-GROUPED = __import__("os").environ.get("PI_GROUPED", "0") == "1"  # force grouped decode everywhere
 
 
 class Pool:
@@ -79,22 +75,20 @@ def prefill(pool, reqs):
     m = meta([r[1] for r in reqs], [r[2] for r in reqs], [r[0].shape[0] for r in reqs])
     out = ext.prefill(q, pool.k, pool.v, m["qo_indptr"], m["kv_page_indptr"], m["kv_page_indices"],
                       m["kv_lens"], max(r[0].shape[0] for r in reqs), max(r[2] for r in reqs), SCALE,
-                      WARPS, KVSPLITS)
+                      KVSPLITS)
     return list(out.split([r[0].shape[0] for r in reqs]))
 
 
-def decode(pool, reqs, splits, grouped=GROUPED):
-    """reqs: list of (q[1], pages, kv_len). grouped: workspace of batch * max_groups
-    rows only, which forces grouped mode whenever the chunks do not fit."""
+def decode(pool, reqs):
+    """reqs: list of (q[1], pages, kv_len)."""
     q = torch.cat([r[0] for r in reqs]).contiguous()
     m = meta([r[1] for r in reqs], [r[2] for r in reqs])
-    max_chunks = max((r[2] + C - 1) // C for r in reqs)
-    min_capacity = len(reqs) * ((max_chunks + 31) // 32)
-    capacity = min_capacity if grouped else max(min_capacity, sum((r[2] + C - 1) // C for r in reqs))
-    ws_o = torch.full((capacity, HQ, D), float("nan"), device=dev)
-    ws_ml = torch.full((capacity, HQ, 2), float("nan"), device=dev)
+    max_kv = max(r[2] for r in reqs)
+    rows = len(reqs) * -(-max_kv // ext.GROUP_KEYS)
+    ws_o = torch.full((rows, HQ, D), float("nan"), device=dev)
+    ws_ml = torch.full((rows, HQ, 2), float("nan"), device=dev)
     out = ext.decode(q, pool.k, pool.v, m["kv_page_indptr"], m["kv_page_indices"], m["kv_lens"],
-                     ws_o, ws_ml, max_chunks, splits, SCALE, DVAR)
+                     ws_o, ws_ml, max_kv, SCALE)
     return list(out.split(1))
 
 
@@ -112,6 +106,7 @@ def exact(q, k, v):
 
 
 def main():
+    global KVSPLITS
     pool = Pool()
     fails = []
     lens = [1, 15, 63, 64, 65, 200, 517, 1300, 2049]
@@ -147,18 +142,25 @@ def main():
         if not same(torch.cat(outs), alone[L]):
             fails.append(("chunk+prefix", L))
 
-    # path + split + batch: decode token p (cache holds 0..p) vs prefill row p.
-    for splits in [1, 2, 3, 7, 64]:
-        probes = [(L, p) for L in lens for p in sorted({0, L // 2, L - 1, random.randrange(L)})]
+    # split: prefill forced over 2..7 split CTAs per row tile vs the planner's run.
+    for KVSPLITS in (2, 3, 7):
+        for L in lens:
+            if not same(prefill(pool, [(seqs[L][0], pages[L], L)])[0], alone[L]):
+                fails.append(("split", L, KVSPLITS))
+    KVSPLITS = 0
+
+    # path + batch: decode token p (cache holds 0..p) vs prefill row p, at tile
+    # (32) and fold-group (512) boundaries, in two random batchings.
+    for _ in range(2):
+        probes = [(L, p) for L in lens for p in sorted({0, L // 2, L - 1, random.randrange(L)} |
+                                                      {b for b in (31, 32, 511, 512, 513, 1023, 1024) if b < L})]
         random.shuffle(probes)
         for i in range(0, len(probes), 9):
             group = probes[i:i + 9]
             reqs = [(seqs[L][0][p:p + 1].contiguous(), pages[L], p + 1) for L, p in group]
-            for grouped in (False, True):
-                outs = decode(pool, reqs, splits, grouped)
-                for (L, p), out in zip(group, outs):
-                    if not same(out[0], alone[L][p]):
-                        fails.append(("path/split" + ("/grouped" if grouped else ""), L, p, splits))
+            for (L, p), out in zip(group, decode(pool, reqs)):
+                if not same(out[0], alone[L][p]):
+                    fails.append(("path", L, p))
 
     # Accuracy vs float64 and vs bf16 SDPA.
     for L in [517, 2049]:

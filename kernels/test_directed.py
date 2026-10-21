@@ -10,7 +10,7 @@ import test_invariance as T
 dev = "cuda"
 
 
-def run(name, hq, hkv, L, qscale, vfn=None, page=16, splits=(0, 1, 3, 16)):
+def run(name, hq, hkv, L, qscale, vfn=None, page=16):
     T.HQ, T.HKV, T.PAGE = hq, hkv, page
     torch.manual_seed(1)
     random.seed(1)
@@ -22,14 +22,14 @@ def run(name, hq, hkv, L, qscale, vfn=None, page=16, splits=(0, 1, 3, 16)):
         v = vfn(v)
     pg = pool.alloc(L)
     pool.write(pg, 0, k, v)
-    T.WARPS, T.KVSPLITS = 1, 1
+    T.KVSPLITS = 1
     ref = T.prefill(pool, [(q, pg, L)])[0]
     fails = []
-    for cfg, kvs in [(2, 1), (3, 1), (2, 3), (1, 0)]:
-        T.WARPS, T.KVSPLITS = cfg, kvs
+    for kvs in (3, 0):
+        T.KVSPLITS = kvs
         if not T.same(T.prefill(pool, [(q, pg, L)])[0], ref):
-            fails.append(("cfg", cfg, kvs))
-    T.WARPS, T.KVSPLITS = 0, 0
+            fails.append(("split", kvs))
+    T.KVSPLITS = 0
     p2 = pool.alloc(L)
     pool.write(p2, 0, k, v)
     cuts = sorted(random.sample(range(1, L), min(3, L - 1)))
@@ -39,14 +39,11 @@ def run(name, hq, hkv, L, qscale, vfn=None, page=16, splits=(0, 1, 3, 16)):
         s = e
     if not T.same(torch.cat(outs), ref):
         fails.append("chunked")
-    probes = [p for p in sorted({0, L // 2, L - 1, 65, 127, 200, 2047, 2048}) if p < L]
-    for dvar in (1, 2, 4):
-        T.DVAR = dvar
-        for sp in splits:
-            outs = T.decode(pool, [(q[p:p + 1].contiguous(), pg, p + 1) for p in probes], sp)
-            for p, o in zip(probes, outs):
-                if not T.same(o[0], ref[p]):
-                    fails.append(("dec", dvar, sp, p))
+    probes = [p for p in sorted({0, L // 2, L - 1, 31, 32, 65, 127, 200, 511, 512, 2047, 2048}) if p < L]
+    outs = T.decode(pool, [(q[p:p + 1].contiguous(), pg, p + 1) for p in probes])
+    for p, o in zip(probes, outs):
+        if not T.same(o[0], ref[p]):
+            fails.append(("dec", p))
     f = ref.float()
     bad = torch.isnan(f).any().item() or ((f == 0) & torch.signbit(f)).any().item()
     print(f"{name}: fails={len(fails)} {fails[:4]} nan_or_negzero={bad}", flush=True)

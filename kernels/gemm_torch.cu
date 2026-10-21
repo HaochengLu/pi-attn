@@ -48,6 +48,21 @@ at::Tensor linear(at::Tensor x, at::Tensor w, int64_t kernel, bool out_fp32) {
     else if (k == 23) small(gemm_small_kernel<1, 1, OutT, 256, 6>, 1, 1, 256, 6);
     else if (k == 24) small(gemm_small_kernel<2, 4, OutT, 128, 5>, 2, 4, 128, 5);
     else if (k == 25) small(gemm_small_kernel<4, 4, OutT, 128, 3>, 4, 4, 128, 3);
+    // 30..33: balanced, one CTA per SM: (G, BK, STAGES) = (1,256,3) (1,128,6) (2,128,4) (4,128,3).
+    else if (k >= 30 && k <= 33) {
+      int sms = 0, optin = 0;
+      cudaDeviceGetAttribute(&sms, cudaDevAttrMultiProcessorCount, x.get_device());
+      cudaDeviceGetAttribute(&optin, cudaDevAttrMaxSharedMemoryPerBlockOptin, x.get_device());
+      const void* xp = x.data_ptr();
+      const void* wp = w.data_ptr();
+      const int64_t ld = x.stride(0);
+      cudaError_t e;
+      if (k == 30) e = run_balanced<OutT, 1, 256, 3>(xp, ld, wp, out, N, M, N, K, sms, optin, stream);
+      else if (k == 31) e = run_balanced<OutT, 1, 128, 6>(xp, ld, wp, out, N, M, N, K, sms, optin, stream);
+      else if (k == 32) e = run_balanced<OutT, 2, 128, 4>(xp, ld, wp, out, N, M, N, K, sms, optin, stream);
+      else e = run_balanced<OutT, 4, 128, 3>(xp, ld, wp, out, N, M, N, K, sms, optin, stream);
+      TORCH_CHECK(e == cudaSuccess, "balanced gemm ", k, " failed (M too large for it?)");
+    }
     else if (k >= 10 && k < 20) {
       cudaError_t e = cudaSuccess;
       const void* xp = x.data_ptr();

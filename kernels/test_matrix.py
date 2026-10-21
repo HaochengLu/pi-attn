@@ -2,10 +2,10 @@
 
 For each GQA geometry (Qwen3 0.6B/1.7B: 16/8, 4B/8B: 32/8, plus 8/8 and 32/4)
 and query scale (normal and peaked), every way of computing a token's attention
-output must give the same bits: prefill configs 1-3 (and 4 where smem allows),
-chunked prefill at random cuts over a cached prefix stored in other pages,
-decode variants 1-4 (5 where smem allows) x split counts, inside random
-batches. Also checks run-to-run determinism and accuracy vs float64.
+output must give the same bits: prefill with 1, 2, 5 or the planner's split count
+over fold groups (inside random batches), chunked prefill at random cuts over a
+cached prefix stored in other pages, and decode inside random batches. Also
+checks run-to-run determinism and accuracy vs float64.
 """
 import math
 import random
@@ -17,9 +17,6 @@ import test_invariance as T
 
 ext = T.ext
 dev = "cuda"
-big = torch.cuda.get_device_properties(0).shared_memory_per_block_optin >= 139264
-PCFGS = (1, 2, 3, 4) if big else (1, 2, 3)
-DVARS = (1, 2, 3, 4, 5) if big else (1, 2, 3, 4)
 
 
 def run_geometry(hq, hkv, qscale, lens, seed):
@@ -35,17 +32,26 @@ def run_geometry(hq, hkv, qscale, lens, seed):
         pages[L] = pool.alloc(L)
         pool.write(pages[L], 0, seqs[L][1], seqs[L][2])
     fails = []
-    T.WARPS = PCFGS[0]
+    T.KVSPLITS = 1
     ref = {L: T.prefill(pool, [(seqs[L][0], pages[L], L)])[0] for L in lens}
-    for cfg, kvs in [(c, 1) for c in PCFGS] + [(c, ks) for c in PCFGS for ks in (2, 5)]:  # configs x fold-group splits
-        T.WARPS, T.KVSPLITS = cfg, kvs
-        order = lens[:]
+    for kvs in (1, 2, 5, 0):  # forced fold-group splits and the planner
+        T.KVSPLITS = kvs
+        # Split mode stores one f32 partial per (row, head, fold group): batch only the
+        # requests whose workspace fits; longer ones get the extend case split mode is
+        # for (their last 128 tokens over the cached prefix).
+        fits = lambda L: kvs in (0, 1) or L * hq * -(-L // ext.GROUP_KEYS) * 520 <= 2 << 30
+        order = [L for L in lens if fits(L)]
         random.shuffle(order)
-        for L, out in zip(order, T.prefill(pool, [(seqs[L][0], pages[L], L) for L in order])):
+        outs = T.prefill(pool, [(seqs[L][0], pages[L], L) for L in order]) if order else []
+        for L, out in zip(order, outs):
             if not T.same(out, ref[L]):
-                fails.append(("prefill-cfg", cfg, kvs, L))
+                fails.append(("prefill-split", kvs, L))
+        for L in [L for L in lens if not fits(L)]:
+            out = T.prefill(pool, [(seqs[L][0][L - 128:].contiguous(), pages[L], L)])[0]
+            if not T.same(out, ref[L][L - 128:]):
+                fails.append(("extend-split", kvs, L))
         for L in lens:  # chunked prefill over a cached prefix in other pages
-            if L < 2:
+            if L < 2 or not fits(L):
                 continue
             p2 = pool.alloc(L)
             pool.write(p2, 0, seqs[L][1], seqs[L][2])
@@ -56,19 +62,17 @@ def run_geometry(hq, hkv, qscale, lens, seed):
                 start = end
             pool.free.extend(p2)
             if not T.same(torch.cat(outs), ref[L]):
-                fails.append(("chunked", cfg, kvs, L))
-    T.WARPS, T.KVSPLITS = 0, 0
-    for dvar in DVARS:  # decode variants x splits vs prefill rows
-        T.DVAR = dvar
-        for splits in [0, 1, 3, 16, 128]:
-            probes = [(L, p) for L in lens for p in {0, L - 1, random.randrange(L)}]
-            random.shuffle(probes)
-            for i in range(0, len(probes), 7):
-                grp = probes[i:i + 7]
-                outs = T.decode(pool, [(seqs[L][0][p:p + 1].contiguous(), pages[L], p + 1) for L, p in grp], splits)
-                for (L, p), out in zip(grp, outs):
-                    if not T.same(out[0], ref[L][p]):
-                        fails.append(("decode", dvar, splits, L, p))
+                fails.append(("chunked", kvs, L))
+    T.KVSPLITS = 0
+    for _ in range(2):  # decode in random batches vs prefill rows
+        probes = [(L, p) for L in lens for p in {0, L - 1, random.randrange(L)}]
+        random.shuffle(probes)
+        for i in range(0, len(probes), 7):
+            grp = probes[i:i + 7]
+            outs = T.decode(pool, [(seqs[L][0][p:p + 1].contiguous(), pages[L], p + 1) for L, p in grp])
+            for (L, p), out in zip(grp, outs):
+                if not T.same(out[0], ref[L][p]):
+                    fails.append(("decode", L, p))
     # run-to-run
     again = {L: T.prefill(pool, [(seqs[L][0], pages[L], L)])[0] for L in lens}
     for L in lens:

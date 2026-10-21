@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# Regenerate every result on the current kernels, in order: build, kernel tests,
+# kernel benchmarks, cross-configuration and detcheck runs, end-to-end matrices,
+# same-GPU baselines (our engine only; SGLang/vLLM rows are unchanged), GSM8K and
+# fp32 agreement. Each stage logs to results/run_all/<stage>.log.
+set -uo pipefail
+source /uniparser/users/luhaocheng/pi_attn/env.sh
+log=$ROOT/results/run_all; mkdir -p $log
+stage() { echo "[$(date +%H:%M)] $1"; }
+stage build
+(cd $ROOT/llm_infer_rust && FLASHINFER_CUDA_ARCH=89 cargo build --release) > $log/build.log 2>&1 || { echo build failed; exit 1; }
+stage kernel-tests
+(cd $ROOT/kernels && for t in test_invariance test_directed test_matrix test_gemm; do python $t.py; echo "$t exit=$?"; done) > $log/kernel_tests.log 2>&1
+grep "exit=" $log/kernel_tests.log
+stage kernel-benches
+sed -i 's/^python gemm_cold.py > /python gemm_cold.py 1 8 32 64 128 > /' $ROOT/eval/kernel_benches.sh
+bash $ROOT/eval/kernel_benches.sh > $log/kernel_benches.log 2>&1
+stage crossconfig
+bash $ROOT/eval/crossconfig.sh --deterministic > $log/crossconfig_det.log 2>&1
+bash $ROOT/eval/crossconfig.sh --attention-backend flashinfer > $log/crossconfig_fi.log 2>&1
+stage detcheck
+port=18097
+for M in Qwen3-0.6B Qwen3-1.7B Qwen3-4B Qwen3-8B; do
+  $ROOT/scripts/serve.sh $port $ROOT/models/$M --deterministic --max-running-req 32 --max-seq-len 8192 \
+    --max-total-tokens 32768 --chunked-prefill-size 2048 --log-dir $ROOT/logs > $ROOT/results/detcheck/final_$M.server.log 2>&1 &
+  for i in $(seq 1 200); do curl -s -m 2 localhost:$port/health >/dev/null && break; sleep 2; done
+  python $ROOT/detcheck/detcheck.py --url http://127.0.0.1:$port --tokenizer $ROOT/models/$M \
+    --out $ROOT/results/detcheck/final_$M.json > $ROOT/results/detcheck/final_$M.log 2>&1
+  echo "$M detcheck exit=$? $(tail -1 $ROOT/results/detcheck/final_$M.log)"
+  bash $ROOT/scripts/stop_all.sh > /dev/null 2>&1; sleep 5
+done > $log/detcheck.log 2>&1
+stage e2e-matrix
+bash $ROOT/eval/e2e_matrix.sh > $log/e2e_matrix.log 2>&1
+python $ROOT/eval/summarize_matrix.py $ROOT/results/e2e_matrix > $ROOT/results/e2e_matrix/SUMMARY.md 2>&1
+stage e2e-extended
+bash $ROOT/eval/e2e_extended.sh 3 > $log/e2e_extended.log 2>&1
+python $ROOT/eval/summarize_extended.py $ROOT/results/e2e_extended > $ROOT/results/e2e_extended/SUMMARY.md 2>&1
+stage baselines
+bash $ROOT/eval/baselines.sh Qwen3-1.7B rust rust-det > $log/baselines.log 2>&1
+python $ROOT/eval/summarize_baselines.py $ROOT/results/baselines/Qwen3-1.7B > $ROOT/results/baselines/Qwen3-1.7B/SUMMARY.md 2>&1
+stage accuracy
+bash $ROOT/eval/accuracy.sh Qwen3-1.7B > $log/accuracy_1.7B.log 2>&1
+bash $ROOT/eval/accuracy.sh Qwen3-8B 500 > $log/accuracy_8B.log 2>&1
+python $ROOT/eval/compare_accuracy.py $ROOT/results/accuracy/Qwen3-1.7B > $ROOT/results/accuracy/Qwen3-1.7B/SUMMARY.md 2>&1
+python $ROOT/eval/compare_accuracy.py $ROOT/results/accuracy/Qwen3-8B > $ROOT/results/accuracy/Qwen3-8B/SUMMARY.md 2>&1
+stage fp32
+bash $ROOT/eval/fp32_agreement.sh > $log/fp32.log 2>&1
+stage done
+echo RUN_ALL_DONE
