@@ -24,6 +24,9 @@ PAGE = 16
 HQ, HKV, D = 16, 8, 128
 SCALE = 1 / math.sqrt(D)
 KVSPLITS = int(__import__('os').environ.get('PI_KVSPLITS', '1'))
+# Decode arrival counters, shared by every call as in the engine: each call must
+# leave them zero for the next.
+COUNTERS = torch.zeros(1 << 20, dtype=torch.int32, device=dev)
 
 
 class Pool:
@@ -86,9 +89,10 @@ def decode(pool, reqs):
     max_kv = max(r[2] for r in reqs)
     rows = len(reqs) * -(-max_kv // ext.GROUP_KEYS)
     ws_o = torch.full((rows, HQ, D), float("nan"), device=dev)
-    ws_ml = torch.full((rows, HQ, 2), float("nan"), device=dev)
+    ws_ml = torch.full((rows, HQ, 2 * ext.DECODE_WARPS), float("nan"), device=dev)
     out = ext.decode(q, pool.k, pool.v, m["kv_page_indptr"], m["kv_page_indices"], m["kv_lens"],
-                     ws_o, ws_ml, max_kv, SCALE)
+                     ws_o, ws_ml, COUNTERS, max_kv, SCALE)
+    assert COUNTERS.count_nonzero().item() == 0, "decode left arrival counters set"
     return list(out.split(1))
 
 

@@ -2,8 +2,8 @@
 Usage: python eval/kernel_categories.py a.csv b.csv ..."""
 import csv, re, sys
 
-CATS = [("GEMM", r"gemm|matmul|cutlass|sm\d+_xmma|ampere_|cublas|splitK|_mm_"),
-        ("attention", r"attention|flashinfer.*(Prefill|Decode)|BatchPrefill|BatchDecode|fmha|flash"),
+CATS = [("GEMM", r"gemm|gemv|matmul|cutlass|sm\d+_xmma|ampere_|cublas|splitK|_mm_"),
+        ("attention", r"attention|pi_attn|flashinfer.*(Prefill|Decode)|BatchPrefill|BatchDecode|fmha|flash"),
         ("sampling", r"sampl|softmax|topk|top_k|top_p|argmax|multinomial|sort|radix|cub::"),
         ("norm", r"norm"),
         ("reduction", r"reduce|sum_|mean")]

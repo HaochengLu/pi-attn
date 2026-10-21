@@ -69,8 +69,9 @@ def bench_decode(batch, kv_len, hq, hkv, shared=False):
         res[name] = fi_try(run)
     rows = batch * -(-kv_len // ext.GROUP_KEYS)
     ws_o = torch.empty(rows, hq, D, device=dev)
-    ws_ml = torch.empty(rows, hq, 2, device=dev)
-    res["pi"] = timeit(lambda: ext.decode(q, k, v, indptr, indices, lens, ws_o, ws_ml, kv_len, 1 / math.sqrt(D)))
+    ws_ml = torch.empty(rows, hq, 2 * ext.DECODE_WARPS, device=dev)
+    cnt = torch.zeros(rows, hq, ext.DECODE_WARPS, dtype=torch.int32, device=dev)
+    res["pi"] = timeit(lambda: ext.decode(q, k, v, indptr, indices, lens, ws_o, ws_ml, cnt, kv_len, 1 / math.sqrt(D)))
     return res
 
 

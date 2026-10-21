@@ -54,6 +54,16 @@ def main(bench):
                 y = ext.linear(Xm, W, kern, False)
                 if not torch.equal(y[0].view(torch.int16), ref.view(torch.int16)):
                     fails.append((name, M, kern))
+        segs = 2 if N <= 1024 and K >= 2048 and K % 512 == 0 else 1  # gemm_segments
+        if segs > 1:  # y = round((+0 + p_0) + p_1), p_s = the unsegmented chain over segment s
+            Xs = X[:64].contiguous()
+            ks = K // segs
+            tot = torch.zeros(64, N, device=dev)
+            for sg in range(segs):
+                tot = tot + ext.linear(Xs[:, sg * ks:(sg + 1) * ks], W[:, sg * ks:(sg + 1) * ks].contiguous(), 1, True)
+            for kern in (1, 20, 33, 11, 13):
+                if not torch.equal(ext.linear(Xs, W, kern, False).view(torch.int16), tot.bfloat16().view(torch.int16)):
+                    fails.append((name, "segments", kern))
         y64 = (X[:256].double() @ W.double().T)
         e_pi = (ext.linear(X[:256].contiguous(), W, 0, True).double() - y64).abs().max().item()
         e_cb = (torch.matmul(X[:256], W.T).double() - y64).abs().max().item()

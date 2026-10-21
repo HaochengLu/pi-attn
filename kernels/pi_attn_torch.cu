@@ -52,7 +52,7 @@ at::Tensor prefill(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Ten
     const int64_t ctas = (int64_t)tiles * hkv * batch, slots = 2 * (int64_t)sm_count(q);
     const int64_t n_tiles = (max_kv_len + kTile - 1) / kTile;
     const int64_t ws_bytes = (int64_t)batch * max_q_len * hq * max_groups * (kHeadDim + 2) * 4;
-    const int max_splits = ws_bytes <= (256ll << 20) ? max_groups : 1;
+    const int max_splits = ws_bytes <= (256ll << 20) && ctas < slots ? max_groups : 1;
     int64_t best = INT64_MAX;
     splits = 1;
     for (int sp = 1; sp <= max_splits; ++sp) {
@@ -86,11 +86,13 @@ at::Tensor prefill(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Ten
   return out;
 }
 
-// q: [batch, Hq, 128]. Workspace ws_o [rows, Hq, 128] f32, ws_ml [rows, Hq, 2] f32 with
-// rows >= batch * ceil(max_kv_len / GROUP_KEYS); max_kv_len bounds every request.
+// q: [batch, Hq, 128]. Workspace ws_o [rows, Hq, 128] f32, ws_ml [rows, Hq,
+// 2 * DECODE_WARPS] f32 with rows >= batch * ceil(max_kv_len / GROUP_KEYS);
+// max_kv_len bounds every request. counters: [rows, Hq, DECODE_WARPS] int32, zero
+// before the first call and left zero by each.
 at::Tensor decode(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Tensor kv_page_indptr,
                   at::Tensor kv_page_indices, at::Tensor kv_lens, at::Tensor ws_o, at::Tensor ws_ml,
-                  int64_t max_kv_len, double sm_scale) {
+                  at::Tensor counters, int64_t max_kv_len, double sm_scale) {
   check_inputs(q, k_cache, v_cache, {kv_page_indptr, kv_page_indices, kv_lens});
   const c10::cuda::CUDAGuard guard(q.device());
   auto out = at::empty_like(q);
@@ -99,7 +101,9 @@ at::Tensor decode(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Tens
   TORCH_CHECK(ws_o.scalar_type() == at::kFloat && ws_o.dim() == 3 && ws_o.size(1) == hq &&
               ws_o.size(2) == kHeadDim && ws_o.is_contiguous());
   TORCH_CHECK(ws_ml.scalar_type() == at::kFloat && ws_ml.dim() == 3 && ws_ml.size(0) == ws_o.size(0) &&
-              ws_ml.size(2) == 2 && ws_ml.is_contiguous());
+              ws_ml.size(2) == 2 * kDecodeWarps && ws_ml.is_contiguous());
+  TORCH_CHECK(counters.scalar_type() == at::kInt && counters.numel() >= ws_o.size(0) * hq * kDecodeWarps &&
+              counters.is_contiguous());
   const int page_size = k_cache.size(1);
   const int max_groups = (int)((max_kv_len + kGroupKeys - 1) / kGroupKeys);
   TORCH_CHECK(ws_o.size(0) >= (int64_t)batch * max_groups, "decode workspace below batch * max_groups");
@@ -109,12 +113,8 @@ at::Tensor decode(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Tens
       (const __nv_bfloat16*)q.data_ptr(), (const __nv_bfloat16*)k_cache.data_ptr(),
       (const __nv_bfloat16*)v_cache.data_ptr(), kv_page_indptr.data_ptr<int32_t>(),
       kv_page_indices.data_ptr<int32_t>(), (int64_t)0, kv_lens.data_ptr<int32_t>(), ws_o.data_ptr<float>(),
-      (float2*)ws_ml.data_ptr<float>(), max_groups, hq, hkv, page_size, page_shift_of(page_size),
-      (float)(sm_scale * 1.4426950408889634));
-  C10_CUDA_KERNEL_LAUNCH_CHECK();
-  decode_merge_kernel<<<dim3(hq, batch), kHeadDim, 0, stream>>>(
-      ws_o.data_ptr<float>(), (const float2*)ws_ml.data_ptr<float>(), kv_lens.data_ptr<int32_t>(),
-      max_groups, (__nv_bfloat16*)out.data_ptr(), hq);
+      (float2*)ws_ml.data_ptr<float>(), counters.data_ptr<int32_t>(), (__nv_bfloat16*)out.data_ptr(),
+      max_groups, hq, hkv, page_size, page_shift_of(page_size), (float)(sm_scale * 1.4426950408889634));
   C10_CUDA_KERNEL_LAUNCH_CHECK();
   return out;
 }
@@ -123,5 +123,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("prefill", &prefill);
   m.def("decode", &decode);
   m.attr("TILE") = kTile;
+  m.attr("DECODE_WARPS") = kDecodeWarps;
   m.attr("GROUP_KEYS") = kGroupKeys;
 }

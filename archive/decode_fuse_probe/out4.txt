@@ -1,0 +1,10 @@
+var7 b8 kv2048 hq16 shared=False: 44.7
+var7 b8 kv4096 hq16 shared=True: 78.3
+var7 b32 kv4096 hq16 shared=True: 248.6
+var7 b32 kv1024 hq16 shared=False: 154.0
+var7 b1 kv8192 hq32 shared=False: 29.6
+var8 b8 kv2048 hq16 shared=False: 43.9
+var8 b8 kv4096 hq16 shared=True: 76.7
+var8 b32 kv4096 hq16 shared=True: 247.6
+var8 b32 kv1024 hq16 shared=False: 156.4
+var8 b1 kv8192 hq32 shared=False: 28.1

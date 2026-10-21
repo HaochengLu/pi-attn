@@ -1,0 +1,8 @@
+0.6B down    cublas   9.51 cur  12.95 (1.36) | S2/bk256/w4   9.91 S2/bk64/w4   9.97 S2/bk128/w4  10.18 S2/bk64/w8  10.23 | best/cublas 1.04
+0.6B o       cublas   9.21 cur   9.18 (1.00) | S2/bk256/w4   7.26 S2/bk128/w4   7.40 S2/bk64/w4   7.46 S4/bk64/w8   7.55 | best/cublas 0.79
+1.7B down    cublas  28.25 cur  30.91 (1.09) | S1/bk64/w8  30.81 S1/bk256/w4  31.24 S8/bk64/w8  31.59 S1/bk64/w4  31.68 | best/cublas 1.09
+1.7B gateup  cublas  50.65 cur  55.13 (1.09) | S1/bk256/w4  56.20 S1/bk64/w8  56.66 S1/bk128/w4  56.80 S1/bk64/w4  56.90 | best/cublas 1.11
+8B qkv       cublas  50.21 cur  54.32 (1.08) | S1/bk256/w4  55.30 S1/bk64/w8  56.09 S1/bk128/w4  56.43 S1/bk64/w4  56.44 | best/cublas 1.10
+8B o         cublas  35.41 cur  38.85 (1.10) | S8/bk256/w4  40.69 S4/bk256/w4  40.84 S1/bk64/w8  40.96 S8/bk128/w4  41.14 | best/cublas 1.15
+8B down      cublas  97.60 cur 118.22 (1.21) | S8/bk256/w4 111.62 S4/bk256/w4 112.28 S8/bk128/w4 113.17 S8/bk64/w4 114.09 | best/cublas 1.14
+8B gateup    cublas 200.38 cur 209.66 (1.05) | S1/bk256/w4 215.74 S1/bk64/w4 220.12 S1/bk128/w4 220.23 S4/bk256/w4 222.98 | best/cublas 1.08

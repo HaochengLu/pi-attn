@@ -10,8 +10,8 @@ work=("$@"); [[ ${#work[@]} -gt 0 ]] || work=(4096:128:8:3968)
 out=$ROOT/results/engine_profile/$model.$tag
 mkdir -p $out
 port=18095
-declare -A pool=([Qwen3-1.7B]=131072 [Qwen3-8B]=32768)
-declare -A seqlen=([Qwen3-1.7B]=32768 [Qwen3-8B]=16384)
+declare -A pool=([Qwen3-0.6B]=131072 [Qwen3-1.7B]=131072 [Qwen3-8B]=32768)
+declare -A seqlen=([Qwen3-0.6B]=32768 [Qwen3-1.7B]=32768 [Qwen3-8B]=16384)
 for mode in flashinfer pi; do
   if [[ $mode == flashinfer ]]; then margs="--attention-backend flashinfer"; else margs="--deterministic"; fi
   nsys profile -t cuda --cuda-graph-trace=node -o $out/$mode -f true \
