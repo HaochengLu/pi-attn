@@ -19,9 +19,14 @@ dev = "cuda"
 torch.manual_seed(0)
 SHAPES = {  # name: (N, K)
     "0.6B qkv": (4096, 1024), "0.6B o": (1024, 2048), "0.6B gateup": (6144, 1024), "0.6B down": (1024, 3072),
-    "0.6B lm_head": (151936, 1024), "1.7B qkv": (4096, 2048), "1.7B down": (2048, 6144),
-    "8B qkv": (6144, 4096), "8B gateup": (24576, 4096), "8B down": (4096, 12288),
+    "0.6B lm_head": (151936, 1024), "1.7B qkv": (4096, 2048), "1.7B o": (2048, 2048), "1.7B down": (2048, 6144),
+    "4B o": (2560, 4096), "4B down": (2560, 9728),
+    "8B qkv": (6144, 4096), "8B o": (4096, 4096), "8B gateup": (24576, 4096), "8B down": (4096, 12288),
 }
+
+
+def gemm_segments(N, K):  # mirrors gemm_inv.cuh
+    return 2 if N <= 1024 and K >= 2048 and K % 512 == 0 else 1
 
 
 def timeit(fn, iters=30):
@@ -54,13 +59,16 @@ def main(bench):
                 y = ext.linear(Xm, W, kern, False)
                 if not torch.equal(y[0].view(torch.int16), ref.view(torch.int16)):
                     fails.append((name, M, kern))
-        segs = 2 if N <= 1024 and K >= 2048 and K % 512 == 0 else 1  # gemm_segments
-        if segs > 1:  # y = round((+0 + p_0) + p_1), p_s = the unsegmented chain over segment s
+        segs = gemm_segments(N, K)
+        if segs > 1:  # y = round(((+0 + p_0) + p_1) + ...), p_s = the unsegmented chain over segment s
             Xs = X[:64].contiguous()
             ks = K // segs
             tot = torch.zeros(64, N, device=dev)
+            pad = max(0, 1056 - N)  # zero rows widen the weight to one segment; columns are independent
             for sg in range(segs):
-                tot = tot + ext.linear(Xs[:, sg * ks:(sg + 1) * ks], W[:, sg * ks:(sg + 1) * ks].contiguous(), 1, True)
+                Wp = torch.cat([W[:, sg * ks:(sg + 1) * ks], W.new_zeros(pad, ks)]).contiguous()
+                assert gemm_segments(Wp.shape[0], ks) == 1
+                tot = tot + ext.linear(Xs[:, sg * ks:(sg + 1) * ks], Wp, 1, True)[:, :N]
             for kern in (1, 20, 33, 11, 13):
                 if not torch.equal(ext.linear(Xs, W, kern, False).view(torch.int16), tot.bfloat16().view(torch.int16)):
                     fails.append((name, "segments", kern))

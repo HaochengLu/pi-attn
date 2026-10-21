@@ -1,0 +1,48 @@
+M= 1 0.6B qkv         8.4MB cublas    20.7us (  405 GB/s) | best pi k1    17.5us (  479 GB/s) ratio 0.84 | bal 31:17.9 k13 19.3
+M= 1 0.6B o           4.2MB cublas    15.1us (  277 GB/s) | best pi k31    12.5us (  336 GB/s) ratio 0.82 | bal 31:12.5 k13 23.7
+M= 1 0.6B gateup     12.6MB cublas    26.5us (  474 GB/s) | best pi k1    23.4us (  538 GB/s) ratio 0.88 | bal 32:24.3 k13 24.3
+M= 1 0.6B down        6.3MB cublas    18.2us (  346 GB/s) | best pi k31    15.6us (  404 GB/s) ratio 0.86 | bal 31:15.6 k13 34.5
+M= 1 0.6B lm_head   311.2MB cublas   344.1us (  904 GB/s) | best pi k20   380.7us (  817 GB/s) ratio 1.11 | bal 30:389.8 k13 384.4
+M= 1 1.7B qkv        16.8MB cublas    30.8us (  546 GB/s) | best pi k31    29.9us (  561 GB/s) ratio 0.97 | bal 31:29.9 k13 31.2
+M= 1 1.7B o           8.4MB cublas    20.5us (  408 GB/s) | best pi k20    17.3us (  485 GB/s) ratio 0.84 | bal 31:17.9 k13 29.1
+M= 1 1.7B gateup     50.3MB cublas    76.9us (  655 GB/s) | best pi k21    77.3us (  651 GB/s) ratio 1.01 | bal 31:78.4 k13 80.1
+M= 1 1.7B down       25.2MB cublas    44.9us (  561 GB/s) | best pi k20    42.8us (  589 GB/s) ratio 0.95 | bal 31:42.8 k13 61.9
+M= 1 1.7B lm_head   622.3MB cublas   659.8us (  943 GB/s) | best pi k21   697.5us (  892 GB/s) ratio 1.06 | bal 30:715.2 k13 712.2
+M= 1 8B qkv          50.3MB cublas    76.8us (  656 GB/s) | best pi k20    77.5us (  650 GB/s) ratio 1.01 | bal 32:79.1 k13 83.2
+M= 1 8B o            33.6MB cublas    55.9us (  601 GB/s) | best pi k30    54.7us (  614 GB/s) ratio 0.98 | bal 30:54.7 k13 57.9
+M= 1 8B gateup      201.3MB cublas   230.5us (  873 GB/s) | best pi k21   268.7us (  749 GB/s) ratio 1.17 | bal 30:273.8 k13 281.0
+M= 1 8B down        100.7MB cublas   129.7us (  776 GB/s) | best pi k31   162.6us (  619 GB/s) ratio 1.25 | bal 31:162.6 k13 171.9
+M= 1 8B lm_head    1244.7MB cublas  1293.4us (  962 GB/s) | best pi k21  1332.2us (  934 GB/s) ratio 1.03 | bal 30:1362.7 k13 1378.4
+0.6B down    cublas    9.6 ( 653) stream    8.3 ( 756) | k30   10.0 k31   10.0 k32   11.0 ( 629) | pi/cublas 1.04 pi/stream 1.20
+1.7B qkv     cublas   22.2 ( 755) stream   20.6 ( 813) | k31   20.9 k30   21.1 k13   21.6 ( 804) | pi/cublas 0.94 pi/stream 1.01
+1.7B o       cublas   11.3 ( 745) stream   10.4 ( 807) | k21   11.1 k20   11.2 k1   11.6 ( 758) | pi/cublas 0.98 pi/stream 1.06
+1.7B gateup  cublas   53.6 ( 939) stream   52.2 ( 964) | k21   54.9 k7   55.1 k2   55.4 ( 918) | pi/cublas 1.02 pi/stream 1.05
+1.7B down    cublas   29.9 ( 842) stream   27.0 ( 933) | k21   31.2 k20   31.6 k1   31.7 ( 805) | pi/cublas 1.04 pi/stream 1.16
+8B qkv       cublas   53.4 ( 943) stream   52.2 ( 964) | k21   54.4 k24   55.0 k20   55.0 ( 925) | pi/cublas 1.02 pi/stream 1.04
+8B o         cublas   37.7 ( 890) stream   35.5 ( 946) | k30   38.6 k1   38.8 k31   39.5 ( 869) | pi/cublas 1.02 pi/stream 1.09
+8B gateup    cublas  204.3 ( 986) stream  203.0 ( 992) | k21  209.6 k20  211.3 k24  211.8 ( 961) | pi/cublas 1.03 pi/stream 1.03
+8B down      cublas  104.9 ( 960) stream  101.2 ( 994) | k30  118.7 k31  120.4 k1  122.9 ( 848) | pi/cublas 1.13 pi/stream 1.17
+M= 4 0.6B qkv         8.4MB cublas    18.9us (  444 GB/s) | best pi k31    18.0us (  466 GB/s) ratio 0.95 | bal 31:18.0 k13 19.4
+M= 4 0.6B o           4.2MB cublas    17.9us (  234 GB/s) | best pi k31    12.5us (  334 GB/s) ratio 0.70 | bal 31:12.5 k13 23.8
+M= 4 0.6B gateup     12.6MB cublas    24.3us (  518 GB/s) | best pi k20    24.0us (  524 GB/s) ratio 0.99 | bal 32:24.4 k13 24.5
+M= 4 0.6B down        6.3MB cublas    17.8us (  353 GB/s) | best pi k31    15.6us (  403 GB/s) ratio 0.88 | bal 31:15.6 k13 34.9
+M= 4 0.6B lm_head   311.2MB cublas   382.3us (  814 GB/s) | best pi k21   383.2us (  812 GB/s) ratio 1.00 | bal 30:393.5 k13 386.6
+M= 4 1.7B qkv        16.8MB cublas    31.3us (  537 GB/s) | best pi k31    30.2us (  556 GB/s) ratio 0.97 | bal 31:30.2 k13 31.9
+M= 4 1.7B o           8.4MB cublas    23.6us (  355 GB/s) | best pi k21    17.7us (  474 GB/s) ratio 0.75 | bal 31:18.1 k13 28.9
+M= 4 1.7B gateup     50.3MB cublas    79.6us (  633 GB/s) | best pi k21    77.6us (  648 GB/s) ratio 0.98 | bal 31:78.8 k13 80.7
+M= 4 1.7B down       25.2MB cublas    57.6us (  437 GB/s) | best pi k20    43.0us (  586 GB/s) ratio 0.75 | bal 31:43.6 k13 61.5
+M= 4 1.7B lm_head   622.3MB cublas   702.7us (  886 GB/s) | best pi k21   702.5us (  886 GB/s) ratio 1.00 | bal 30:721.7 k13 717.7
+M= 4 8B qkv          50.3MB cublas    80.4us (  626 GB/s) | best pi k21    77.7us (  648 GB/s) ratio 0.97 | bal 32:79.6 k13 83.2
+M= 4 8B o            33.6MB cublas    57.8us (  581 GB/s) | best pi k30    55.3us (  607 GB/s) ratio 0.96 | bal 30:55.3 k13 57.9
+M= 4 8B gateup      201.3MB cublas   268.6us (  750 GB/s) | best pi k21   269.8us (  746 GB/s) ratio 1.00 | bal 30:275.6 k13 281.8
+M= 4 8B down        100.7MB cublas   167.5us (  601 GB/s) | best pi k30   163.2us (  617 GB/s) ratio 0.97 | bal 30:163.2 k13 172.0
+M= 4 8B lm_head    1244.7MB cublas  1337.4us (  931 GB/s) | best pi k21  1339.4us (  929 GB/s) ratio 1.00 | bal 30:1372.8 k13 1383.9
+0.6B down    cublas   13.0 ( 485) stream    8.3 ( 757) | k30   10.0 k31   10.2 k32   11.1 ( 626) | pi/cublas 0.77 pi/stream 1.21
+1.7B qkv     cublas   22.4 ( 748) stream   20.5 ( 820) | k31   20.9 k30   21.2 k13   21.6 ( 802) | pi/cublas 0.93 pi/stream 1.02
+1.7B o       cublas   14.6 ( 576) stream   10.4 ( 808) | k21   11.1 k20   11.4 k1   11.5 ( 756) | pi/cublas 0.76 pi/stream 1.07
+1.7B gateup  cublas   55.2 ( 912) stream   53.3 ( 945) | k21   54.8 k7   55.2 k2   55.4 ( 919) | pi/cublas 0.99 pi/stream 1.03
+1.7B down    cublas   38.5 ( 654) stream   27.5 ( 914) | k21   31.4 k1   31.7 k20   31.8 ( 801) | pi/cublas 0.82 pi/stream 1.14
+8B qkv       cublas   55.6 ( 905) stream   53.3 ( 945) | k21   54.5 k24   55.0 k20   55.5 ( 923) | pi/cublas 0.98 pi/stream 1.02
+8B o         cublas   39.1 ( 859) stream   36.1 ( 930) | k1   38.8 k30   39.0 k31   39.5 ( 864) | pi/cublas 0.99 pi/stream 1.08
+8B gateup    cublas  210.7 ( 956) stream  207.1 ( 972) | k21  211.8 k20  212.5 k7  214.2 ( 950) | pi/cublas 1.01 pi/stream 1.02
+8B down      cublas  120.8 ( 833) stream  104.4 ( 964) | k30  119.7 k31  120.4 k1  123.3 ( 841) | pi/cublas 0.99 pi/stream 1.15

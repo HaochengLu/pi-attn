@@ -1,0 +1,36 @@
+== 8B down 96MB cublas 105.4us (955 GB/s)
+   lin b16 t128 u4 101.6 (991) | lin b8 t256 u4 101.7 (990) | lin b4 t256 u4 102.1 (986) | lin b4 t256 u8 102.1 (986) | cublas 105.4 (955) | tile bk512 s3 r32 111.8 (901) | tile bk256 s4 r32 111.8 (900) | warp bk512 s3 w4 112.1 (898) | tile bk256 s4 r40 112.2 (897) | warp bk256 s4 w5 112.2 (897)
+   best lin: lin b16 t128 u4 101.6us 991 GB/s ratio 0.96
+   best tile: tile bk512 s3 r32 111.8us 901 GB/s ratio 1.06
+   best warp: warp bk512 s3 w4 112.1us 898 GB/s ratio 1.06
+   best reg: reg d2 w4 c2 115.8us 869 GB/s ratio 1.10
+== 8B o 32MB cublas 37.7us (890 GB/s)
+   lin b16 t128 u4 35.5 (946) | lin b8 t256 u4 35.5 (946) | lin b4 t256 u8 35.5 (944) | lin b4 t256 u4 35.6 (944) | reg d2 w8 c2 36.6 (917) | reg d2 w4 c2 36.6 (917) | reg d4 w4 c2 36.6 (916) | reg d4 w8 c2 36.7 (915) | reg d2 w8 c1 36.7 (915) | tile bk128 s4 r40 36.7 (914)
+   best lin: lin b16 t128 u4 35.5us 946 GB/s ratio 0.94
+   best tile: tile bk128 s4 r40 36.7us 914 GB/s ratio 0.97
+   best warp: warp bk256 s4 w5 36.8us 911 GB/s ratio 0.98
+   best reg: reg d2 w8 c2 36.6us 917 GB/s ratio 0.97
+== 8B qkv 48MB cublas 53.4us (943 GB/s)
+   lin b16 t128 u4 52.1 (966) | lin b4 t256 u8 52.2 (965) | lin b8 t256 u4 52.2 (964) | lin b4 t256 u4 52.2 (964) | cublas 53.4 (943) | reg d2 w8 c2 53.5 (941) | reg d2 w4 c2 53.5 (941) | reg d4 w8 c2 53.6 (939) | reg d4 w4 c2 53.6 (939) | reg d1 w4 c2 53.8 (936)
+   best lin: lin b16 t128 u4 52.1us 966 GB/s ratio 0.98
+   best tile: tile bk256 s4 r40 53.8us 935 GB/s ratio 1.01
+   best warp: warp bk256 s3 w8 53.9us 933 GB/s ratio 1.01
+   best reg: reg d2 w8 c2 53.5us 941 GB/s ratio 1.00
+== 8B gateup 192MB cublas 204.2us (986 GB/s)
+   lin b16 t128 u4 202.9 (992) | lin b4 t256 u8 203.3 (990) | lin b4 t256 u4 203.5 (989) | lin b8 t256 u4 203.6 (989) | cublas 204.2 (986) | reg d2 w4 c1 208.5 (966) | warp bk128 s4 w8 208.5 (965) | warp bk256 s3 w8 208.7 (965) | tile bk256 s3 r40 208.8 (964) | tile bk256 s3 r32 208.9 (964)
+   best lin: lin b16 t128 u4 202.9us 992 GB/s ratio 0.99
+   best tile: tile bk256 s3 r40 208.8us 964 GB/s ratio 1.02
+   best warp: warp bk128 s4 w8 208.5us 965 GB/s ratio 1.02
+   best reg: reg d2 w4 c1 208.5us 966 GB/s ratio 1.02
+== 1.7B down 24MB cublas 32.7us (769 GB/s)
+   lin b16 t128 u4 27.0 (932) | lin b8 t256 u4 27.1 (930) | lin b4 t256 u8 27.1 (929) | warp bk256 s4 w5 28.5 (884) | warp bk256 s4 w4 28.5 (884) | warp bk256 s4 w6 28.5 (884) | tile bk256 s4 r40 28.5 (882) | tile bk256 s4 r32 28.6 (881) | tile bk256 s4 r48 28.6 (881) | warp bk128 s6 w4 28.6 (880)
+   best lin: lin b16 t128 u4 27.0us 932 GB/s ratio 0.83
+   best tile: tile bk256 s4 r40 28.5us 882 GB/s ratio 0.87
+   best warp: warp bk256 s4 w5 28.5us 884 GB/s ratio 0.87
+   best reg: reg d2 w8 c2 29.5us 853 GB/s ratio 0.90
+== 1.7B gateup 48MB cublas 53.5us (940 GB/s)
+   lin b16 t128 u4 52.1 (965) | lin b4 t256 u8 52.2 (965) | lin b8 t256 u4 52.2 (964) | lin b4 t256 u4 52.3 (963) | cublas 53.5 (940) | tile bk256 s4 r48 54.0 (933) | tile bk128 s4 r40 54.0 (932) | reg d2 w4 c1 54.1 (931) | warp bk128 s4 w8 54.1 (931) | warp bk256 s3 w8 54.1 (931)
+   best lin: lin b16 t128 u4 52.1us 965 GB/s ratio 0.97
+   best tile: tile bk256 s4 r48 54.0us 933 GB/s ratio 1.01
+   best warp: warp bk128 s4 w8 54.1us 931 GB/s ratio 1.01
+   best reg: reg d2 w4 c1 54.1us 931 GB/s ratio 1.01
