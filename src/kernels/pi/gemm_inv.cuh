@@ -111,4 +111,111 @@ __global__ void __launch_bounds__(W * 32)
   }
 }
 
+// ------------------------------------------------------------ balanced M <= 16 G ----
+// GEMMs with few output tiles (decode, short prefills, narrow N with long K) are
+// limited by how evenly the SMs share the weight stream. Work unit = one n8
+// output tile over all of K and all M <= 16 G rows (the finest unit without
+// split-K). CTA c of the grid (one per SM) owns the contiguous units
+// [c U / grid, (c + 1) U / grid) and processes them `warps` at a time, one unit
+// per warp, all warps sharing each X stage as gemm_small_kernel does; the
+// per-element sequence is gemm_small_kernel's.
+template <int G, int BK, int STAGES>
+constexpr size_t balanced_smem_bytes(int warps) {
+  return (size_t)STAGES * (16 * G + 8 * warps) * (BK + 8) * sizeof(__nv_bfloat16);
+}
+
+template <typename OutT, int G, int BK, int STAGES>
+__global__ void gemm_balanced_kernel(const __nv_bfloat16* __restrict__ x, int64_t ldx,
+                                     const __nv_bfloat16* __restrict__ w, OutT* __restrict__ y,
+                                     int64_t ldy, int M, int N, int K) {
+  constexpr int kStride = BK + 8, kRows = 16 * G;
+  extern __shared__ __align__(16) __nv_bfloat16 smem[];
+  const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, warps = blockDim.x >> 5;
+  const int stage_elems = (kRows + 8 * warps) * kStride;
+  const int units = N / 8;
+  const int u0 = (int)((int64_t)blockIdx.x * units / gridDim.x);
+  const int u1 = (int)((int64_t)(blockIdx.x + 1) * units / gridDim.x);
+  const int ktiles = K / BK;
+  const int g = lane >> 2, t = lane & 3, mat = lane >> 3, r8 = lane & 7;
+  for (int base = u0; base < u1; base += warps) {
+    const int nrows = min(warps, u1 - base) * 8;  // weight rows of this pass
+    auto issue = [&](int kt) {
+      __nv_bfloat16* st = smem + (kt % STAGES) * stage_elems;
+      constexpr int kVec = BK / 8;
+      for (int i = threadIdx.x; i < (kRows + nrows) * kVec; i += blockDim.x) {
+        const int r = i / kVec, v = i % kVec;
+        if (r >= kRows) cp_async16(st + r * kStride + v * 8, w + ((int64_t)base * 8 + r - kRows) * K + kt * BK + v * 8, 16);
+        else if (r < M) cp_async16(st + r * kStride + v * 8, x + (int64_t)r * ldx + kt * BK + v * 8, 16);
+        else cp_async16(st + r * kStride + v * 8, x, 0);  // zero rows >= M, as gemm_small_kernel
+      }
+    };
+#pragma unroll
+    for (int s = 0; s < STAGES - 1; ++s) {
+      if (s < ktiles) issue(s);
+      cp_async_commit();
+    }
+    float acc[G][4];
+#pragma unroll
+    for (int gi = 0; gi < G; ++gi) acc[gi][0] = acc[gi][1] = acc[gi][2] = acc[gi][3] = 0.f;
+    const bool active = warp * 8 < nrows;
+    for (int kt = 0; kt < ktiles; ++kt) {
+      cp_async_wait<STAGES - 2>();
+      __syncthreads();
+      if (kt + STAGES - 1 < ktiles) issue(kt + STAGES - 1);
+      cp_async_commit();
+      if (!active) continue;
+      const __nv_bfloat16* sx = smem + (kt % STAGES) * stage_elems;
+      const __nv_bfloat16* sw = sx + (kRows + warp * 8) * kStride;
+#pragma unroll
+      for (int ks = 0; ks < BK / 16; ks += 2) {
+        uint32_t b[4];
+        ldmatrix_x4(b, sw + r8 * kStride + ks * 16 + mat * 8);
+#pragma unroll
+        for (int kk = 0; kk < 2; ++kk) {
+#pragma unroll
+          for (int gi = 0; gi < G; ++gi) {
+            uint32_t a[4];
+            ldmatrix_x4(a, sx + (gi * 16 + (mat & 1) * 8 + r8) * kStride + (ks + kk) * 16 + (mat >> 1) * 8);
+            mma_bf16(acc[gi], a, b[2 * kk], b[2 * kk + 1]);
+          }
+        }
+      }
+    }
+    cp_async_wait<0>();
+    __syncthreads();
+    if (!active) continue;
+    const int n = (base + warp) * 8 + t * 2;
+#pragma unroll
+    for (int gi = 0; gi < G; ++gi) {
+#pragma unroll
+      for (int h = 0; h < 2; ++h) {
+        const int m = gi * 16 + g + h * 8;
+        if (m >= M) continue;
+        if constexpr (sizeof(OutT) == 2) {
+          *reinterpret_cast<__nv_bfloat162*>(y + (int64_t)m * ldy + n) = __floats2bfloat162_rn(acc[gi][2 * h], acc[gi][2 * h + 1]);
+        } else {
+          *reinterpret_cast<float2*>(y + (int64_t)m * ldy + n) = make_float2(acc[gi][2 * h], acc[gi][2 * h + 1]);
+        }
+      }
+    }
+  }
+}
+
+// Launch: one CTA per SM, as many warps as units per CTA within max_smem.
+template <typename OutT, int G, int BK, int STAGES>
+cudaError_t run_balanced(const void* x, int64_t ldx, const void* w, OutT* y, int64_t ldy, int M, int N,
+                         int K, int sms, int max_smem, cudaStream_t st) {
+  if (M > 16 * G) return cudaErrorInvalidValue;
+  const int units = N / 8, grid = units < sms ? units : sms;
+  int warps = (units + grid - 1) / grid;
+  if (warps > 16) warps = 16;
+  while (warps > 1 && balanced_smem_bytes<G, BK, STAGES>(warps) > (size_t)max_smem) --warps;
+  const size_t smem = balanced_smem_bytes<G, BK, STAGES>(warps);
+  if (smem > (size_t)max_smem) return cudaErrorInvalidConfiguration;
+  cudaFuncSetAttribute(gemm_balanced_kernel<OutT, G, BK, STAGES>, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)smem);
+  gemm_balanced_kernel<OutT, G, BK, STAGES><<<grid, warps * 32, smem, st>>>(
+      (const __nv_bfloat16*)x, ldx, (const __nv_bfloat16*)w, y, ldy, M, N, K);
+  return cudaGetLastError();
+}
+
 }  // namespace pi_gemm

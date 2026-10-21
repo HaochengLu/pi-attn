@@ -187,14 +187,17 @@ const char* pi_attn_prefill(const void* q, const void* k_cache, const void* v_ca
 namespace {
 
 // Kernel ids: 1/2/4 small (4 warps, G = 1/2/4), 6..9 small narrow, 20..25 small with
-// deep weight-streaming pipelines, 10..13 CUTLASS. All realise the same k order.
+// deep weight-streaming pipelines, 30..33 balanced (one CTA per SM; 30/31 M <= 16,
+// 32 M <= 32, 33 M <= 64), 10..13 CUTLASS. All realise the same k order.
 const std::vector<int>& small_kernels() {
-  static const std::vector<int> v{1, 2, 4, 20, 21, 22, 24, 25};
+  static const std::vector<int> v{1, 2, 4, 20, 21, 22, 24, 25, 30, 31, 32, 33};
   return v;
 }
+// Largest M a kernel id supports (balanced kernels hold all rows in one pass).
+int kernel_max_m(int k) { return k == 30 || k == 31 ? 16 : k == 32 ? 32 : k == 33 ? 64 : 1 << 30; }
 
 // K granularity a kernel id requires.
-int kernel_bk(int k) { return k == 21 || k == 22 ? 256 : k >= 20 && k < 30 ? 128 : 64; }
+int kernel_bk(int k) { return k == 21 || k == 22 || k == 30 ? 256 : k >= 20 && k <= 33 ? 128 : 64; }
 const std::vector<int>& large_kernels() {
   static const std::vector<int> v{10, 11, 12, 13};
   return v;
@@ -240,6 +243,10 @@ cudaError_t run_gemm(int k, const void* x, int64_t ldx, const void* w, OutT* y, 
     case 22: return small(gemm_small_kernel<1, 2, OutT, 256, 4>, 1, 2, 256, 4);
     case 24: return small(gemm_small_kernel<2, 4, OutT, 128, 5>, 2, 4, 128, 5);
     case 25: return small(gemm_small_kernel<4, 4, OutT, 128, 3>, 4, 4, 128, 3);
+    case 30: return run_balanced<OutT, 1, 256, 3>(x, ldx, w, y, ldy, M, N, K, device_info().sms, device_info().smem_optin, st);
+    case 31: return run_balanced<OutT, 1, 128, 6>(x, ldx, w, y, ldy, M, N, K, device_info().sms, device_info().smem_optin, st);
+    case 32: return run_balanced<OutT, 2, 128, 4>(x, ldx, w, y, ldy, M, N, K, device_info().sms, device_info().smem_optin, st);
+    case 33: return run_balanced<OutT, 4, 128, 3>(x, ldx, w, y, ldy, M, N, K, device_info().sms, device_info().smem_optin, st);
     case 10: return CutlassGemm<OutT, 128, 256, 32, 64, 64, 3>::run(x, ldx, w, y, ldy, M, N, K, st);
     case 11: return CutlassGemm<OutT, 128, 128, 32, 64, 64, 4>::run(x, ldx, w, y, ldy, M, N, K, st);
     case 12: return CutlassGemm<OutT, 64, 128, 32, 32, 64, 4>::run(x, ldx, w, y, ldy, M, N, K, st);
@@ -262,7 +269,7 @@ const char* tune_bucket(const void* w, int N, int K, int m, void* x, void* y, vo
   float best = 1e30f;
   int best_k = heuristic_kernel(m, K);
   for (int k : cands) {
-    if (K % kernel_bk(k)) continue;
+    if (K % kernel_bk(k) || m > kernel_max_m(k)) continue;
     if (run_gemm(k, x, K, w, (__nv_bfloat16*)y, N, m, N, K, st) != cudaSuccess) continue;  // warm-up
     std::vector<float> times;
     for (int r = 0; r < 5; ++r) {
@@ -309,7 +316,7 @@ const char* pi_linear(const void* x, int64_t ldx, const void* w, void* y, int M,
     auto it = tuned.find({N, K, bucket_of(M)});
     if (it != tuned.end()) k = it->second;
   }
-  if (k < 0 || (M > 64 && k < 10) || K % kernel_bk(k)) k = heuristic_kernel(M, K);
+  if (k < 0 || (M > 64 && k < 10) || M > kernel_max_m(k) || K % kernel_bk(k)) k = heuristic_kernel(M, K);
   const cudaError_t err = out_fp32 ? run_gemm(k, x, ldx, w, (float*)y, N, M, N, K, st)
                                    : run_gemm(k, x, ldx, w, (__nv_bfloat16*)y, N, M, N, K, st);
   if (err != cudaSuccess) return fail(std::string("PI linear: ") + cudaGetErrorString(err));
