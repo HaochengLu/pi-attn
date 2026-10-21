@@ -1,16 +1,29 @@
 // M-invariant GEMM: Y[M,N] = X[M,K] * W[N,K]^T (nn.Linear), bf16 in, fp32 accumulate.
 //
-// Canonical per-element operation sequence: acc = 0; for k16 = 0 .. K/16-1 in
-// ascending order: acc = mma.m16n8k16(x[m, k16], w[n, k16], acc); y = round(acc).
-// No split-K, no reordering of k. The small-M kernels below and the CUTLASS
-// tiles in gemm_cutlass.cuh realise exactly this sequence, so a row of Y is a
-// pure function of that row of X and W, whatever M, the tile shape, or the other
-// rows in the batch (checked bitwise by kernels/test_gemm.py).
+// Canonical per-element operation sequence. K is cut into S = gemm_segments(N, K)
+// equal segments, a function of the weight shape only. With S = 1: acc = 0; for
+// k16 = 0 .. K/16-1 in ascending order: acc = mma.m16n8k16(x[m, k16], w[n, k16],
+// acc); y = round(acc). With S > 1 each segment runs that chain over its k16 steps
+// into p_s, and y = round((((+0 + p_0) + p_1) + ...) + p_{S-1}). Segments let
+// narrow projections (few n8 output tiles over a long K) spread decode weight
+// streaming over every SM, the one thing split-K is for, at a cost fixed per
+// shape. The small-M kernels below and the CUTLASS tiles in gemm_cutlass.cuh
+// realise exactly this sequence, so a row of Y is a pure function of that row of
+// X and W, whatever M, the tile shape, or the other rows in the batch (checked
+// bitwise by kernels/test_gemm.py).
 #pragma once
 #include "pi_attn.cuh"
 
 namespace pi_gemm {
 using namespace pi_attn;
+
+// K segments of a [N, K] weight: two for narrow, long-K projections (o / down of
+// small models, whose n8 tiles alone cannot occupy every SM in decode), else one.
+// Segment length is a multiple of 256, so every kernel's K tile divides it.
+constexpr int kSegMaxN = 1024, kSegMax = 2;
+__host__ __device__ constexpr int gemm_segments(int N, int K) {
+  return N <= kSegMaxN && K >= 2048 && K % 512 == 0 ? 2 : 1;
+}
 
 // ---------------------------------------------------------------- small M ----
 // CTA = W warps; warp w owns output columns [n0 + 8w, n0 + 8w + 8). All warps
@@ -64,9 +77,12 @@ __global__ void __launch_bounds__(W * 32)
     cp_async_commit();
   }
 
-  float acc[G][4];
+  float acc[G][4], tot[G][4];
 #pragma unroll
-  for (int g = 0; g < G; ++g) acc[g][0] = acc[g][1] = acc[g][2] = acc[g][3] = 0.f;
+  for (int g = 0; g < G; ++g)
+#pragma unroll
+    for (int i = 0; i < 4; ++i) acc[g][i] = tot[g][i] = 0.f;
+  const int segs = gemm_segments(N, K), seg_tiles = ktiles / segs;
   const int mat = lane >> 3, r8 = lane & 7;
   for (int kt = 0; kt < ktiles; ++kt) {
     cp_async_wait<STAGES - 2>();
@@ -91,8 +107,23 @@ __global__ void __launch_bounds__(W * 32)
         }
       }
     }
+    if (segs > 1 && (kt + 1) % seg_tiles == 0) {  // segment done: fold, restart from 0
+#pragma unroll
+      for (int g = 0; g < G; ++g)
+#pragma unroll
+        for (int i = 0; i < 4; ++i) {
+          tot[g][i] = add(tot[g][i], acc[g][i]);
+          acc[g][i] = 0.f;
+        }
+    }
   }
   cp_async_wait<0>();
+  if (segs > 1) {
+#pragma unroll
+    for (int g = 0; g < G; ++g)
+#pragma unroll
+      for (int i = 0; i < 4; ++i) acc[g][i] = tot[g][i];
+  }
   const int gr = lane >> 2, t = lane & 3;
   const int n = n0 + warp * 8 + t * 2;
 #pragma unroll
@@ -113,12 +144,19 @@ __global__ void __launch_bounds__(W * 32)
 
 // ------------------------------------------------------------ balanced M <= 16 G ----
 // GEMMs with few output tiles (decode, short prefills, narrow N with long K) are
-// limited by how evenly the SMs share the weight stream. Work unit = one n8
-// output tile over all of K and all M <= 16 G rows (the finest unit without
-// split-K). CTA c of the grid (one per SM) owns the contiguous units
-// [c U / grid, (c + 1) U / grid) and processes them `warps` at a time, one unit
-// per warp, all warps sharing each X stage as gemm_small_kernel does; the
-// per-element sequence is gemm_small_kernel's.
+// limited by how evenly the SMs share the weight stream. Work item = one n8
+// output tile over one K segment and all M <= 16 G rows; items are ordered
+// segment-major. CTA c of the grid (one per SM) owns the contiguous items
+// [c I / grid, (c + 1) I / grid) and processes them `warps` at a time within one
+// segment, one item per warp, all warps sharing each X stage as gemm_small_kernel
+// does; the per-segment sequence is gemm_small_kernel's. With S > 1 a warp writes
+// its partial to seg_ws and counts its arrival on the n8 tile; the last to arrive
+// (it resets the counter) folds the S partials in ascending order. seg_ws and the
+// counters are per device and per translation unit: launches that use them must
+// not run concurrently (the engine runs its forward on one stream).
+static __device__ float g_seg_ws[kSegMax * 64 * kSegMaxN];
+static __device__ int g_seg_counters[kSegMaxN / 8];
+
 template <int G, int BK, int STAGES>
 constexpr size_t balanced_smem_bytes(int warps) {
   return (size_t)STAGES * (16 * G + 8 * warps) * (BK + 8) * sizeof(__nv_bfloat16);
@@ -132,20 +170,22 @@ __global__ void gemm_balanced_kernel(const __nv_bfloat16* __restrict__ x, int64_
   extern __shared__ __align__(16) __nv_bfloat16 smem[];
   const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, warps = blockDim.x >> 5;
   const int stage_elems = (kRows + 8 * warps) * kStride;
-  const int units = N / 8;
-  const int u0 = (int)((int64_t)blockIdx.x * units / gridDim.x);
-  const int u1 = (int)((int64_t)(blockIdx.x + 1) * units / gridDim.x);
-  const int ktiles = K / BK;
+  const int units = N / 8, segs = gemm_segments(N, K), seg_k = K / segs, items = units * segs;
+  const int i0 = (int)((int64_t)blockIdx.x * items / gridDim.x);
+  const int i1 = (int)((int64_t)(blockIdx.x + 1) * items / gridDim.x);
+  const int ktiles = seg_k / BK;
   const int g = lane >> 2, t = lane & 3, mat = lane >> 3, r8 = lane & 7;
-  for (int base = u0; base < u1; base += warps) {
-    const int nrows = min(warps, u1 - base) * 8;  // weight rows of this pass
+  for (int item = i0; item < i1;) {
+    const int seg = item / units, base = item - seg * units;
+    const int cnt = min(min(warps, i1 - item), units - base);  // items of this pass
+    const int nrows = cnt * 8, k0 = seg * seg_k;
     auto issue = [&](int kt) {
       __nv_bfloat16* st = smem + (kt % STAGES) * stage_elems;
       constexpr int kVec = BK / 8;
       for (int i = threadIdx.x; i < (kRows + nrows) * kVec; i += blockDim.x) {
-        const int r = i / kVec, v = i % kVec;
-        if (r >= kRows) cp_async16(st + r * kStride + v * 8, w + ((int64_t)base * 8 + r - kRows) * K + kt * BK + v * 8, 16);
-        else if (r < M) cp_async16(st + r * kStride + v * 8, x + (int64_t)r * ldx + kt * BK + v * 8, 16);
+        const int r = i / kVec, v = i % kVec, kc = k0 + kt * BK + v * 8;
+        if (r >= kRows) cp_async16(st + r * kStride + v * 8, w + ((int64_t)base * 8 + r - kRows) * K + kc, 16);
+        else if (r < M) cp_async16(st + r * kStride + v * 8, x + (int64_t)r * ldx + kc, 16);
         else cp_async16(st + r * kStride + v * 8, x, 0);  // zero rows >= M, as gemm_small_kernel
       }
     };
@@ -157,7 +197,7 @@ __global__ void gemm_balanced_kernel(const __nv_bfloat16* __restrict__ x, int64_
     float acc[G][4];
 #pragma unroll
     for (int gi = 0; gi < G; ++gi) acc[gi][0] = acc[gi][1] = acc[gi][2] = acc[gi][3] = 0.f;
-    const bool active = warp * 8 < nrows;
+    const bool active = warp < cnt;
     for (int kt = 0; kt < ktiles; ++kt) {
       cp_async_wait<STAGES - 2>();
       __syncthreads();
@@ -183,8 +223,42 @@ __global__ void gemm_balanced_kernel(const __nv_bfloat16* __restrict__ x, int64_
     }
     cp_async_wait<0>();
     __syncthreads();
+    item += cnt;
     if (!active) continue;
-    const int n = (base + warp) * 8 + t * 2;
+    const int unit = base + warp, n = unit * 8 + t * 2;
+    if (segs > 1) {
+#pragma unroll
+      for (int gi = 0; gi < G; ++gi)
+#pragma unroll
+        for (int h = 0; h < 2; ++h) {
+          const int m = gi * 16 + g + h * 8;
+          if (m < M) *reinterpret_cast<float2*>(g_seg_ws + ((int64_t)seg * M + m) * N + n) = make_float2(acc[gi][2 * h], acc[gi][2 * h + 1]);
+        }
+      __threadfence();
+      __syncwarp();
+      int last = 0;
+      if (lane == 0) {
+        last = atomicAdd(g_seg_counters + unit, 1) == segs - 1;
+        if (last) g_seg_counters[unit] = 0;  // ready for the next launch
+      }
+      if (!__shfl_sync(0xffffffffu, last, 0)) continue;
+      __threadfence();
+#pragma unroll
+      for (int gi = 0; gi < G; ++gi)
+#pragma unroll
+        for (int h = 0; h < 2; ++h) {
+          const int m = gi * 16 + g + h * 8;
+          if (m >= M) continue;
+          float2 tot = make_float2(0.f, 0.f);
+          for (int sg = 0; sg < segs; ++sg) {
+            const float2 p = __ldcg(reinterpret_cast<const float2*>(g_seg_ws + ((int64_t)sg * M + m) * N + n));
+            tot.x = add(tot.x, p.x);
+            tot.y = add(tot.y, p.y);
+          }
+          acc[gi][2 * h] = tot.x;
+          acc[gi][2 * h + 1] = tot.y;
+        }
+    }
 #pragma unroll
     for (int gi = 0; gi < G; ++gi) {
 #pragma unroll
@@ -206,7 +280,7 @@ template <typename OutT, int G, int BK, int STAGES>
 cudaError_t run_balanced(const void* x, int64_t ldx, const void* w, OutT* y, int64_t ldy, int M, int N,
                          int K, int sms, int max_smem, cudaStream_t st) {
   if (M > 16 * G) return cudaErrorInvalidValue;
-  const int units = N / 8, grid = units < sms ? units : sms;
+  const int units = N / 8 * gemm_segments(N, K), grid = units < sms ? units : sms;
   int warps = (units + grid - 1) / grid;
   if (warps > 16) warps = 16;
   while (warps > 1 && balanced_smem_bytes<G, BK, STAGES>(warps) > (size_t)max_smem) --warps;

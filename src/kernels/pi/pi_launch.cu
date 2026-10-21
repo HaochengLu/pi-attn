@@ -88,16 +88,19 @@ void pi_set_device(int device) {
 // q: [batch, Hq, 128] bf16 contiguous; out: [batch, Hq, 128] bf16; caches:
 // [pages, page_size, Hkv, 128] bf16; page table: dense [batch, table_stride]
 // int32; seqlens: [batch] int32 (KV length including the decoded token).
-// Workspace: ws_o [batch * max_groups, Hq, 128] f32 and ws_ml [.., Hq, 2] f32 with
-// max_groups = pi_attn_decode_groups(table_stride * page_size). The grid depends
+// Workspace: ws_o [batch * max_groups, Hq, 128] f32 and ws_ml [.., Hq, 8] f32 (one
+// (m, l) pair per decode warp) with max_groups = pi_attn_decode_groups(table_stride
+// * page_size), and counters [ws_rows, Hq, 4] int32, zero before the first call;
+// every call leaves them zero. The grid depends
 // only on (batch, table_stride), so it is fixed per CUDA-graph bucket.
+static_assert(kDecodeWarps == 4, "pi.rs sizes the decode ml and counter workspaces for 4 warps");
 int pi_attn_decode_groups(int64_t max_kv_len) {
   return (int)((max_kv_len + kGroupKeys - 1) / kGroupKeys);
 }
 
 const char* pi_attn_decode(const void* q, const void* k_cache, const void* v_cache,
                            const int32_t* page_table, int64_t table_stride, const int32_t* seqlens,
-                           float* ws_o, float* ws_ml, int64_t ws_rows, void* out, int batch,
+                           float* ws_o, float* ws_ml, int* counters, int64_t ws_rows, void* out, int batch,
                            int num_qo_heads, int num_kv_heads, int page_size, double sm_scale,
                            void* stream) {
   if (num_kv_heads <= 0 || num_qo_heads % num_kv_heads || num_qo_heads / num_kv_heads > 16)
@@ -110,12 +113,10 @@ const char* pi_attn_decode(const void* q, const void* k_cache, const void* v_cac
   set_smem(decode_kernel, decode_smem_bytes());
   decode_kernel<<<dim3(max_groups, num_kv_heads, batch), kDecodeWarps * 32, decode_smem_bytes(), st>>>(
       (const __nv_bfloat16*)q, (const __nv_bfloat16*)k_cache, (const __nv_bfloat16*)v_cache,
-      nullptr, page_table, table_stride, seqlens, ws_o, (float2*)ws_ml, max_groups, num_qo_heads,
-      num_kv_heads, page_size, page_shift_of(page_size), (float)(sm_scale * 1.4426950408889634));
-  if (auto e = check_launch("pi decode")) return e;
-  decode_merge_kernel<<<dim3(num_qo_heads, batch), kHeadDim, 0, st>>>(
-      ws_o, (const float2*)ws_ml, seqlens, max_groups, (__nv_bfloat16*)out, num_qo_heads);
-  return check_launch("pi decode merge");
+      nullptr, page_table, table_stride, seqlens, ws_o, (float2*)ws_ml, counters, (__nv_bfloat16*)out,
+      max_groups, num_qo_heads, num_kv_heads, page_size, page_shift_of(page_size),
+      (float)(sm_scale * 1.4426950408889634));
+  return check_launch("pi decode");
 }
 
 // Prefill planner: split count over fold groups (wave model: two CTAs per SM, a
@@ -134,7 +135,10 @@ void pi_attn_prefill_plan(int batch, int num_qo_heads, int num_kv_heads, int max
   // Split mode keeps one f32 partial per (row, head, fold group); stay within the
   // same 256 MiB a FlashInfer float workspace typically takes.
   const int64_t ws_bytes = (int64_t)batch * max_q_len * num_qo_heads * *max_groups * (kHeadDim + 2) * 4;
-  const int max_splits = ws_bytes <= (256ll << 20) ? *max_groups : 1;
+  // Splitting only pays when the row tiles alone leave SM slots idle (short
+  // extends over long prefixes); otherwise the per-group workspace traffic and
+  // the causal imbalance the wave model ignores make it a loss.
+  const int max_splits = ws_bytes <= (256ll << 20) && ctas < slots ? *max_groups : 1;
   for (int sp = 1; sp <= max_splits; ++sp) {
     const int64_t groups_per = (*max_groups + sp - 1) / sp;
     const int64_t per = std::min<int64_t>(tiles, groups_per * kGroupTiles);
@@ -257,7 +261,8 @@ cudaError_t run_gemm(int k, const void* x, int64_t ldx, const void* w, OutT* y, 
 // Time each candidate kernel for one (N, K, M bucket) and remember the fastest.
 // Scratch comes from the caller (the torch allocator): x [m, K] and y [m, N] bf16,
 // and an optional L2-flush buffer used for small m, where GEMMs stream weights
-// from DRAM in a real forward. Called outside stream capture only.
+// from DRAM in a real forward (its contents serve as weight copies when it holds
+// several). Called outside stream capture only.
 const char* tune_bucket(const void* w, int N, int K, int m, void* x, void* y, void* flush,
                         size_t flush_bytes, cudaStream_t st) {
   cudaMemsetAsync(x, 0, (size_t)m * K * 2, st);
@@ -268,19 +273,32 @@ const char* tune_bucket(const void* w, int N, int K, int m, void* x, void* y, vo
   if (m <= 64) cands.insert(cands.begin(), small_kernels().begin(), small_kernels().end());
   float best = 1e30f;
   int best_k = heuristic_kernel(m, K);
+  constexpr int kBurst = 32;
+  const size_t w_bytes = (size_t)N * K * sizeof(__nv_bfloat16);
+  const int copies = flush ? (int)(flush_bytes / w_bytes) : 0;
   for (int k : cands) {
     if (K % kernel_bk(k) || m > kernel_max_m(k)) continue;
     if (run_gemm(k, x, K, w, (__nv_bfloat16*)y, N, m, N, K, st) != cudaSuccess) continue;  // warm-up
     std::vector<float> times;
     for (int r = 0; r < 5; ++r) {
-      if (flush) cudaMemsetAsync(flush, r, flush_bytes, st);
-      cudaEventRecord(e0, st);
-      run_gemm(k, x, K, w, (__nv_bfloat16*)y, N, m, N, K, st);
+      if (copies >= 4) {
+        // A burst of back-to-back launches, each over another weight-sized slice
+        // of the scratch, so that every launch streams from DRAM and launch gaps
+        // overlap as in a forward; single cold launches misrank microsecond GEMVs.
+        cudaEventRecord(e0, st);
+        for (int i = 0; i < kBurst; ++i)
+          run_gemm(k, x, K, (const char*)flush + (size_t)((r * kBurst + i) % copies) * w_bytes,
+                   (__nv_bfloat16*)y, N, m, N, K, st);
+      } else {
+        if (flush) cudaMemsetAsync(flush, r, flush_bytes, st);
+        cudaEventRecord(e0, st);
+        run_gemm(k, x, K, w, (__nv_bfloat16*)y, N, m, N, K, st);
+      }
       cudaEventRecord(e1, st);
       cudaEventSynchronize(e1);
       float ms = 0.f;
       cudaEventElapsedTime(&ms, e0, e1);
-      times.push_back(ms);
+      times.push_back(copies >= 4 ? ms / kBurst : ms);
     }
     std::sort(times.begin(), times.end());
     if (times[2] < best) {

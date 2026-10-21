@@ -272,6 +272,15 @@ impl Engine {
             Self::with_cache_spec(server_args, runtime_config, tp_rank, kind, device, spec)?;
         engine.attach_model_runner(runner)?;
         engine.capture_graphs()?;
+        if engine.server_args.deterministic {
+            // Largest forward: a prefill chunk (or a whole prompt) plus the running decodes.
+            let args = &engine.server_args;
+            let prefill = if args.chunked_prefill_size > 0 { args.chunked_prefill_size } else { args.max_seq_len };
+            let max_m = (prefill + args.max_running_req) as i64;
+            let start = std::time::Instant::now();
+            let shapes = crate::kernels::pi::pretune(max_m, device).map_err(EngineError::InvalidArgument)?;
+            tracing::info!(shapes, max_m, seconds = start.elapsed().as_secs_f64(), "PI GEMM tiles tuned");
+        }
         tracing::info!(?device, ?kind, "model loaded for inference");
         Ok(engine)
     }

@@ -209,9 +209,12 @@ __global__ void __launch_bounds__(kHeadDim)
 
 // Decode. grid = (max_groups, num_kv_heads, batch), 4 warps. One CTA runs the
 // canonical online sequence of fold group fg for the GQA rows of (b, kvh) and
-// writes the group partial (m, d, o) at ws row b * max_groups + fg; the decode
-// merge folds the groups. The tile is split across warps without changing any
-// row's sequence: warp w computes S n-tile w (each element's head_dim k-steps in
+// writes the group partial (m, d, o) at ws row b * max_groups + fg. A request
+// with one group finishes in place (the first fold into the identity is exact);
+// otherwise, per warp slice of head_dim, the last warp to finish, found with a
+// per-(b, kvh, warp) counter that it resets, folds the groups in ascending
+// order, so no merge launch is needed and which CTA folds never changes a value. The tile is split across
+// warps without changing any row's sequence: warp w computes S n-tile w (each element's head_dim k-steps in
 // ascending order) and O n-tiles [4w, 4w + 4) (each element: fma rescale, then
 // the two key k-steps in ascending order); the tile max is exact under any
 // split; P is rounded elementwise; warp 0 sums P from smem in exactly
@@ -224,8 +227,8 @@ __global__ void __launch_bounds__(kDecodeWarps * 32)
                    const __nv_bfloat16* __restrict__ v_cache, const int32_t* __restrict__ kv_page_indptr,
                    const int32_t* __restrict__ kv_page_indices, int64_t table_stride,
                    const int32_t* __restrict__ kv_lens, float* __restrict__ ws_o, float2* __restrict__ ws_ml,
-                   int max_groups, int num_qo_heads, int num_kv_heads, int page_size, int page_shift,
-                   float scale_log2) {
+                   int* __restrict__ counters, __nv_bfloat16* __restrict__ out, int max_groups,
+                   int num_qo_heads, int num_kv_heads, int page_size, int page_shift, float scale_log2) {
   static_assert(kTileNS == kDecodeWarps && kNTilesO % kDecodeWarps == 0, "one S n-tile per warp");
   constexpr int kON = kNTilesO / kDecodeWarps, kPStride = kTile + 8;
   extern __shared__ __align__(16) __nv_bfloat16 smem[];
@@ -356,7 +359,32 @@ __global__ void __launch_bounds__(kDecodeWarps * 32)
     cp_async_commit();
   }
   cp_async_wait<0>();
-  const int64_t slot0 = ((int64_t)b * max_groups + fg) * num_qo_heads + kvh * group + g;
+  float* sL = sMax;  // the loop is done with sMax: publish warp 0's row sums
+  if (warp == 0 && t4 == 0) {
+    sL[g] = D;
+    sL[g + 8] = Dh;
+  }
+  __syncthreads();
+  const float l0 = sL[g], l1 = sL[g + 8];
+  const int n_groups = (n_tiles + kGroupTiles - 1) / kGroupTiles;
+  const int head0 = kvh * group;
+  if (n_groups == 1) {
+    __nv_bfloat16* o0 = out + ((int64_t)b * num_qo_heads + head0 + g) * kHeadDim;
+    __nv_bfloat16* o1 = o0 + 8 * kHeadDim;
+#pragma unroll
+    for (int n = 0; n < kON; ++n) {
+      const int col = (warp * kON + n) * 8 + t4 * 2;
+      if (g < group) *reinterpret_cast<__nv_bfloat162*>(o0 + col) = __halves2bfloat162(finish(O[n][0], l0), finish(O[n][1], l0));
+      if (g + 8 < group)
+        *reinterpret_cast<__nv_bfloat162*>(o1 + col) = __halves2bfloat162(finish(O[n][2], l1), finish(O[n][3], l1));
+    }
+    return;
+  }
+  // Each warp publishes its dims of the partial with its own copy of (m, l),
+  // counts its arrival, and the last warp w to arrive folds dims [32w, 32w + 32)
+  // of every head. No CTA barrier follows: a CTA parked on an atomic round trip
+  // through a busy L2 holds its SM slot.
+  const int64_t slot0 = ((int64_t)b * max_groups + fg) * num_qo_heads + head0 + g;
   const int64_t slot1 = slot0 + 8;
 #pragma unroll
   for (int n = 0; n < kON; ++n) {
@@ -364,28 +392,51 @@ __global__ void __launch_bounds__(kDecodeWarps * 32)
     if (g < group) *reinterpret_cast<float2*>(ws_o + slot0 * kHeadDim + col) = make_float2(O[n][0], O[n][1]);
     if (g + 8 < group) *reinterpret_cast<float2*>(ws_o + slot1 * kHeadDim + col) = make_float2(O[n][2], O[n][3]);
   }
-  if (warp == 0 && t4 == 0) {
-    if (g < group) ws_ml[slot0] = make_float2(M[0], D);
-    if (g + 8 < group) ws_ml[slot1] = make_float2(M[1], Dh);
+  if (t4 == 0) {
+    if (g < group) ws_ml[slot0 * kDecodeWarps + warp] = make_float2(M[0], l0);
+    if (g + 8 < group) ws_ml[slot1 * kDecodeWarps + warp] = make_float2(M[1], l1);
   }
-}
-
-// Decode merge: grid = (num_qo_heads, batch), 128 threads; folds the
-// request's group partials in ascending order.
-__global__ void __launch_bounds__(kHeadDim)
-    decode_merge_kernel(const float* __restrict__ ws_o, const float2* __restrict__ ws_ml,
-                              const int32_t* __restrict__ kv_lens, int max_groups,
-                              __nv_bfloat16* __restrict__ out, int num_qo_heads) {
-  const int h = blockIdx.x, b = blockIdx.y, d = threadIdx.x;
-  const int n_groups = (kv_lens[b] + kGroupKeys - 1) / kGroupKeys;
-  float M = -INFINITY, L = 0.f, O = 0.f;
-  for (int fg = 0; fg < n_groups; ++fg) {
-    const int64_t slot = ((int64_t)b * max_groups + fg) * num_qo_heads + h;
-    const float2 ml = ws_ml[slot];
-    const FoldScalars f = fold_scalars(M, L, ml.x, ml.y);
-    O = fold_elem(O, ws_o[slot * kHeadDim + d], f);
+  __threadfence();  // this lane's partial visible device-wide before the arrival
+  __syncwarp();
+  int last = 0;
+  if (lane == 0) {
+    int* cnt = counters + ((int64_t)b * num_kv_heads + kvh) * kDecodeWarps + warp;
+    last = atomicAdd(cnt, 1) == n_groups - 1;
+    if (last) *cnt = 0;  // ready for the next launch
   }
-  out[((int64_t)b * num_qo_heads + h) * kHeadDim + d] = finish(O, L);
+  if (!__shfl_sync(0xffffffffu, last, 0)) return;
+  __threadfence();
+  // Fold: lane p takes head p / 8, dims 32w + 4 (p % 8) + [0, 4); loads run
+  // kFoldAhead groups ahead.
+  constexpr int kFoldAhead = 8;
+  for (int p = lane; p < group * 8; p += 32) {
+    const int h = p >> 3, d0 = warp * 32 + (p & 7) * 4;
+    float Mf = -INFINITY, L = 0.f, Of[4] = {0.f, 0.f, 0.f, 0.f};
+    const int64_t slot_h = (int64_t)b * max_groups * num_qo_heads + head0 + h;
+    for (int c0 = 0; c0 < n_groups; c0 += kFoldAhead) {
+      float2 ml[kFoldAhead];
+      float4 oc[kFoldAhead];
+#pragma unroll
+      for (int i = 0; i < kFoldAhead; ++i) {
+        if (c0 + i >= n_groups) break;
+        const int64_t slot = slot_h + (int64_t)(c0 + i) * num_qo_heads;
+        ml[i] = __ldcg(ws_ml + slot * kDecodeWarps + warp);
+        oc[i] = __ldcg(reinterpret_cast<const float4*>(ws_o + slot * kHeadDim + d0));
+      }
+#pragma unroll
+      for (int i = 0; i < kFoldAhead; ++i) {
+        if (c0 + i >= n_groups) break;
+        const FoldScalars f = fold_scalars(Mf, L, ml[i].x, ml[i].y);
+        Of[0] = fold_elem(Of[0], oc[i].x, f);
+        Of[1] = fold_elem(Of[1], oc[i].y, f);
+        Of[2] = fold_elem(Of[2], oc[i].z, f);
+        Of[3] = fold_elem(Of[3], oc[i].w, f);
+      }
+    }
+    __nv_bfloat16* o = out + ((int64_t)b * num_qo_heads + head0 + h) * kHeadDim + d0;
+    reinterpret_cast<__nv_bfloat162*>(o)[0] = __halves2bfloat162(finish(Of[0], L), finish(Of[1], L));
+    reinterpret_cast<__nv_bfloat162*>(o)[1] = __halves2bfloat162(finish(Of[2], L), finish(Of[3], L));
+  }
 }
 
 }  // namespace pi_attn

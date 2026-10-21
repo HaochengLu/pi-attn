@@ -67,6 +67,7 @@ mod ffi {
             seqlens: *const i32,
             ws_o: *mut f32,
             ws_ml: *mut f32,
+            counters: *mut i32,
             ws_rows: i64,
             out: *mut c_void,
             batch: i32,
@@ -195,6 +196,7 @@ fn tune(weight: &Tensor, n: i64, k: i64, m: i64) -> Result<(), String> {
         static ATTEMPTED: RefCell<HashSet<(i64, i64, i32)>> = RefCell::new(HashSet::new());
     }
     let bucket = unsafe { ffi::pi_linear_bucket(m as i32) };
+    SEEN_SHAPES.lock().unwrap().insert((n, k));
     if unsafe { ffi::pi_linear_is_tuned(n as i32, k as i32, bucket) } != 0
         || !ATTEMPTED.with(|seen| seen.borrow_mut().insert((n, k, bucket)))
     {
@@ -238,6 +240,37 @@ fn tune(weight: &Tensor, n: i64, k: i64, m: i64) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(has_pi)]
+static SEEN_SHAPES: std::sync::Mutex<std::collections::BTreeSet<(i64, i64)>> =
+    std::sync::Mutex::new(std::collections::BTreeSet::new());
+
+/// Tunes every M bucket up to `max_m` for each weight shape the GEMM has run so
+/// far (graph capture runs every projection), so that no request stalls on
+/// tuning. Timing depends only on the shape, so scratch weights stand in.
+pub(crate) fn pretune(max_m: i64, device: Device) -> Result<usize, String> {
+    #[cfg(has_pi)]
+    {
+        let shapes: Vec<(i64, i64)> = SEEN_SHAPES.lock().unwrap().iter().copied().collect();
+        for &(n, k) in &shapes {
+            let w = Tensor::f_empty([n, k], (Kind::BFloat16, device)).map_err(|e| e.to_string())?;
+            let mut m = 1;
+            loop {
+                tune(&w, n, k, m)?;
+                if m >= max_m {
+                    break;
+                }
+                m *= 2;
+            }
+        }
+        Ok(shapes.len())
+    }
+    #[cfg(not(has_pi))]
+    {
+        let _ = (max_m, device);
+        Ok(0)
+    }
+}
+
 /// Shape requirement of the row-invariant GEMM for a `[N, K]` weight.
 pub fn linear_shape_supported(n: i64, k: i64) -> bool {
     k % 64 == 0 && n % 32 == 0
@@ -254,18 +287,22 @@ pub(crate) fn decode_groups(table_columns: i64, page_size: i64) -> i64 {
     }
 }
 
-/// Decode group partials: o `[rows, Hq, 128]` and ml `[rows, Hq, 2]` f32, one row
-/// per (request, fold group), so `rows = batch * decode_groups(..)`.
+/// Decode group partials: o `[rows, Hq, 128]` and ml `[rows, Hq, 8]` f32 (an (m, l)
+/// pair per decode warp), one row per (request, fold group), so `rows = batch *
+/// decode_groups(..)`; `counters` `[rows, Hq, 4]` i32 count finished groups per
+/// warp and are left zero by every call.
 pub(crate) struct DecodeWorkspace {
     pub o: Tensor,
     pub ml: Tensor,
+    pub counters: Tensor,
 }
 
 impl DecodeWorkspace {
     pub fn new(rows: i64, num_heads: i64, device: Device) -> Self {
         Self {
             o: Tensor::empty([rows, num_heads, 128], (Kind::Float, device)),
-            ml: Tensor::empty([rows, num_heads, 2], (Kind::Float, device)),
+            ml: Tensor::empty([rows, num_heads, 8], (Kind::Float, device)),
+            counters: Tensor::zeros([rows, num_heads, 4], (Kind::Int, device)),
         }
     }
     pub fn rows(&self) -> i64 {
@@ -303,6 +340,7 @@ pub(crate) fn decode(
             seqlens.data_ptr().cast(),
             workspace.o.data_ptr().cast(),
             workspace.ml.data_ptr().cast(),
+            workspace.counters.data_ptr().cast(),
             workspace.rows(),
             out.data_ptr(),
             batch as i32,
