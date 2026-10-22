@@ -106,3 +106,21 @@ streams a different copy from a >= 600 MB pool).
     keeps a 2.2% mean. The engine now uses the graph capture sizes as buckets, so every
     graph runs the tile timed at its own M (loss 0 at those sizes; 1.3% mean over all grid
     M, which only eager forwards reach, against 3.2% before).
+14. `long_k/`: is the remaining 8B down M=1 gap (stream-K 113.5 us vs cuBLAS 104.8) the
+    512-tile/114-SM split or the access pattern? Weight streaming only (no MMA), the same
+    96 MB as [N, K] for K = 4096 .. 24576 (`bench_k.py`, `out.txt`): a linear stream reads
+    it in 101-102 us at every K; the n8-tile pattern with 128-256-column stages loses more as
+    K grows (8B down: 111.8 us in probe 1), but with 1024-column stages and one n8 unit in
+    flight per CTA it takes 106.8 us at K = 12288 (cuBLAS 105.0). Long rows want long
+    contiguous bursts, not more rows in flight. Engine: stream-K ids 51 (512-column stages,
+    3 stages, 2 warps) and 53 (1024-column, 2 stages, 1 warp), same kernel template and
+    arithmetic (test_gemm.py: 0 failures). 8B down 113.2 -> 111.4 us at M=1, 114.5 -> 112.7
+    at M=4, 117.2 -> 114.5 at M=8; 1.7B down M=1 30.45 -> 30.25. A 1024-column, 3-stage
+    variant never won and was dropped. The rest (111.4 vs 106.8) is the X half of the
+    per-warp ring and the MMA chain.
+15. `tuner_input/`: the tuner timed candidates on an all-zero X (and pretune on
+    uninitialised scratch weights). `zero_probe.py`: at M >= 2048 zero operands make some
+    CUTLASS tiles up to 7.5% faster than on random data while others are unchanged (8B down
+    M=4096: k13 3396 vs 3650 us, k11 2804 vs 2839), which can flip the choice (8B gateup
+    M=4096: zero X picks k12, 1.5% slower than k10 on random X). The tuner now fills X with
+    fixed pseudo-random values and pretune uses random weights. `out.txt`.

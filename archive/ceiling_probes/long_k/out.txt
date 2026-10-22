@@ -1,0 +1,4 @@
+K= 4096 N=12288: linear 102.2 (985 GB/s) cublas 103.7 (970) | best pattern tile bk256 s4 r16 106.0 (950) | warp bk256 s4 w4 106.1 (949) | warp bk256 s4 w2 106.1 (949) | warp bk256 s4 w6 106.1 (949)
+K= 8192 N= 6144: linear 101.4 (993 GB/s) cublas 103.3 (974) | best pattern tile bk1024 s3 r8 106.6 (945) | tile bk256 s4 r32 106.7 (944) | warp bk256 s4 w4 106.8 (942) | warp bk512 s3 w4 106.9 (942)
+K=12288 N= 4096: linear 101.4 (993 GB/s) cublas 105.0 (958) | best pattern tile bk1024 s3 r8 106.8 (943) | tile bk512 s3 r8 107.5 (937) | warp bk512 s3 w2 108.0 (932) | tile bk2048 s2 r8 108.1 (931)
+K=24576 N= 2048: linear 101.1 (995 GB/s) cublas 110.3 (912) | best pattern tile bk1024 s3 r8 112.7 (893) | tile bk2048 s2 r8 114.6 (878) | tile bk1024 s3 r16 116.6 (864) | tile bk512 s3 r8 117.6 (856)
