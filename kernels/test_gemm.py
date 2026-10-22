@@ -59,8 +59,8 @@ def main(bench):
         ref = ext.linear(X[:1].contiguous(), W, 1, False)[0]
         for M in [1, 2, 7, 16, 17, 33, 64, 65, 200, 1000, 4096]:
             bal = {30: 16, 31: 16, 32: 32, 33: 64}
-            if gemm_segments(N, K) == 1:  # stream-K: S = 1 shapes; 40..43 M <= 8, 44..47 any M
-                bal.update({40: 8, 41: 8, 42: 8, 43: 8, 44: 1 << 30, 45: 1 << 30, 46: 1 << 30, 47: 1 << 30})
+            if gemm_segments(N, K) == 1:  # stream-K: S = 1 shapes; 40..43 M <= 8, 44..47 and 50 any M
+                bal.update({40: 8, 41: 8, 42: 8, 43: 8, 44: 1 << 30, 45: 1 << 30, 46: 1 << 30, 47: 1 << 30, 50: 1 << 30})
             Xm = X[:M].clone()
             if M > 1:
                 Xm[1:] = torch.randn_like(Xm[1:]) * 100  # other rows must not matter
@@ -97,7 +97,7 @@ def main(bench):
                 Xm = X[:M].contiguous()
                 tc = timeit(lambda: torch.matmul(Xm, W.T))
                 best = min((timeit(lambda: ext.linear(Xm, W, kk, False)), kk) for kk in ([1, 2, 4, 6, 7, 8, 9] if M <= 64 else []) + [10, 11, 12, 13, 14, 15]
-                           + ([44, 45, 46, 47] if gemm_segments(N, K) == 1 else [])
+                           + ([44, 45, 46, 47, 50] if gemm_segments(N, K) == 1 else [])
                            + [k for k in (48, 49) if segpar_fits(k, M, N, K)]
                            + [k for k, mm in {30: 16, 31: 16, 32: 32, 33: 64}.items() if M <= mm])
                 ts.append(f"M={M}:{best[0]/tc:.2f}(k{best[1]})")

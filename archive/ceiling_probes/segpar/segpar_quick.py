@@ -1,5 +1,5 @@
 """0.6B segmented shapes (o, down), burst timing over a 600 MB weight ring: cuBLAS vs the
-best previous id vs the segment-parallel ids (48, 49; a 64x128 id 50 was tried and never won)."""
+best previous id vs the segment-parallel ids (48, 49; a 64x128 variant was tried and never won)."""
 import sys
 import torch
 import test_gemm as G

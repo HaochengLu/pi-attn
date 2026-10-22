@@ -60,10 +60,20 @@ streams a different copy from a >= 600 MB pool).
    0.6B down M=32 0.94 -> 0.84, M=64 1.24 -> 0.87, M=128 1.15 -> 1.10, M=512 1.28 -> 1.19;
    0.6B o M=64 11.50 -> 8.52 us. No gain at M=256 and M=1024, where one tile per SM is
    already compute-bound (hot and cold weights time the same) and the extra CTAs add a
-   second wave. A 64x128 variant (id 50) never won and was dropped.
+   second wave. A 64x128 variant never won and was dropped.
    The first version was up to 1.5x slower than this. `segpar_probe.cu` / `out_probe.txt`: its
    arrival flag was a static `__shared__ bool`, which the compiler places in front of the
    dynamic shared buffer, so CUTLASS's swizzled tiles were no longer 128-byte aligned. On a
    plain S = 1 shape the same mainloop and epilogue took 13.35 us against 8.63 us for
    CUTLASS's own kernel; with the flag broadcast by `__syncthreads_or` it takes 8.80 us.
    None of the other CUTLASS-based kernels declares static shared memory.
+10. `occ2/`: 8-warp and two-CTAs-per-SM CUTLASS tiles at M=128..1024, each as a plain or
+    segment-sequential tile, segment-parallel, and stream-K (`occ_probe2.cu`,
+    `bench_occ2.py`, `out_occ2.txt`; 0 bitwise failures). Two configs close gaps:
+    64x64x64 with 3 stages (48 KB, two CTAs per SM) as segment-parallel takes 0.6B down
+    from 1.19x to 1.06x cuBLAS at M=512 and from 1.15x to 1.02x at M=1024 (o: 1.20x ->
+    1.02x, 1.11x -> 1.00x), and is no slower than the 4-stage version at M=128, so it
+    replaced engine id 49's config; 128x64x64 with 3 stages as stream-K takes 8B down at
+    M=512 from 1.10x to 0.99x (435 -> 393 us) and became engine id 50. Unchanged: 1.7B
+    down M=128 (1.09x) and 8B down M=128 (1.05x). An 8-warp 64x128x32 stream-K tile gains
+    up to 5% only where the engine is already below cuBLAS and was not added.
