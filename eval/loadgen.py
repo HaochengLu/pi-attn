@@ -7,6 +7,7 @@ and reports the median of each metric."""
 import argparse
 import concurrent.futures as cf
 import json
+import math
 import random
 import statistics
 import time
@@ -66,7 +67,7 @@ def run(url, in_len, out_len, conc, num, seed, shared=0):
     return {"out_tok_s": tokens / wall, "req_s": num / wall, "ttft_ms": statistics.mean(r["ttft"] for r in res) * 1e3,
             "tpot_ms": statistics.mean(r["tpot"] for r in res) * 1e3,
             "itl_ms": statistics.mean(itl) * 1e3 if itl else 0.0,
-            "p99_ttft_ms": sorted(r["ttft"] for r in res)[int(0.99 * (len(res) - 1))] * 1e3,
+            "p99_ttft_ms": sorted(r["ttft"] for r in res)[math.ceil(0.99 * len(res)) - 1] * 1e3,  # nearest rank
             "e2e_ms": statistics.mean(r["e2e"] for r in res) * 1e3, "tokens": tokens}
 
 
