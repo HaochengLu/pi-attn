@@ -1,5 +1,13 @@
 # mini-sglang Rust 服务
 
+> **English summary.** A Rust + libtorch serving engine for dense Qwen3 models with an
+> OpenAI-compatible API (binary `sglang-rust`). The `pi-attn` branch adds
+> `--deterministic`: responses become a bitwise function of the weights and the request
+> (batching, concurrency, prefix caching, chunked prefill, decode vs re-prefill, CUDA
+> graphs and restarts do not change them) with all of those optimizations still on.
+> See [docs/deterministic-mode.md](docs/deterministic-mode.md); evaluation, kernel tests
+> and the paper are in the PI-Attn project that hosts this checkout.
+
 Rust 版本的 mini-sglang 推理服务。目前支持本地 dense Qwen3 模型、CPU/CUDA float32 eager 执行，以及 OpenAI 风格的文本与聊天生成接口。
 
 后续 dense、MoE 及不同状态缓存模型的接入计划见 [多模型架构优化与分阶段实施方案](docs/multi-model-architecture-roadmap-2026-10-08.md)。

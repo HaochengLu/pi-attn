@@ -1,7 +1,9 @@
-// CUTLASS 2.x sm80 tensor-op GEMMs (bf16 x bf16 -> fp32 accumulate), no split-K,
-// for large M. Instantiated with several tile shapes; the per-element k order is
-// ascending k16 steps in every instantiation, which test_gemm.py checks is
-// bitwise identical to the hand-written small-M kernel. Shapes with K segments
+// CUTLASS 2.x sm80 tensor-op GEMMs (bf16 x bf16 -> fp32 accumulate), tuned against the
+// small-M kernels at every M (gemm_dispatch.cuh). Instantiated with several tile shapes;
+// the per-element k order is ascending k16 steps in every instantiation, which
+// test_gemm.py checks is bitwise identical to the hand-written small-M kernel. No
+// variant splits an element's k chain across CTAs except at the canonical segment
+// boundaries, and those partial sums are always added in ascending segment order. Shapes with K segments
 // (gemm_segments > 1) run SegmentedKernel: the CTA runs the CUTLASS mainloop once
 // per segment from a zero accumulator and folds it into a running total that
 // starts at +0, the canonical sequence of gemm_inv.cuh.

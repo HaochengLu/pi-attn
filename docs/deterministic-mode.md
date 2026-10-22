@@ -32,10 +32,15 @@ positions only, never by batch or schedule:
   sequence) and merges the groups. Every path executes the same operation sequence
   per row, so batched, chunked, prefix-cached, prefilled and decoded rows agree
   bitwise.
-- **Projections** (`src/kernels/pi.rs`, `gemm_inv.cuh`, `gemm_cutlass.cuh`): every
-  output element accumulates `k` in ascending 16-wide MMA steps from zero, with no
-  split-K. Small-M kernels and CUTLASS tiles realise the same order, so the tile can
-  be tuned per shape and batch size without changing results.
+- **Projections** (`src/kernels/pi.rs`, `src/kernels/pi/gemm_*.cuh`): the sum over `k`
+  of every output element is fixed by the weight shape (N, K) alone. It runs in
+  ascending 16-wide MMA steps from zero, cut into S segments (S = 2 when N <= 1024,
+  K >= 2048 and K % 512 == 0, otherwise 1) whose sums are added to +0 in ascending
+  order. Small-M kernels, CUTLASS tiles, deterministic stream-K and segment-parallel
+  tiles all realise this order, so at startup the engine times them per shape and
+  M bucket and keeps the fastest (logged as "PI GEMM tile choice") without changing
+  results. The buckets are the CUDA-graph capture sizes, so every graph runs the tile
+  timed at its own M.
 - **Sampling**: greedy is `argmax`. With temperature > 0, one batched kernel samples
   row *i* from its own Philox stream `(seed, token position)` (a fork of FlashInfer's
   top-k/top-p rejection sampler whose stream does not depend on the row index). The

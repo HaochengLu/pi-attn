@@ -260,10 +260,10 @@ pub(crate) fn pretune(max_m: i64, device: Device) -> Result<usize, String> {
                 tune(&w, n, k, m)?;
                 let bucket = unsafe { ffi::pi_linear_bucket(m as i32) };
                 choice.push(format!("{bucket}:{}", unsafe { ffi::pi_linear_tuned_kernel(n as i32, k as i32, bucket) }));
-                if m >= max_m {
+                if bucket as i64 >= max_m {
                     break;
                 }
-                m *= 2;
+                m = bucket as i64 + 1;
             }
             // M bucket : kernel id (pi_launch.cu), 0 where tuning was skipped (heuristic tile).
             tracing::info!(n, k, choice = choice.join(" "), "PI GEMM tile choice");
@@ -472,5 +472,18 @@ pub(crate) fn prefill(
     {
         let _ = (k_cache, v_cache, num_kv_heads, out, ws_o, ws_ml);
         Err("PI kernels were not built".into())
+    }
+}
+
+#[cfg(all(test, has_pi))]
+mod tests {
+    #[test]
+    fn graph_sizes_are_tuning_buckets() {
+        // Every captured graph size must be a bucket top, or the graph runs a tile tuned
+        // for a larger M.
+        let decode = [1, 2, 4, 8, 16, 32, 64, 128, 256];
+        for size in crate::engine::segmented_graph::capture_sizes(2048).into_iter().chain(decode) {
+            assert_eq!(unsafe { super::ffi::pi_linear_bucket(size as i32) }, size as i32, "graph size {size}");
+        }
     }
 }

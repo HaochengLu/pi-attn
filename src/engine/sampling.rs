@@ -388,32 +388,32 @@ impl Sampler {
         let vocab = logits.size()[1];
         let params: Vec<SamplingParams> = params_list.iter().map(|p| p.normalized()).collect();
         let greedy_rows: Vec<bool> = params.iter().map(|p| p.temperature <= 0.0 || p.top_p == 0.0).collect();
-        let greedy = logits.argmax(-1, false);
         #[cfg(has_flashinfer)]
         if matches!(device, tch::Device::Cuda(_)) {
-            // Per-row parameters go up in two packed copies (each small host copy
-            // stalls the CPU/GPU pipeline): [top_k, seed, offset, greedy] as i64 and
-            // [temperature, top_p] as f32.
+            // Per-row parameters go up in one packed copy (each small host copy stalls
+            // the CPU/GPU pipeline): [top_k, seed, offset, greedy] as i64, then
+            // [temperature, top_p] as f32, viewed back on the device without a kernel.
             let rows = params.len() as i64;
-            let mut ints = Vec::with_capacity(4 * params.len());
-            ints.extend(params.iter().map(|p| if p.top_k > 0 { p.top_k.min(vocab) } else { vocab }));
-            ints.extend(params.iter().map(|p| p.seed as i64));
-            // Disjoint Philox ranges per position (a row consumes far fewer).
-            ints.extend(params.iter().map(|p| p.position.wrapping_mul(1 << 24) as i64));
-            ints.extend(greedy_rows.iter().map(|&g| g as i64));
-            let mut floats = Vec::with_capacity(2 * params.len());
-            floats.extend(params.iter().zip(&greedy_rows).map(|(p, &g)| if g { 1.0 } else { p.temperature as f32 }));
-            floats.extend(params.iter().map(|p| p.top_p as f32));
+            let ints = params.iter().map(|p| if p.top_k > 0 { p.top_k.min(vocab) } else { vocab })
+                .chain(params.iter().map(|p| p.seed as i64))
+                // Disjoint Philox ranges per position (a row consumes far fewer).
+                .chain(params.iter().map(|p| p.position.wrapping_mul(1 << 24) as i64))
+                .chain(greedy_rows.iter().map(|&g| g as i64));
+            let floats = params.iter().zip(&greedy_rows).map(|(p, &g)| if g { 1.0 } else { p.temperature as f32 })
+                .chain(params.iter().map(|p| p.top_p as f32));
+            let mut bytes = Vec::with_capacity(40 * params.len());
+            ints.for_each(|v| bytes.extend(v.to_le_bytes()));
+            floats.for_each(|v| bytes.extend(v.to_le_bytes()));
             // Pinned + non-blocking: a pageable copy would block the host until the
             // stream drains and stall the CPU/GPU overlap pipeline. The caching host
             // allocator keeps the pinned buffer alive until the copy completes.
-            let upload = |t: Tensor| t.pin_memory(device).to_device_(device, t.kind(), true, false);
-            let ints = upload(Tensor::from_slice(&ints));
-            let floats = upload(Tensor::from_slice(&floats));
+            let packed = Tensor::from_slice(&bytes).pin_memory(device).to_device_(device, Kind::Uint8, true, false);
+            let ints = packed.narrow(0, 0, 32 * rows).view_dtype(Kind::Int64);
+            let floats = packed.narrow(0, 32 * rows, 8 * rows).view_dtype(Kind::Float);
             let part = |t: &Tensor, i: i64| t.narrow(0, i * rows, rows);
-            let probs = (logits.to_kind(Kind::Float) / part(&floats, 0).unsqueeze(1))
-                .softmax(-1, Kind::Float)
-                .contiguous();
+            // bf16 logits / f32 temperatures promotes to f32: one kernel, the same bits
+            // as converting first.
+            let probs = (logits / part(&floats, 0).unsqueeze(1)).softmax(-1, Kind::Float).contiguous();
             let sampled = sample_flashinfer_rows(
                 &probs,
                 &part(&ints, 0),
@@ -421,9 +421,12 @@ impl Sampler {
                 &part(&ints, 1),
                 &part(&ints, 2),
             )?;
-            return Ok(greedy.where_self(&part(&ints, 3).to_kind(Kind::Bool), &sampled));
+            if !greedy_rows.contains(&true) {
+                return Ok(sampled);
+            }
+            return Ok(logits.argmax(-1, false).where_self(&part(&ints, 3).to_kind(Kind::Bool), &sampled));
         }
-        let _ = (greedy, greedy_rows, vocab);
+        let _ = (greedy_rows, vocab);
         Err(SamplingError::Native("deterministic sampling requires CUDA FlashInfer".into()))
     }
 }
