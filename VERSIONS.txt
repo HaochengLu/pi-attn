@@ -1,14 +1,14 @@
-# Recorded versions (2026-10-20T06:15:46Z, host di-20260821152609-xvtzc)
-driver: NVIDIA GeForce RTX 4090 D, 535.154.05
+# Recorded by setup_env.sh (2026-10-22T23:04:09Z, host di-20260821152609-xvtzc)
+gpu/driver: NVIDIA GeForce RTX 4090 D, 535.154.05
 nvcc: Build cuda_12.6.r12.6/compiler.35059454_0
 rustc: rustc 1.95.0 (59807616e 2026-04-14)
 cargo: cargo 1.95.0 (f2d3ce0bd 2026-03-21)
-python: Python 3.12.13
-torch 2.13.0+cu126 cuda 12.6
-flashinfer 0.6.18
+uv: uv 0.12.3 (x86_64-unknown-linux-gnu)
+micromamba: 2.9.0
 host gcc: gcc (Debian 14.2.0-19) 14.2.0
 build g++: x86_64-conda-linux-gnu-g++ (conda-forge gcc 13.4.0-20) 13.4.0
-transformers 5.20.2; lm-eval 0.4.13 (0.4.9.1 is incompatible with transformers 5; from pypi.org)
-sglang 0.5.5.post3 (env/venv-sglang, torch 2.8.0+cu128); vllm 0.11.0 (env/venv-vllm, torch 2.8.0+cu128): run on driver 535 via CUDA minor-version compatibility
-vllm 0.11.2 (env/venv-vllm, torch 2.9.0+cu128) replaces 0.11.0: VLLM_BATCH_INVARIANT first ships in 0.11.x after 0.11.0
-libnuma-2.0.18-hb03c661_4 (env/syslibs, conda-forge; LD_LIBRARY_PATH for the SGLang baseline only)
+libnuma: libnuma-2.0.18-hb03c661_4.json
+engine venv (Python 3.12.13): torch 2.13.0+cu126 flashinfer-python 0.6.18 transformers 5.20.2 lm-eval 0.4.13
+sglang venv: sglang 0.5.5.post3 torch 2.8.0 flashinfer-python 0.5.2 sgl-kernel 0.3.17.post1 transformers 4.57.1
+vllm venv: vllm 0.11.2 torch 2.9.0 flashinfer-python 0.5.2 transformers 4.57.6
+full package lists: requirements/{engine,sglang,vllm}.txt

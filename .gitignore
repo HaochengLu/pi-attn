@@ -12,3 +12,4 @@ results/accuracy/*/*/
 *.sqlite
 *.server.log
 results/*.out
+results/quick/
