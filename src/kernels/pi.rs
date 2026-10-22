@@ -247,13 +247,14 @@ static SEEN_SHAPES: std::sync::Mutex<std::collections::BTreeSet<(i64, i64)>> =
 
 /// Tunes every M bucket up to `max_m` for each weight shape the GEMM has run so
 /// far (graph capture runs every projection), so that no request stalls on
-/// tuning. Timing depends only on the shape, so scratch weights stand in.
+/// tuning. Timing depends only on the shape, so random scratch weights stand in.
 pub(crate) fn pretune(max_m: i64, device: Device) -> Result<usize, String> {
     #[cfg(has_pi)]
     {
         let shapes: Vec<(i64, i64)> = SEEN_SHAPES.lock().unwrap().iter().copied().collect();
         for &(n, k) in &shapes {
-            let w = Tensor::f_empty([n, k], (Kind::BFloat16, device)).map_err(|e| e.to_string())?;
+            // Random, not empty: zero operands time some tiles fast (pi_launch.cu fill_tune_input).
+            let w = Tensor::f_randn([n, k], (Kind::BFloat16, device)).map_err(|e| e.to_string())?;
             let mut m = 1;
             let mut choice = Vec::new();
             loop {

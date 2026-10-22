@@ -154,10 +154,11 @@ namespace {
 
 // M buckets are the sizes CUDA graphs are captured at, so each graph runs the tile tuned
 // for its own M (a tile tuned at 256 can be 1.5x slower at 192): powers of two to 128,
-// then steps of 64 to 512, 128 to 1024 and 256 to 2048 (segmented_graph.rs bucket();
-// decode graphs use powers of two to 256). Above 2048, eager forwards only: powers of two.
+// then steps of 64 to 512, 128 to 1024 and 256 beyond (segmented_graph.rs bucket(); decode
+// graphs use powers of two to 256). Steps of 256 continue to 4096 for eager forwards (a
+// 2048-token chunk plus the running decodes); powers of two above.
 int bucket_of(int m) {
-  const int step = m <= 128 ? 0 : m <= 512 ? 64 : m <= 1024 ? 128 : m <= 2048 ? 256 : 0;
+  const int step = m <= 128 ? 0 : m <= 512 ? 64 : m <= 1024 ? 128 : m <= 4096 ? 256 : 0;
   if (step) return (m + step - 1) / step * step;
   int b = 1;
   while (b < m && b < (1 << 20)) b <<= 1;
@@ -180,6 +181,18 @@ GemmDevice gemm_device() {
   return {d.sms, d.smem_optin};
 }
 
+// Tuning input: fixed pseudo-random bf16 in [-1, 1). All-zero operands time some tiles up
+// to 7% fast at large M (MMA on zeros) and misrank them.
+__global__ void fill_tune_input(__nv_bfloat16* x, size_t n) {
+  for (size_t i = blockIdx.x * (size_t)blockDim.x + threadIdx.x; i < n; i += (size_t)gridDim.x * blockDim.x) {
+    uint32_t h = (uint32_t)i * 2654435761u;
+    h ^= h >> 15;
+    h *= 2246822519u;
+    h ^= h >> 13;
+    x[i] = __float2bfloat16((float)(h & 0xffff) / 32768.f - 1.f);
+  }
+}
+
 // Time each candidate kernel for one (N, K, M bucket) and remember the fastest.
 // Scratch comes from the caller (the torch allocator): x [m, K] and y [m, N] bf16,
 // and an optional L2-flush buffer used for small m, where GEMMs stream weights
@@ -187,7 +200,7 @@ GemmDevice gemm_device() {
 // Called outside stream capture only.
 const char* tune_bucket(const void* w, int N, int K, int m, void* x, void* y, void* flush,
                         size_t flush_bytes, cudaStream_t st) {
-  cudaMemsetAsync(x, 0, (size_t)m * K * 2, st);
+  fill_tune_input<<<256, 256, 0, st>>>((__nv_bfloat16*)x, (size_t)m * K);
   cudaEvent_t e0, e1;
   cudaEventCreate(&e0);
   cudaEventCreate(&e1);
