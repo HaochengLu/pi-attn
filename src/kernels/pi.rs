@@ -43,7 +43,7 @@ mod ffi {
             stream: *mut c_void,
         ) -> *const c_char;
         pub fn pi_linear_bucket(m: i32) -> i32;
-        pub fn pi_linear_is_tuned(n: i32, k: i32, bucket: i32) -> i32;
+        pub fn pi_linear_tuned_kernel(n: i32, k: i32, bucket: i32) -> i32;
         pub fn pi_stream_capturing(stream: *mut c_void) -> i32;
         pub fn pi_l2_bytes() -> i64;
         pub fn pi_linear_tune(
@@ -197,7 +197,7 @@ fn tune(weight: &Tensor, n: i64, k: i64, m: i64) -> Result<(), String> {
     }
     let bucket = unsafe { ffi::pi_linear_bucket(m as i32) };
     SEEN_SHAPES.lock().unwrap().insert((n, k));
-    if unsafe { ffi::pi_linear_is_tuned(n as i32, k as i32, bucket) } != 0
+    if unsafe { ffi::pi_linear_tuned_kernel(n as i32, k as i32, bucket) } != 0
         || !ATTEMPTED.with(|seen| seen.borrow_mut().insert((n, k, bucket)))
     {
         return Ok(());
@@ -255,13 +255,18 @@ pub(crate) fn pretune(max_m: i64, device: Device) -> Result<usize, String> {
         for &(n, k) in &shapes {
             let w = Tensor::f_empty([n, k], (Kind::BFloat16, device)).map_err(|e| e.to_string())?;
             let mut m = 1;
+            let mut choice = Vec::new();
             loop {
                 tune(&w, n, k, m)?;
+                let bucket = unsafe { ffi::pi_linear_bucket(m as i32) };
+                choice.push(format!("{bucket}:{}", unsafe { ffi::pi_linear_tuned_kernel(n as i32, k as i32, bucket) }));
                 if m >= max_m {
                     break;
                 }
                 m *= 2;
             }
+            // M bucket : kernel id (pi_launch.cu), 0 where tuning was skipped (heuristic tile).
+            tracing::info!(n, k, choice = choice.join(" "), "PI GEMM tile choice");
         }
         Ok(shapes.len())
     }
