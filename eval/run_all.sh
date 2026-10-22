@@ -13,7 +13,6 @@ stage kernel-tests
 (cd $ROOT/kernels && for t in test_invariance test_directed test_matrix test_gemm; do python $t.py; echo "$t exit=$?"; done) > $log/kernel_tests.log 2>&1
 grep "exit=" $log/kernel_tests.log
 stage kernel-benches
-sed -i 's/^python gemm_cold.py > /python gemm_cold.py 1 8 32 64 128 > /' $ROOT/eval/kernel_benches.sh
 bash $ROOT/eval/kernel_benches.sh > $log/kernel_benches.log 2>&1
 stage crossconfig
 bash $ROOT/eval/crossconfig.sh --deterministic > $log/crossconfig_det.log 2>&1
