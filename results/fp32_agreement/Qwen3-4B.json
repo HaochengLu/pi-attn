@@ -1,14 +1,14 @@
 {
  "/uniparser/users/luhaocheng/pi_attn/results/fp32_agreement/Qwen3-4B.flashinfer.gen.json": {
-  "tokens": 1152,
-  "agree_fp32_argmax": 0.9930555555555556,
-  "disagreements": 8,
+  "tokens": 1280,
+  "agree_fp32_argmax": 0.99296875,
+  "disagreements": 9,
   "max_margin_at_disagreement": 0.1610565185546875
  },
  "/uniparser/users/luhaocheng/pi_attn/results/fp32_agreement/Qwen3-4B.deterministic.gen.json": {
-  "tokens": 1152,
-  "agree_fp32_argmax": 0.9895833333333334,
-  "disagreements": 12,
+  "tokens": 1280,
+  "agree_fp32_argmax": 0.9890625,
+  "disagreements": 14,
   "max_margin_at_disagreement": 0.08954048156738281
  }
 }

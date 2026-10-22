@@ -11,26 +11,24 @@
  "compare": {
   "greedy": {
    "requests": 16,
-   "mismatched": 3,
+   "mismatched": 2,
    "first_divergence_tokens": [
-    6,
-    59,
-    88
+    14,
+    66
    ]
   },
   "sampled": {
    "requests": 16,
-   "mismatched": 9,
+   "mismatched": 8,
    "first_divergence_tokens": [
     0,
+    0,
     1,
-    1,
+    7,
     10,
     10,
-    15,
     17,
-    19,
-    24
+    40
    ]
   }
  },

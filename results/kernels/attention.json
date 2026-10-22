@@ -7,11 +7,11 @@
    "hkv": 8,
    "batch": 1,
    "kv_len": 1024,
-   "fi": 30.1,
-   "fi_tc": 32.9,
-   "fi_det_fixed2048": 36.1,
-   "fi_nosplit": 28.5,
-   "pi": 20.8
+   "fi": 30.6,
+   "fi_tc": 33.3,
+   "fi_det_fixed2048": 35.9,
+   "fi_nosplit": 29.2,
+   "pi": 20.7
   },
   {
    "kind": "decode",
@@ -19,11 +19,11 @@
    "hkv": 8,
    "batch": 1,
    "kv_len": 8192,
-   "fi": 31.9,
-   "fi_tc": 36.5,
-   "fi_det_fixed2048": 124.1,
-   "fi_nosplit": 31.9,
-   "pi": 26.0
+   "fi": 32.1,
+   "fi_tc": 37.7,
+   "fi_det_fixed2048": 124.4,
+   "fi_nosplit": 32.1,
+   "pi": 25.7
   },
   {
    "kind": "decode",
@@ -31,11 +31,11 @@
    "hkv": 8,
    "batch": 1,
    "kv_len": 32768,
-   "fi": 169.2,
-   "fi_tc": 170.2,
-   "fi_det_fixed2048": 513.4,
-   "fi_nosplit": 169.2,
-   "pi": 155.4
+   "fi": 170.1,
+   "fi_tc": 171.1,
+   "fi_det_fixed2048": 513.2,
+   "fi_nosplit": 170.6,
+   "pi": 155.5
   },
   {
    "kind": "decode",
@@ -43,10 +43,10 @@
    "hkv": 8,
    "batch": 8,
    "kv_len": 2048,
-   "fi": 40.2,
-   "fi_tc": 45.0,
-   "fi_det_fixed2048": 49.6,
-   "fi_nosplit": 40.4,
+   "fi": 41.3,
+   "fi_tc": 44.9,
+   "fi_det_fixed2048": 49.4,
+   "fi_nosplit": 41.5,
    "pi": 29.3
   },
   {
@@ -55,11 +55,11 @@
    "hkv": 8,
    "batch": 8,
    "kv_len": 16384,
-   "fi": 584.3,
-   "fi_tc": 589.1,
-   "fi_det_fixed2048": 591.1,
-   "fi_nosplit": 582.4,
-   "pi": 574.0
+   "fi": 585.0,
+   "fi_tc": 593.9,
+   "fi_det_fixed2048": 589.7,
+   "fi_nosplit": 583.6,
+   "pi": 575.1
   },
   {
    "kind": "decode",
@@ -67,11 +67,11 @@
    "hkv": 8,
    "batch": 32,
    "kv_len": 1024,
-   "fi": 167.9,
-   "fi_tc": 170.2,
-   "fi_det_fixed2048": 171.1,
-   "fi_nosplit": 167.6,
-   "pi": 150.6
+   "fi": 167.5,
+   "fi_tc": 171.3,
+   "fi_det_fixed2048": 170.9,
+   "fi_nosplit": 168.7,
+   "pi": 151.2
   },
   {
    "kind": "decode",
@@ -79,11 +79,11 @@
    "hkv": 8,
    "batch": 32,
    "kv_len": 8192,
-   "fi": 1131.9,
-   "fi_tc": 1168.1,
-   "fi_det_fixed2048": 1167.6,
-   "fi_nosplit": 1131.6,
-   "pi": 1132.0
+   "fi": 1132.3,
+   "fi_tc": 1168.6,
+   "fi_det_fixed2048": 1168.3,
+   "fi_nosplit": 1131.8,
+   "pi": 1131.2
   },
   {
    "kind": "decode",
@@ -91,11 +91,11 @@
    "hkv": 8,
    "batch": 128,
    "kv_len": 1024,
-   "fi": 579.3,
-   "fi_tc": 584.3,
-   "fi_det_fixed2048": 584.0,
-   "fi_nosplit": 580.0,
-   "pi": 573.6
+   "fi": 580.5,
+   "fi_tc": 585.2,
+   "fi_det_fixed2048": 585.3,
+   "fi_nosplit": 580.1,
+   "pi": 572.3
   },
   {
    "kind": "decode",
@@ -103,11 +103,11 @@
    "hkv": 8,
    "batch": 128,
    "kv_len": 4096,
-   "fi": 2228.0,
-   "fi_tc": 2229.6,
-   "fi_det_fixed2048": 2228.1,
-   "fi_nosplit": 2228.0,
-   "pi": 2252.6
+   "fi": 2223.8,
+   "fi_tc": 2237.1,
+   "fi_det_fixed2048": 2236.3,
+   "fi_nosplit": 2221.2,
+   "pi": 2253.9
   },
   {
    "kind": "decode_shared",
@@ -115,11 +115,11 @@
    "hkv": 8,
    "batch": 8,
    "kv_len": 4096,
-   "fi": 55.5,
-   "fi_tc": 61.9,
-   "fi_det_fixed2048": 73.1,
-   "fi_nosplit": 55.5,
-   "pi": 42.5
+   "fi": 56.9,
+   "fi_tc": 61.7,
+   "fi_det_fixed2048": 74.1,
+   "fi_nosplit": 56.4,
+   "pi": 42.0
   },
   {
    "kind": "decode_shared",
@@ -127,11 +127,11 @@
    "hkv": 8,
    "batch": 32,
    "kv_len": 4096,
-   "fi": 154.1,
-   "fi_tc": 204.3,
-   "fi_det_fixed2048": 204.6,
-   "fi_nosplit": 154.1,
-   "pi": 132.4
+   "fi": 154.8,
+   "fi_tc": 184.6,
+   "fi_det_fixed2048": 183.9,
+   "fi_nosplit": 154.0,
+   "pi": 131.6
   },
   {
    "kind": "prefill",
@@ -140,9 +140,9 @@
    "batch": 1,
    "q_len": 512,
    "prefix": 0,
-   "fi": 74.9,
-   "fi_det_fixed2048": 60.5,
-   "pi": 41.8
+   "fi": 75.7,
+   "fi_det_fixed2048": 60.1,
+   "pi": 42.1
   },
   {
    "kind": "prefill",
@@ -151,9 +151,9 @@
    "batch": 1,
    "q_len": 2048,
    "prefix": 0,
-   "fi": 260.8,
-   "fi_det_fixed2048": 256.7,
-   "pi": 205.2
+   "fi": 258.3,
+   "fi_det_fixed2048": 259.6,
+   "pi": 205.6
   },
   {
    "kind": "prefill",
@@ -162,9 +162,9 @@
    "batch": 1,
    "q_len": 8192,
    "prefix": 0,
-   "fi": 2515.8,
-   "fi_det_fixed2048": 2481.6,
-   "pi": 2517.4
+   "fi": 2490.5,
+   "fi_det_fixed2048": 2503.6,
+   "pi": 2509.3
   },
   {
    "kind": "prefill",
@@ -173,9 +173,9 @@
    "batch": 8,
    "q_len": 1024,
    "prefix": 0,
-   "fi": 371.7,
-   "fi_det_fixed2048": 373.2,
-   "pi": 358.3
+   "fi": 369.2,
+   "fi_det_fixed2048": 368.8,
+   "pi": 357.9
   },
   {
    "kind": "prefill",
@@ -184,9 +184,9 @@
    "batch": 32,
    "q_len": 512,
    "prefix": 0,
-   "fi": 388.0,
-   "fi_det_fixed2048": 383.9,
-   "pi": 378.4
+   "fi": 385.0,
+   "fi_det_fixed2048": 386.8,
+   "pi": 378.0
   },
   {
    "kind": "prefill",
@@ -196,8 +196,8 @@
    "q_len": 512,
    "prefix": 8192,
    "fi": 385.2,
-   "fi_det_fixed2048": 557.3,
-   "pi": 389.9
+   "fi_det_fixed2048": 556.8,
+   "pi": 389.7
   },
   {
    "kind": "prefill",
@@ -206,9 +206,9 @@
    "batch": 1,
    "q_len": 128,
    "prefix": 4096,
-   "fi": 75.6,
-   "fi_det_fixed2048": 288.3,
-   "pi": 70.3
+   "fi": 75.7,
+   "fi_det_fixed2048": 288.2,
+   "pi": 70.5
   },
   {
    "kind": "prefill",
@@ -217,9 +217,9 @@
    "batch": 1,
    "q_len": 128,
    "prefix": 16384,
-   "fi": 174.3,
-   "fi_det_fixed2048": 1022.2,
-   "pi": 189.4
+   "fi": 178.0,
+   "fi_det_fixed2048": 1020.6,
+   "pi": 187.2
   },
   {
    "kind": "prefill",
@@ -228,9 +228,9 @@
    "batch": 4,
    "q_len": 2048,
    "prefix": 2048,
-   "fi": 1748.9,
-   "fi_det_fixed2048": 1740.3,
-   "pi": 1833.9
+   "fi": 1735.5,
+   "fi_det_fixed2048": 1736.5,
+   "pi": 1825.6
   },
   {
    "kind": "decode",
@@ -238,10 +238,10 @@
    "hkv": 8,
    "batch": 1,
    "kv_len": 1024,
-   "fi": 29.2,
-   "fi_tc": 31.6,
-   "fi_det_fixed2048": 35.0,
-   "fi_nosplit": 28.0,
+   "fi": 28.9,
+   "fi_tc": 31.9,
+   "fi_det_fixed2048": 35.4,
+   "fi_nosplit": 28.7,
    "pi": 20.5
   },
   {
@@ -250,11 +250,11 @@
    "hkv": 8,
    "batch": 1,
    "kv_len": 8192,
-   "fi": 34.9,
-   "fi_tc": 36.1,
-   "fi_det_fixed2048": 121.8,
-   "fi_nosplit": 35.1,
-   "pi": 25.9
+   "fi": 35.7,
+   "fi_tc": 36.8,
+   "fi_det_fixed2048": 121.3,
+   "fi_nosplit": 35.3,
+   "pi": 25.7
   },
   {
    "kind": "decode",
@@ -262,11 +262,11 @@
    "hkv": 8,
    "batch": 1,
    "kv_len": 32768,
-   "fi": 172.3,
-   "fi_tc": 170.0,
-   "fi_det_fixed2048": 504.1,
-   "fi_nosplit": 173.2,
-   "pi": 156.5
+   "fi": 172.1,
+   "fi_tc": 170.9,
+   "fi_det_fixed2048": 502.0,
+   "fi_nosplit": 172.1,
+   "pi": 159.1
   },
   {
    "kind": "decode",
@@ -274,11 +274,11 @@
    "hkv": 8,
    "batch": 8,
    "kv_len": 2048,
-   "fi": 46.0,
-   "fi_tc": 44.5,
-   "fi_det_fixed2048": 48.2,
-   "fi_nosplit": 46.2,
-   "pi": 28.8
+   "fi": 46.5,
+   "fi_tc": 45.5,
+   "fi_det_fixed2048": 48.8,
+   "fi_nosplit": 46.9,
+   "pi": 28.9
   },
   {
    "kind": "decode",
@@ -286,11 +286,11 @@
    "hkv": 8,
    "batch": 8,
    "kv_len": 16384,
-   "fi": 593.9,
-   "fi_tc": 589.1,
-   "fi_det_fixed2048": 588.4,
-   "fi_nosplit": 593.8,
-   "pi": 582.2
+   "fi": 593.6,
+   "fi_tc": 590.7,
+   "fi_det_fixed2048": 590.4,
+   "fi_nosplit": 594.2,
+   "pi": 581.9
   },
   {
    "kind": "decode",
@@ -298,11 +298,11 @@
    "hkv": 8,
    "batch": 32,
    "kv_len": 1024,
-   "fi": 169.2,
-   "fi_tc": 170.6,
-   "fi_det_fixed2048": 169.6,
-   "fi_nosplit": 169.3,
-   "pi": 152.1
+   "fi": 177.5,
+   "fi_tc": 173.8,
+   "fi_det_fixed2048": 171.9,
+   "fi_nosplit": 176.0,
+   "pi": 153.0
   },
   {
    "kind": "decode",
@@ -310,11 +310,11 @@
    "hkv": 8,
    "batch": 32,
    "kv_len": 8192,
-   "fi": 1145.4,
-   "fi_tc": 1165.4,
-   "fi_det_fixed2048": 1165.6,
-   "fi_nosplit": 1145.0,
-   "pi": 1145.2
+   "fi": 1146.1,
+   "fi_tc": 1169.7,
+   "fi_det_fixed2048": 1168.8,
+   "fi_nosplit": 1146.6,
+   "pi": 1144.4
   },
   {
    "kind": "decode",
@@ -322,11 +322,11 @@
    "hkv": 8,
    "batch": 128,
    "kv_len": 1024,
-   "fi": 590.1,
-   "fi_tc": 587.9,
-   "fi_det_fixed2048": 587.7,
-   "fi_nosplit": 590.1,
-   "pi": 579.2
+   "fi": 600.0,
+   "fi_tc": 588.7,
+   "fi_det_fixed2048": 588.5,
+   "fi_nosplit": 599.9,
+   "pi": 579.7
   },
   {
    "kind": "decode",
@@ -334,11 +334,11 @@
    "hkv": 8,
    "batch": 128,
    "kv_len": 4096,
-   "fi": 2316.0,
-   "fi_tc": 2234.6,
-   "fi_det_fixed2048": 2234.1,
-   "fi_nosplit": 2313.5,
-   "pi": 2278.8
+   "fi": 2309.7,
+   "fi_tc": 2235.4,
+   "fi_det_fixed2048": 2234.8,
+   "fi_nosplit": 2309.3,
+   "pi": 2279.8
   },
   {
    "kind": "decode_shared",
@@ -346,11 +346,11 @@
    "hkv": 8,
    "batch": 8,
    "kv_len": 4096,
-   "fi": 66.9,
-   "fi_tc": 61.4,
-   "fi_det_fixed2048": 73.3,
-   "fi_nosplit": 66.6,
-   "pi": 43.0
+   "fi": 74.9,
+   "fi_tc": 62.4,
+   "fi_det_fixed2048": 73.8,
+   "fi_nosplit": 68.9,
+   "pi": 42.7
   },
   {
    "kind": "decode_shared",
@@ -358,11 +358,11 @@
    "hkv": 8,
    "batch": 32,
    "kv_len": 4096,
-   "fi": 201.8,
-   "fi_tc": 184.6,
-   "fi_det_fixed2048": 184.3,
-   "fi_nosplit": 202.0,
-   "pi": 133.6
+   "fi": 205.5,
+   "fi_tc": 189.2,
+   "fi_det_fixed2048": 193.7,
+   "fi_nosplit": 203.7,
+   "pi": 133.1
   },
   {
    "kind": "prefill",
@@ -371,9 +371,9 @@
    "batch": 1,
    "q_len": 512,
    "prefix": 0,
-   "fi": 84.2,
-   "fi_det_fixed2048": 84.4,
-   "pi": 45.6
+   "fi": 85.1,
+   "fi_det_fixed2048": 89.6,
+   "pi": 48.2
   },
   {
    "kind": "prefill",
@@ -382,9 +382,9 @@
    "batch": 1,
    "q_len": 2048,
    "prefix": 0,
-   "fi": 407.6,
-   "fi_det_fixed2048": 406.4,
-   "pi": 372.1
+   "fi": 411.2,
+   "fi_det_fixed2048": 410.0,
+   "pi": 370.8
   },
   {
    "kind": "prefill",
@@ -393,9 +393,9 @@
    "batch": 1,
    "q_len": 8192,
    "prefix": 0,
-   "fi": 4506.3,
-   "fi_det_fixed2048": 4507.5,
-   "pi": 4765.0
+   "fi": 4496.1,
+   "fi_det_fixed2048": 4512.9,
+   "pi": 4741.5
   },
   {
    "kind": "prefill",
@@ -404,9 +404,9 @@
    "batch": 8,
    "q_len": 1024,
    "prefix": 0,
-   "fi": 652.5,
-   "fi_det_fixed2048": 645.0,
-   "pi": 669.4
+   "fi": 650.0,
+   "fi_det_fixed2048": 647.2,
+   "pi": 669.9
   },
   {
    "kind": "prefill",
@@ -415,9 +415,9 @@
    "batch": 32,
    "q_len": 512,
    "prefix": 0,
-   "fi": 728.8,
-   "fi_det_fixed2048": 724.6,
-   "pi": 721.1
+   "fi": 725.3,
+   "fi_det_fixed2048": 724.0,
+   "pi": 720.4
   },
   {
    "kind": "prefill",
@@ -426,9 +426,9 @@
    "batch": 1,
    "q_len": 512,
    "prefix": 8192,
-   "fi": 1058.7,
-   "fi_det_fixed2048": 1006.1,
-   "pi": 815.2
+   "fi": 1028.8,
+   "fi_det_fixed2048": 1029.1,
+   "pi": 815.1
   },
   {
    "kind": "prefill",
@@ -437,9 +437,9 @@
    "batch": 1,
    "q_len": 128,
    "prefix": 4096,
-   "fi": 113.3,
-   "fi_det_fixed2048": 289.3,
-   "pi": 106.2
+   "fi": 112.5,
+   "fi_det_fixed2048": 289.6,
+   "pi": 105.8
   },
   {
    "kind": "prefill",
@@ -448,9 +448,9 @@
    "batch": 1,
    "q_len": 128,
    "prefix": 16384,
-   "fi": 316.1,
-   "fi_det_fixed2048": 1024.5,
-   "pi": 384.5
+   "fi": 315.8,
+   "fi_det_fixed2048": 1023.1,
+   "pi": 384.9
   },
   {
    "kind": "prefill",
@@ -459,9 +459,9 @@
    "batch": 4,
    "q_len": 2048,
    "prefix": 2048,
-   "fi": 3264.6,
-   "fi_det_fixed2048": 3261.0,
-   "pi": 3557.7
+   "fi": 3257.3,
+   "fi_det_fixed2048": 3259.0,
+   "pi": 3556.1
   }
  ]
 }
