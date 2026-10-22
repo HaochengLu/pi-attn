@@ -29,6 +29,15 @@ def gemm_segments(N, K):  # mirrors gemm_inv.cuh
     return 2 if N <= 1024 and K >= 2048 and K % 512 == 0 else 1
 
 
+SEGPAR_TILE = {48: (32, 64), 49: (64, 64)}  # segment-parallel ids: (TBM, TBN)
+
+
+def segpar_fits(k, M, N, K):  # mirrors CutlassGemm::run_segpar: S > 1, fragments fit g_skt_acc, tiles <= 1024
+    tm, tn = SEGPAR_TILE[k]
+    tiles = -(-M // tm) * -(-N // tn)
+    return gemm_segments(N, K) > 1 and tiles <= 1024 and tiles * gemm_segments(N, K) * tm * tn <= 256 * 64 * 128
+
+
 def timeit(fn, iters=30):
     for _ in range(5):
         fn()
@@ -56,7 +65,8 @@ def main(bench):
             if M > 1:
                 Xm[1:] = torch.randn_like(Xm[1:]) * 100  # other rows must not matter
             full = ext.linear(Xm, W, 13, False)  # every row of every kernel must match it too
-            for kern in [1, 2, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 20, 21, 22, 23, 24, 25] + [k for k, mm in bal.items() if M <= mm]:
+            segpar = [k for k in (48, 49) if segpar_fits(k, M, N, K)]  # segment-parallel: S > 1 shapes
+            for kern in [1, 2, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 20, 21, 22, 23, 24, 25] + [k for k, mm in bal.items() if M <= mm] + segpar:
                 if kern in (21, 22, 23, 30, 43) and K % 256:
                     continue
                 y = ext.linear(Xm, W, kern, False)
@@ -73,7 +83,7 @@ def main(bench):
                 Wp = torch.cat([W[:, sg * ks:(sg + 1) * ks], W.new_zeros(pad, ks)]).contiguous()
                 assert gemm_segments(Wp.shape[0], ks) == 1
                 tot = tot + ext.linear(Xs[:, sg * ks:(sg + 1) * ks], Wp, 1, True)[:, :N]
-            for kern in (1, 20, 33, 11, 13, 14, 15):
+            for kern in (1, 20, 33, 11, 13, 14, 15, 48, 49):
                 if not torch.equal(ext.linear(Xs, W, kern, False).view(torch.int16), tot.bfloat16().view(torch.int16)):
                     fails.append((name, "segments", kern))
         y64 = (X[:256].double() @ W.double().T)
@@ -88,6 +98,7 @@ def main(bench):
                 tc = timeit(lambda: torch.matmul(Xm, W.T))
                 best = min((timeit(lambda: ext.linear(Xm, W, kk, False)), kk) for kk in ([1, 2, 4, 6, 7, 8, 9] if M <= 64 else []) + [10, 11, 12, 13, 14, 15]
                            + ([44, 45, 46, 47] if gemm_segments(N, K) == 1 else [])
+                           + [k for k in (48, 49) if segpar_fits(k, M, N, K)]
                            + [k for k, mm in {30: 16, 31: 16, 32: 32, 33: 64}.items() if M <= mm])
                 ts.append(f"M={M}:{best[0]/tc:.2f}(k{best[1]})")
             line += " | pi/cublas " + " ".join(ts)

@@ -10,7 +10,8 @@ using namespace pi_gemm;
 
 // kernel: 0 = auto, 1..4 = small with G = kernel,
 // 10.. = CUTLASS tiles (10: 128x256x32 s3, 11: 128x128x32 s4, 12: 64x128x32 s4, 13: 64x64x32 s5,
-// 14: 32x64x64 s5, 15: 64x64x64 s4); 44..47: stream-K over CUTLASS tiles (S = 1 shapes).
+// 14: 32x64x64 s5, 15: 64x64x64 s4); 44..47: stream-K over CUTLASS tiles (S = 1 shapes);
+// 48, 49: segment-parallel CUTLASS tiles (S > 1 shapes).
 at::Tensor linear(at::Tensor x, at::Tensor w, int64_t kernel, bool out_fp32) {
   TORCH_CHECK(x.is_cuda() && x.scalar_type() == at::kBFloat16 && w.scalar_type() == at::kBFloat16);
   TORCH_CHECK(x.dim() == 2 && w.dim() == 2 && x.size(1) == w.size(1) && w.is_contiguous());
@@ -89,6 +90,17 @@ at::Tensor linear(at::Tensor x, at::Tensor w, int64_t kernel, bool out_fp32) {
       else if (k == 46) e = CutlassGemm<OutT, 64, 64, 64, 32, 32, 4>::run_streamk(xp, ld, wp, out, N, M, N, K, sms, 1, stream);
       else e = CutlassGemm<OutT, 64, 128, 32, 32, 64, 4>::run_streamk(xp, ld, wp, out, N, M, N, K, sms, 1, stream);
       TORCH_CHECK(e == cudaSuccess, "stream-K tile gemm ", k, " failed (a segmented shape?): ", cudaGetErrorString(e));
+    }
+    // 48, 49: segment-parallel CUTLASS tiles: 32x64x64 s5, 64x64x64 s4.
+    else if (k == 48 || k == 49) {
+      const void* xp = x.data_ptr();
+      const void* wp = w.data_ptr();
+      const int64_t ld = x.stride(0);
+      cudaError_t e;
+      if (k == 48) e = CutlassGemm<OutT, 32, 64, 64, 16, 32, 5>::run_segpar(xp, ld, wp, out, N, M, N, K, stream);
+      else e = CutlassGemm<OutT, 64, 64, 64, 32, 32, 4>::run_segpar(xp, ld, wp, out, N, M, N, K, stream);
+      TORCH_CHECK(e == cudaSuccess, "segment-parallel gemm ", k, " failed (an S = 1 shape, or too many tiles?): ",
+                  cudaGetErrorString(e));
     }
     else if (k >= 10 && k < 20) {
       cudaError_t e = cudaSuccess;

@@ -52,3 +52,18 @@ streams a different copy from a >= 600 MB pool).
    o/down, S = 2) cannot use stream-K and stay 1.10-1.27x at M=256..1024. `out_midm.txt`.
    `occ_probe.cu` / `occ.py`: shared memory and residency of the stream-K tile configs
    (32x64x64 with 5 stages is 60 KB, one CTA per SM; 4 stages fits two).
+9. `segpar/`: segment-parallel CUTLASS tiles for segmented shapes (engine ids 48, 49;
+   `gemm_cutlass.cuh` SegParallelKernel). One CTA per (tile, segment); the last CTA of a
+   tile to arrive folds the S fp32 fragments into +0 in ascending segment order, the
+   SegmentedKernel sequence, so the bits are unchanged (test_gemm.py: 0 failures).
+   `segpar_quick.py` / `out_sweep.txt`, cold bursts, x cuBLAS, old best -> new best:
+   0.6B down M=32 0.94 -> 0.84, M=64 1.24 -> 0.87, M=128 1.15 -> 1.10, M=512 1.28 -> 1.19;
+   0.6B o M=64 11.50 -> 8.52 us. No gain at M=256 and M=1024, where one tile per SM is
+   already compute-bound (hot and cold weights time the same) and the extra CTAs add a
+   second wave. A 64x128 variant (id 50) never won and was dropped.
+   The first version was up to 1.5x slower than this. `segpar_probe.cu` / `out_probe.txt`: its
+   arrival flag was a static `__shared__ bool`, which the compiler places in front of the
+   dynamic shared buffer, so CUTLASS's swizzled tiles were no longer 128-byte aligned. On a
+   plain S = 1 shape the same mainloop and epilogue took 13.35 us against 8.63 us for
+   CUTLASS's own kernel; with the flag broadcast by `__syncthreads_or` it takes 8.80 us.
+   None of the other CUTLASS-based kernels declares static shared memory.

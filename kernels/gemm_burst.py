@@ -24,7 +24,7 @@ def burst(fn, Ws, X, n=64, reps=5):
     return sorted(ts[1:])[reps // 2]
 
 
-for M in [int(a) for a in sys.argv[1:]] or (1,):
+for M in ([int(a) for a in sys.argv[1:]] or (1,)) if __name__ == "__main__" else ():
     for name, (N, K) in SHAPES.items():
         copies = max(4, POOL // (N * K * 2))
         Ws = [(torch.randn(N, K, device="cuda") * 0.02).bfloat16() for _ in range(copies)]

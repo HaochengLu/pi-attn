@@ -62,6 +62,7 @@ for M in (1, 8, 32):
                            key=lambda k: burst(lambda w: G.ext.linear(x, w, k, False), ws))
     t_cublas = step(M, lambda x, w, N, K: torch.matmul(x, w.T))
     t_best = step(M, lambda x, w, N, K: G.ext.linear(x, w, best[(N, K)], False))
-    fixed = {k: step(M, lambda x, w, N, K, k=k: G.ext.linear(x, w, k, False)) for k in ((13, 20, 21, 30, 31, 40) if M <= 8 else (13, 20, 21, 30, 31) if M <= 16 else (2, 13, 24, 32))}
+    # single-id policies: only ids that run every 0.6B shape (the stream-K ids 40+ skip the segmented o/down)
+    fixed = {k: step(M, lambda x, w, N, K, k=k: G.ext.linear(x, w, k, False)) for k in ((13, 20, 21, 30, 31) if M <= 16 else (2, 13, 24, 32))}
     print(f"M={M:2d}: cublas {t_cublas:7.0f}us | pi best-per-shape {t_best:7.0f}us ({t_best / t_cublas:.3f}x) {best} | "
           + " ".join(f"k{k} {t:.0f}" for k, t in fixed.items()), flush=True)
