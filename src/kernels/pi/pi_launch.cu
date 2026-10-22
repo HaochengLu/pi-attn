@@ -168,8 +168,8 @@ namespace {
 
 // Kernel ids: 1/2/4 small (4 warps, G = 1/2/4), 6..9 small narrow, 20..25 small with
 // deep weight-streaming pipelines, 30..33 balanced (one CTA per SM; 30/31 M <= 16,
-// 32 M <= 32, 33 M <= 64), 40..43 stream-K (M <= 8), 10..15 CUTLASS, 44..47 stream-K over
-// CUTLASS tiles (S = 1 shapes), 48/49 segment-parallel CUTLASS tiles (S > 1 shapes). All
+// 32 M <= 32, 33 M <= 64), 40..43 stream-K (M <= 8), 10..15 CUTLASS, 44..47 and 50 stream-K
+// over CUTLASS tiles (S = 1 shapes), 48/49 segment-parallel CUTLASS tiles (S > 1 shapes). All
 // realise the same k order; an id that cannot run a shape refuses it and is not tuned.
 const std::vector<int>& small_kernels() {
   static const std::vector<int> v{1, 2, 4, 20, 21, 22, 24, 25, 30, 31, 32, 33, 40, 41, 42, 43};
@@ -183,7 +183,7 @@ int kernel_max_m(int k) {
 // K granularity a kernel id requires.
 int kernel_bk(int k) { return k == 21 || k == 22 || k == 30 || k == 43 ? 256 : k >= 20 && k <= 42 ? 128 : 64; }
 const std::vector<int>& large_kernels() {
-  static const std::vector<int> v{10, 11, 12, 13, 14, 15, 44, 45, 46, 47, 48, 49};
+  static const std::vector<int> v{10, 11, 12, 13, 14, 15, 44, 45, 46, 47, 48, 49, 50};
   return v;
 }
 
@@ -240,7 +240,8 @@ cudaError_t run_gemm(int k, const void* x, int64_t ldx, const void* w, OutT* y, 
     case 46: return CutlassGemm<OutT, 64, 64, 64, 32, 32, 4>::run_streamk(x, ldx, w, y, ldy, M, N, K, device_info().sms, 1, st);
     case 47: return CutlassGemm<OutT, 64, 128, 32, 32, 64, 4>::run_streamk(x, ldx, w, y, ldy, M, N, K, device_info().sms, 1, st);
     case 48: return CutlassGemm<OutT, 32, 64, 64, 16, 32, 5>::run_segpar(x, ldx, w, y, ldy, M, N, K, st);
-    case 49: return CutlassGemm<OutT, 64, 64, 64, 32, 32, 4>::run_segpar(x, ldx, w, y, ldy, M, N, K, st);
+    case 49: return CutlassGemm<OutT, 64, 64, 64, 32, 32, 3>::run_segpar(x, ldx, w, y, ldy, M, N, K, st);
+    case 50: return CutlassGemm<OutT, 128, 64, 64, 64, 32, 3>::run_streamk(x, ldx, w, y, ldy, M, N, K, device_info().sms, 1, st);
     case 10: return CutlassGemm<OutT, 128, 256, 32, 64, 64, 3>::run(x, ldx, w, y, ldy, M, N, K, st);
     case 11: return CutlassGemm<OutT, 128, 128, 32, 64, 64, 4>::run(x, ldx, w, y, ldy, M, N, K, st);
     case 12: return CutlassGemm<OutT, 64, 128, 32, 32, 64, 4>::run(x, ldx, w, y, ldy, M, N, K, st);
