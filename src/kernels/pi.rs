@@ -216,8 +216,9 @@ fn tune(weight: &Tensor, n: i64, k: i64, m: i64) -> Result<(), String> {
         tracing::warn!(n, k, bucket, "PI GEMM tuning skipped: no scratch memory; using heuristic tile");
         return Ok(());
     };
-    // Small M streams weights from DRAM in a forward: time with a cold L2.
-    let flush_bytes = if bucket <= 64 { 2 * unsafe { ffi::pi_l2_bytes() } } else { 0 };
+    // Up to mid M a forward streams each layer's weights from DRAM: time bursts over
+    // weight copies with a cold L2 (pi_linear_tune).
+    let flush_bytes = if bucket <= 512 { 2 * unsafe { ffi::pi_l2_bytes() } } else { 0 };
     let flush = (flush_bytes > 0)
         .then(|| scratch(&[flush_bytes], Kind::Uint8))
         .flatten();

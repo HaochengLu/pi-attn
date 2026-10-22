@@ -168,19 +168,21 @@ namespace {
 
 // Kernel ids: 1/2/4 small (4 warps, G = 1/2/4), 6..9 small narrow, 20..25 small with
 // deep weight-streaming pipelines, 30..33 balanced (one CTA per SM; 30/31 M <= 16,
-// 32 M <= 32, 33 M <= 64), 40..43 stream-K (M <= 8), 10..13 CUTLASS. All realise the
-// same k order.
+// 32 M <= 32, 33 M <= 64), 40..43 stream-K (M <= 8), 10..15 CUTLASS, 44..47 stream-K over
+// CUTLASS tiles (S = 1 shapes). All realise the same k order.
 const std::vector<int>& small_kernels() {
   static const std::vector<int> v{1, 2, 4, 20, 21, 22, 24, 25, 30, 31, 32, 33, 40, 41, 42, 43};
   return v;
 }
 // Largest M a kernel id supports (balanced kernels hold all rows in one pass).
-int kernel_max_m(int k) { return k == 30 || k == 31 ? 16 : k == 32 ? 32 : k == 33 ? 64 : k >= 40 ? 8 : 1 << 30; }
+int kernel_max_m(int k) {
+  return k == 30 || k == 31 ? 16 : k == 32 ? 32 : k == 33 ? 64 : k >= 40 && k <= 43 ? 8 : 1 << 30;
+}
 
 // K granularity a kernel id requires.
-int kernel_bk(int k) { return k == 21 || k == 22 || k == 30 || k == 43 ? 256 : k >= 20 ? 128 : 64; }
+int kernel_bk(int k) { return k == 21 || k == 22 || k == 30 || k == 43 ? 256 : k >= 20 && k <= 42 ? 128 : 64; }
 const std::vector<int>& large_kernels() {
-  static const std::vector<int> v{10, 11, 12, 13};
+  static const std::vector<int> v{10, 11, 12, 13, 14, 15, 44, 45, 46, 47};
   return v;
 }
 
@@ -232,9 +234,15 @@ cudaError_t run_gemm(int k, const void* x, int64_t ldx, const void* w, OutT* y, 
     case 41: return run_streamk<OutT, 128, 4>(x, ldx, w, y, ldy, M, N, K, 3, device_info().sms, st);
     case 42: return run_streamk<OutT, 128, 4>(x, ldx, w, y, ldy, M, N, K, 4, device_info().sms, st);
     case 43: return run_streamk<OutT, 256, 3>(x, ldx, w, y, ldy, M, N, K, 3, device_info().sms, st);
+    case 44: return CutlassGemm<OutT, 32, 64, 64, 16, 32, 5>::run_streamk(x, ldx, w, y, ldy, M, N, K, device_info().sms, 1, st);
+    case 45: return CutlassGemm<OutT, 32, 64, 64, 16, 32, 4>::run_streamk(x, ldx, w, y, ldy, M, N, K, device_info().sms, 2, st);
+    case 46: return CutlassGemm<OutT, 64, 64, 64, 32, 32, 4>::run_streamk(x, ldx, w, y, ldy, M, N, K, device_info().sms, 1, st);
+    case 47: return CutlassGemm<OutT, 64, 128, 32, 32, 64, 4>::run_streamk(x, ldx, w, y, ldy, M, N, K, device_info().sms, 1, st);
     case 10: return CutlassGemm<OutT, 128, 256, 32, 64, 64, 3>::run(x, ldx, w, y, ldy, M, N, K, st);
     case 11: return CutlassGemm<OutT, 128, 128, 32, 64, 64, 4>::run(x, ldx, w, y, ldy, M, N, K, st);
     case 12: return CutlassGemm<OutT, 64, 128, 32, 32, 64, 4>::run(x, ldx, w, y, ldy, M, N, K, st);
+    case 14: return CutlassGemm<OutT, 32, 64, 64, 16, 32, 5>::run(x, ldx, w, y, ldy, M, N, K, st);
+    case 15: return CutlassGemm<OutT, 64, 64, 64, 32, 32, 4>::run(x, ldx, w, y, ldy, M, N, K, st);
     default: return CutlassGemm<OutT, 64, 64, 32, 32, 32, 5>::run(x, ldx, w, y, ldy, M, N, K, st);
   }
 }
@@ -242,8 +250,8 @@ cudaError_t run_gemm(int k, const void* x, int64_t ldx, const void* w, OutT* y, 
 // Time each candidate kernel for one (N, K, M bucket) and remember the fastest.
 // Scratch comes from the caller (the torch allocator): x [m, K] and y [m, N] bf16,
 // and an optional L2-flush buffer used for small m, where GEMMs stream weights
-// from DRAM in a real forward (its contents serve as weight copies when it holds
-// several). Called outside stream capture only.
+// from DRAM in a real forward (its weight-sized slices serve as weight copies).
+// Called outside stream capture only.
 const char* tune_bucket(const void* w, int N, int K, int m, void* x, void* y, void* flush,
                         size_t flush_bytes, cudaStream_t st) {
   cudaMemsetAsync(x, 0, (size_t)m * K * 2, st);
@@ -254,32 +262,34 @@ const char* tune_bucket(const void* w, int N, int K, int m, void* x, void* y, vo
   if (m <= 64) cands.insert(cands.begin(), small_kernels().begin(), small_kernels().end());
   float best = 1e30f;
   int best_k = heuristic_kernel(m, K);
-  constexpr int kBurst = 32;
+  // Small m: time bursts of back-to-back launches over a ring of weight copies (the
+  // weight itself and every weight-sized slice of the flush buffer, >= 2x L2 in all),
+  // so that every launch streams from DRAM and launch gaps overlap as in a forward;
+  // single cold launches misrank microsecond GEMVs. A weight larger than the flush
+  // buffer is its own ring.
   const size_t w_bytes = (size_t)N * K * sizeof(__nv_bfloat16);
-  const int copies = flush ? (int)(flush_bytes / w_bytes) : 0;
+  const int copies = flush ? 1 + (int)(flush_bytes / w_bytes) : 0;
+  const int burst = w_bytes >= ((size_t)64 << 20) ? 8 : 32;
+  auto copy = [&](int i) {
+    const int c = i % copies;
+    return c == 0 ? w : (const void*)((const char*)flush + (size_t)(c - 1) * w_bytes);
+  };
   for (int k : cands) {
     if (K % kernel_bk(k) || m > kernel_max_m(k)) continue;
     if (run_gemm(k, x, K, w, (__nv_bfloat16*)y, N, m, N, K, st) != cudaSuccess) continue;  // warm-up
     std::vector<float> times;
     for (int r = 0; r < 5; ++r) {
-      if (copies >= 4) {
-        // A burst of back-to-back launches, each over another weight-sized slice
-        // of the scratch, so that every launch streams from DRAM and launch gaps
-        // overlap as in a forward; single cold launches misrank microsecond GEMVs.
-        cudaEventRecord(e0, st);
-        for (int i = 0; i < kBurst; ++i)
-          run_gemm(k, x, K, (const char*)flush + (size_t)((r * kBurst + i) % copies) * w_bytes,
-                   (__nv_bfloat16*)y, N, m, N, K, st);
+      cudaEventRecord(e0, st);
+      if (copies) {
+        for (int i = 0; i < burst; ++i) run_gemm(k, x, K, copy(r * burst + i), (__nv_bfloat16*)y, N, m, N, K, st);
       } else {
-        if (flush) cudaMemsetAsync(flush, r, flush_bytes, st);
-        cudaEventRecord(e0, st);
         run_gemm(k, x, K, w, (__nv_bfloat16*)y, N, m, N, K, st);
       }
       cudaEventRecord(e1, st);
       cudaEventSynchronize(e1);
       float ms = 0.f;
       cudaEventElapsedTime(&ms, e0, e1);
-      times.push_back(copies >= 4 ? ms / kBurst : ms);
+      times.push_back(copies ? ms / burst : ms);
     }
     std::sort(times.begin(), times.end());
     if (times[2] < best) {
