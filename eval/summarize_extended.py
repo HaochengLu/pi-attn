@@ -1,9 +1,11 @@
 """Summarize eval/e2e_extended.sh: per workload, median and min-max over launches.
-Usage: python eval/summarize_extended.py results/e2e_extended"""
+Usage: python eval/summarize_extended.py results/e2e_extended (or results/e2e_highconc)"""
 import glob, json, statistics, sys
 
 d = sys.argv[1]
-for model in ["Qwen3-1.7B", "Qwen3-8B"]:
+models = sorted({f.split("/")[-1].split(".flashinfer.")[0] for f in glob.glob(f"{d}/*.flashinfer.L*.json")},
+                key=lambda m: float(m.split("-")[1][:-1]))
+for model in models:
     runs = {m: [json.load(open(f)) for f in sorted(glob.glob(f"{d}/{model}.{m}.L*.json"))] for m in ("flashinfer", "deterministic")}
     if not runs["flashinfer"]:
         continue

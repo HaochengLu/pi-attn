@@ -50,16 +50,18 @@ def main(bench):
         ref = ext.linear(X[:1].contiguous(), W, 1, False)[0]
         for M in [1, 2, 7, 16, 17, 33, 64, 65, 200, 1000, 4096]:
             bal = {30: 16, 31: 16, 32: 32, 33: 64}
-            if gemm_segments(N, K) == 1:  # stream-K: S = 1 shapes, M <= 8
-                bal.update({40: 8, 41: 8, 42: 8, 43: 8})
-            for kern in [1, 2, 4, 6, 7, 8, 9, 10, 11, 12, 13, 20, 21, 22, 23, 24, 25] + [k for k, mm in bal.items() if M <= mm]:
+            if gemm_segments(N, K) == 1:  # stream-K: S = 1 shapes; 40..43 M <= 8, 44..47 any M
+                bal.update({40: 8, 41: 8, 42: 8, 43: 8, 44: 1 << 30, 45: 1 << 30, 46: 1 << 30, 47: 1 << 30})
+            Xm = X[:M].clone()
+            if M > 1:
+                Xm[1:] = torch.randn_like(Xm[1:]) * 100  # other rows must not matter
+            full = ext.linear(Xm, W, 13, False)  # every row of every kernel must match it too
+            for kern in [1, 2, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 20, 21, 22, 23, 24, 25] + [k for k, mm in bal.items() if M <= mm]:
                 if kern in (21, 22, 23, 30, 43) and K % 256:
                     continue
-                Xm = X[:M].clone()
-                if M > 1:
-                    Xm[1:] = torch.randn_like(Xm[1:]) * 100  # other rows must not matter
                 y = ext.linear(Xm, W, kern, False)
-                if not torch.equal(y[0].view(torch.int16), ref.view(torch.int16)):
+                if not torch.equal(y[0].view(torch.int16), ref.view(torch.int16)) or not torch.equal(
+                        y.view(torch.int16), full.view(torch.int16)):
                     fails.append((name, M, kern))
         segs = gemm_segments(N, K)
         if segs > 1:  # y = round(((+0 + p_0) + p_1) + ...), p_s = the unsegmented chain over segment s
@@ -71,7 +73,7 @@ def main(bench):
                 Wp = torch.cat([W[:, sg * ks:(sg + 1) * ks], W.new_zeros(pad, ks)]).contiguous()
                 assert gemm_segments(Wp.shape[0], ks) == 1
                 tot = tot + ext.linear(Xs[:, sg * ks:(sg + 1) * ks], Wp, 1, True)[:, :N]
-            for kern in (1, 20, 33, 11, 13):
+            for kern in (1, 20, 33, 11, 13, 14, 15):
                 if not torch.equal(ext.linear(Xs, W, kern, False).view(torch.int16), tot.bfloat16().view(torch.int16)):
                     fails.append((name, "segments", kern))
         y64 = (X[:256].double() @ W.double().T)
@@ -84,7 +86,8 @@ def main(bench):
             for M in [1, 8, 32, 64, 128, 256, 1024, 4096]:
                 Xm = X[:M].contiguous()
                 tc = timeit(lambda: torch.matmul(Xm, W.T))
-                best = min((timeit(lambda: ext.linear(Xm, W, kk, False)), kk) for kk in ([1, 2, 4, 6, 7, 8, 9] if M <= 64 else []) + [10, 11, 12, 13]
+                best = min((timeit(lambda: ext.linear(Xm, W, kk, False)), kk) for kk in ([1, 2, 4, 6, 7, 8, 9] if M <= 64 else []) + [10, 11, 12, 13, 14, 15]
+                           + ([44, 45, 46, 47] if gemm_segments(N, K) == 1 else [])
                            + [k for k, mm in {30: 16, 31: 16, 32: 32, 33: 64}.items() if M <= mm])
                 ts.append(f"M={M}:{best[0]/tc:.2f}(k{best[1]})")
             line += " | pi/cublas " + " ".join(ts)

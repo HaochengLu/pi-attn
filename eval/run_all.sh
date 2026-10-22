@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Regenerate every result on the current kernels, in order: build, kernel tests,
 # kernel benchmarks, cross-configuration and detcheck runs, end-to-end matrices,
-# same-GPU baselines (our engine only; SGLang/vLLM rows are unchanged), GSM8K and
+# high-concurrency decode, same-GPU baselines (our engine only; SGLang/vLLM rows are unchanged), GSM8K and
 # fp32 agreement. Each stage logs to results/run_all/<stage>.log.
 set -uo pipefail
 source /uniparser/users/luhaocheng/pi_attn/env.sh
@@ -35,6 +35,9 @@ python $ROOT/eval/summarize_matrix.py $ROOT/results/e2e_matrix > $ROOT/results/e
 stage e2e-extended
 bash $ROOT/eval/e2e_extended.sh 3 > $log/e2e_extended.log 2>&1
 python $ROOT/eval/summarize_extended.py $ROOT/results/e2e_extended > $ROOT/results/e2e_extended/SUMMARY.md 2>&1
+stage e2e-highconc
+bash $ROOT/eval/e2e_highconc.sh 3 > $log/e2e_highconc.log 2>&1
+python $ROOT/eval/summarize_extended.py $ROOT/results/e2e_highconc > $ROOT/results/e2e_highconc/SUMMARY.md 2>&1
 stage baselines
 bash $ROOT/eval/baselines.sh Qwen3-1.7B rust rust-det > $log/baselines.log 2>&1
 python $ROOT/eval/summarize_baselines.py $ROOT/results/baselines/Qwen3-1.7B > $ROOT/results/baselines/Qwen3-1.7B/SUMMARY.md 2>&1

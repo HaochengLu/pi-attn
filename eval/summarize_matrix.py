@@ -1,11 +1,22 @@
-import json,sys,os
-d=sys.argv[1]
-rows=[]
-print("| model | T | workload | FI tok/s | PI tok/s | Δ thpt | FI TPOT | PI TPOT | FI TTFT | PI TTFT |")
-print("|---|---|---|---|---|---|---|---|---|---|")
-for m in ["Qwen3-0.6B","Qwen3-1.7B","Qwen3-4B","Qwen3-8B"]:
-  for t in ["0","0.8"]:
-    a=json.load(open(f"{d}/{m}.flashinfer.t{t}.json")); b=json.load(open(f"{d}/{m}.deterministic.t{t}.json"))
-    for x,y in zip(a,b):
-      w=f"{x['in']}/{x['out']} c{x['concurrency']}"
-      print(f"| {m[6:]} | {t} | {w} | {x['out_tok_s']:.0f} | {y['out_tok_s']:.0f} | {100*(y['out_tok_s']/x['out_tok_s']-1):+.1f}% | {x['tpot_ms']:.2f} | {y['tpot_ms']:.2f} | {x['ttft_ms']:.0f} | {y['ttft_ms']:.0f} |")
+"""Summarize eval/e2e_matrix.sh: per workload, the median over interleaved launches.
+Usage: python eval/summarize_matrix.py results/e2e_matrix"""
+import glob, json, statistics, sys
+
+d = sys.argv[1]
+print("| model | T | workload | FI tok/s | PI tok/s | Δ thpt (median) | Δ per launch | FI TPOT | PI TPOT | FI TTFT | PI TTFT |")
+print("|---|---|---|---|---|---|---|---|---|---|---|")
+for m in ["Qwen3-0.6B", "Qwen3-1.7B", "Qwen3-4B", "Qwen3-8B"]:
+    for t in ["0", "0.8"]:
+        runs = {mode: [json.load(open(f)) for f in sorted(glob.glob(f"{d}/{m}.{mode}.t{t}.L*.json"))]
+                for mode in ("flashinfer", "deterministic")}
+        if not runs["flashinfer"] or len(runs["flashinfer"]) != len(runs["deterministic"]):
+            continue
+        for i, x in enumerate(runs["flashinfer"][0]):
+            med = {mode: {k: statistics.median(r[i][k] for r in rs) for k in ("out_tok_s", "tpot_ms", "ttft_ms")}
+                   for mode, rs in runs.items()}
+            a, b = med["flashinfer"], med["deterministic"]
+            per = " ".join(f"{100 * (q[i]['out_tok_s'] / p[i]['out_tok_s'] - 1):+.1f}"
+                           for p, q in zip(runs["flashinfer"], runs["deterministic"]))
+            print(f"| {m[6:]} | {t} | {x['in']}/{x['out']} c{x['concurrency']} | {a['out_tok_s']:.0f} | {b['out_tok_s']:.0f} | "
+                  f"{100 * (b['out_tok_s'] / a['out_tok_s'] - 1):+.1f}% | {per} | {a['tpot_ms']:.2f} | {b['tpot_ms']:.2f} | "
+                  f"{a['ttft_ms']:.0f} | {b['ttft_ms']:.0f} |")

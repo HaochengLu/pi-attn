@@ -1,9 +1,11 @@
 """One decode step's GEMMs (Qwen3-0.6B: 28 layers x qkv/o/gate_up/down + lm_head,
 independent weights, 1.2 GB streamed from DRAM) captured in a CUDA graph, M = 1/8/32:
-cuBLAS vs each fixed invariant kernel id vs best-per-shape (cold-L2 tuned)."""
+cuBLAS vs each fixed invariant kernel id vs best-per-shape (tuned as the engine does:
+bursts over the 28 layer copies, every launch streaming from DRAM)."""
 import torch
 
 import test_gemm as G
+from gemm_cold import KERNELS, usable
 
 LAYERS = 28
 SHAPES = [(4096, 1024), (1024, 2048), (6144, 1024), (1024, 3072)]
@@ -39,27 +41,27 @@ def step(M, pick):
     return sorted(ts)[7]
 
 
-def cold(fn):
+def burst(fn, ws, reps=7):
     ts = []
-    for _ in range(7):
-        flush.zero_()
+    for _ in range(reps + 1):
         s, e = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
         s.record()
-        fn()
+        for w in ws: fn(w)
         e.record()
         torch.cuda.synchronize()
         ts.append(s.elapsed_time(e))
-    return sorted(ts)[3]
+    return sorted(ts[1:])[reps // 2]
 
 
 for M in (1, 8, 32):
     best = {}
-    for (N, K), w in zip(SHAPES + [HEAD], weights[0] + [head]):
+    for i, (N, K) in enumerate(SHAPES + [HEAD]):
+        ws = [layer[i] for layer in weights] if i < len(SHAPES) else [head] * 4
         x = torch.randn(M, K, device="cuda").bfloat16()
-        cands = (1, 2, 4, 6, 7, 8, 9, 10, 11, 12, 13, 20, 21, 22, 23, 24, 25)
-        best[(N, K)] = min(cands, key=lambda k: cold(lambda: G.ext.linear(x, w, k, False)))
+        best[(N, K)] = min((k for k in KERNELS if usable(k, M, N, K)),
+                           key=lambda k: burst(lambda w: G.ext.linear(x, w, k, False), ws))
     t_cublas = step(M, lambda x, w, N, K: torch.matmul(x, w.T))
     t_best = step(M, lambda x, w, N, K: G.ext.linear(x, w, best[(N, K)], False))
-    fixed = {k: step(M, lambda x, w, N, K, k=k: G.ext.linear(x, w, k, False)) for k in ((1, 13, 20, 21, 22, 23) if M <= 16 else (1, 2, 13, 24, 25) if M <= 32 else (13, 12))}
+    fixed = {k: step(M, lambda x, w, N, K, k=k: G.ext.linear(x, w, k, False)) for k in ((13, 20, 21, 30, 31, 40) if M <= 8 else (13, 20, 21, 30, 31) if M <= 16 else (2, 13, 24, 32))}
     print(f"M={M:2d}: cublas {t_cublas:7.0f}us | pi best-per-shape {t_best:7.0f}us ({t_best / t_cublas:.3f}x) {best} | "
           + " ".join(f"k{k} {t:.0f}" for k, t in fixed.items()), flush=True)

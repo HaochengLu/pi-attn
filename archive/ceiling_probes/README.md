@@ -1,4 +1,4 @@
-# gemm_bw_probe: is the batch-1 projection gap a kernel problem or a canonical-program problem?
+# Ceiling probes: is a remaining gap a kernel problem or a canonical-program problem?
 
 All numbers: RTX 4090 D, M=1 unless stated, weights cold (each launch in a burst of 32
 streams a different copy from a >= 600 MB pool).
@@ -30,3 +30,25 @@ streams a different copy from a >= 600 MB pool).
    the canonical fold needs (69 MB). The b4 2K+2K gap (1.10) is the attention kernel alone
    (16-row warps; 32-row warps would need the second online state outside registers,
    measured 8-10% slower earlier).
+
+## Stream-K and mid-M GEMM probes
+
+6. `streamk_probe.cu` / `bench_streamk.py`: deterministic stream-K for M <= 8 (accumulator
+   handoff between warps, bitwise the uncut chain; 0 bitwise failures). 8B down at M=1:
+   118.5 -> 113.2 us (cuBLAS 108.1); 8B down M=8 beats cuBLAS. Shipped as kernel ids
+   40..43. `out_streamk.txt`.
+7. `cutlass_probe.cu` / `bench_cutlass.py`: smaller CUTLASS tiles for M=64..512 on narrow-N
+   projections (configs with 16-wide warp N tiles do not compile: epilogue thread map).
+   32x64x64 (4 warps of 16x32) and 64x64x64 fix M=64..128 (1.7B o M=128: 2.11 -> 1.01x
+   cuBLAS) but not M >= 256, where 64x64 tiles fill 114 SMs in 1.12 waves. `out_cutlass.txt`.
+8. Stream-K over CUTLASS tiles (engine ids 44..47; `gemm_cutlass.cuh` StreamKKernel): when
+   tiles >= SMs every CTA range covers >= 1 tile, so the handoff never serialises a chain.
+   `bench_midm.py`: old kernel set vs with ids 14/15/44..47, cold bursts. Unsegmented
+   shapes go from up to 1.38x (1.7B down M=64), 1.36x (1.7B down M=256), 1.21x (4B down
+   M=256), 1.18x (8B o M=128) to 0.83-1.02x at M=16..1024, except 8B down M=128 (1.06x) and
+   M=512 (1.09x). At large M the stream-K ranges desynchronise the k positions of CTAs whose
+   tiles share weight columns, so those columns no longer meet in L2 (8B down M=1024: k44
+   2405 us vs k12 804 us); the tuner then keeps the plain tiles. Segmented shapes (0.6B
+   o/down, S = 2) cannot use stream-K and stay 1.10-1.27x at M=256..1024. `out_midm.txt`.
+   `occ_probe.cu` / `occ.py`: shared memory and residency of the stream-K tile configs
+   (32x64x64 with 5 stages is 60 KB, one CTA per SM; 4 stages fits two).
