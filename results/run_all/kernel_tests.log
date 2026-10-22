@@ -26,14 +26,18 @@ long ctx 32768/20001: failures 0 []
 TOTAL FAILURES: 0
 test_matrix exit=0
 0.6B qkv      N=  4096 K= 1024: max|err| pi(fp32 out) 6.22e-06 pi(bf16) 7.81e-03 cublas(bf16) 1.16e-02
-0.6B o        N=  1024 K= 2048: max|err| pi(fp32 out) 6.16e-06 pi(bf16) 1.38e-02 cublas(bf16) 1.74e-02
-0.6B gateup   N=  6144 K= 1024: max|err| pi(fp32 out) 5.96e-06 pi(bf16) 7.82e-03 cublas(bf16) 1.15e-02
-0.6B down     N=  1024 K= 3072: max|err| pi(fp32 out) 1.31e-05 pi(bf16) 1.56e-02 cublas(bf16) 2.14e-02
-0.6B lm_head  N=151936 K= 1024: max|err| pi(fp32 out) 7.17e-06 pi(bf16) 7.82e-03 cublas(bf16) 7.82e-03
-1.7B qkv      N=  4096 K= 2048: max|err| pi(fp32 out) 1.75e-05 pi(bf16) 1.34e-02 cublas(bf16) 1.87e-02
-1.7B down     N=  2048 K= 6144: max|err| pi(fp32 out) 7.71e-05 pi(bf16) 1.57e-02 cublas(bf16) 4.63e-02
-8B qkv        N=  6144 K= 4096: max|err| pi(fp32 out) 4.54e-05 pi(bf16) 1.56e-02 cublas(bf16) 2.45e-02
-8B gateup     N= 24576 K= 4096: max|err| pi(fp32 out) 4.73e-05 pi(bf16) 1.57e-02 cublas(bf16) 2.53e-02
-8B down       N=  4096 K=12288: max|err| pi(fp32 out) 2.32e-04 pi(bf16) 3.11e-02 cublas(bf16) 7.74e-02
+0.6B o        N=  1024 K= 2048: max|err| pi(fp32 out) 6.38e-06 pi(bf16) 1.38e-02 cublas(bf16) 1.74e-02
+0.6B gateup   N=  6144 K= 1024: max|err| pi(fp32 out) 6.18e-06 pi(bf16) 7.81e-03 cublas(bf16) 1.17e-02
+0.6B down     N=  1024 K= 3072: max|err| pi(fp32 out) 1.25e-05 pi(bf16) 1.53e-02 cublas(bf16) 2.02e-02
+0.6B lm_head  N=151936 K= 1024: max|err| pi(fp32 out) 6.93e-06 pi(bf16) 7.82e-03 cublas(bf16) 7.82e-03
+1.7B qkv      N=  4096 K= 2048: max|err| pi(fp32 out) 1.88e-05 pi(bf16) 1.39e-02 cublas(bf16) 1.86e-02
+1.7B o        N=  2048 K= 2048: max|err| pi(fp32 out) 1.39e-05 pi(bf16) 1.16e-02 cublas(bf16) 2.33e-02
+1.7B down     N=  2048 K= 6144: max|err| pi(fp32 out) 7.85e-05 pi(bf16) 1.57e-02 cublas(bf16) 4.99e-02
+4B o          N=  2560 K= 4096: max|err| pi(fp32 out) 5.70e-05 pi(bf16) 1.56e-02 cublas(bf16) 2.85e-02
+4B down       N=  2560 K= 9728: max|err| pi(fp32 out) 1.56e-04 pi(bf16) 3.13e-02 cublas(bf16) 6.77e-02
+8B qkv        N=  6144 K= 4096: max|err| pi(fp32 out) 4.66e-05 pi(bf16) 1.56e-02 cublas(bf16) 2.36e-02
+8B o          N=  4096 K= 4096: max|err| pi(fp32 out) 4.92e-05 pi(bf16) 1.56e-02 cublas(bf16) 3.53e-02
+8B gateup     N= 24576 K= 4096: max|err| pi(fp32 out) 5.14e-05 pi(bf16) 1.56e-02 cublas(bf16) 2.68e-02
+8B down       N=  4096 K=12288: max|err| pi(fp32 out) 2.20e-04 pi(bf16) 3.11e-02 cublas(bf16) 8.24e-02
 INVARIANCE FAILURES: 0 []
 test_gemm exit=0

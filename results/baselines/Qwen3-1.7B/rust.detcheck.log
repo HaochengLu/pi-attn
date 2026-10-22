@@ -1,8 +1,8 @@
-batch  [{"concurrency": 4, "requests": 16, "mismatched": 3, "first_divergence_tokens": [14, 15, 44]}, {"concurrency": 16, "requests": 16, "mismatched": 1, "first_divergence_tokens": [9]}]
+batch  [{"concurrency": 4, "requests": 16, "mismatched": 1, "first_divergence_tokens": [14]}, {"concurrency": 16, "requests": 16, "mismatched": 1, "first_divergence_tokens": [14]}]
 prefix {"full_hit": 0, "partial_hit": 0, "requests": 8}
-shared {"requests": 32, "prefix_tokens": 2616, "mismatched": 12, "first_divergence_tokens": [1, 1, 5, 17, 18, 52, 56, 63, 65, 70]}
+shared {"requests": 32, "prefix_tokens": 2616, "mismatched": 11, "first_divergence_tokens": [1, 1, 15, 17, 19, 19, 65, 78, 84, 127]}
 path   {"requests": 24, "mismatched": 1, "first_divergence_tokens": [9]}
-spath  {"requests": 24, "mismatched": 7, "first_divergence_tokens": [2, 70, 132, 92, 5, 65, 131]}
-repeat {"samples": 200, "unique_completions": 14}
-sample {"rows": [{"concurrency": 4, "requests": 16, "mismatched": 7, "first_divergence_tokens": [0, 2, 3, 5, 17, 27, 92]}, {"concurrency": 16, "requests": 16, "mismatched": 6, "first_divergence_tokens": [1, 2, 3, 7, 17, 27]}], "distinct_reference_samples": 16}
-NONDETERMINISTIC (50 failing comparisons)
+spath  {"requests": 24, "mismatched": 5, "first_divergence_tokens": [2, 29, 4, 81, 161]}
+repeat {"samples": 200, "unique_completions": 11}
+sample {"rows": [{"concurrency": 4, "requests": 16, "mismatched": 7, "first_divergence_tokens": [0, 2, 3, 3, 17, 27, 138]}, {"concurrency": 16, "requests": 16, "mismatched": 6, "first_divergence_tokens": [0, 2, 2, 3, 17, 27]}], "distinct_reference_samples": 16}
+NONDETERMINISTIC (42 failing comparisons)
