@@ -115,9 +115,10 @@ def check_batch(srv, prompts, T, rng, conc, noise_vocab):
         noise = [[rng.randrange(1000, noise_vocab) for _ in range(rng.choice([16, 300, 1500]))] for _ in range(c)]
         with cf.ThreadPoolExecutor(c * 2) as ex:
             futs = {ex.submit(srv.generate, prompts[i], T): i for i in order}
-            for nz in noise:
-                ex.submit(srv.generate, nz, rng.choice([8, 64, 256]))
+            bg = [ex.submit(srv.generate, nz, rng.choice([8, 64, 256])) for nz in noise]
             got = {futs[f]: f.result() for f in cf.as_completed(futs)}
+            for f in bg:  # a failed background request would mean the check ran without its traffic
+                f.result()
         div = [first_divergence(ref[i], got[i]) for i in range(len(prompts))]
         bad = [d for d in div if d is not None]
         rows.append({"concurrency": c, "requests": len(prompts), "mismatched": len(bad),
@@ -173,13 +174,16 @@ def check_path(srv, prompts, T, rng, flush, vocab, sampling=None):
 def check_repeat(srv, prompt, T, rng, n, vocab):
     outs = set()
     with cf.ThreadPoolExecutor(32) as ex:
-        futs = []
+        futs, bg = [], []
         for i in range(n):
             futs.append(ex.submit(srv.generate, prompt, T))
             for _ in range(rng.randrange(0, 4)):
-                ex.submit(srv.generate, [rng.randrange(1000, vocab) for _ in range(rng.randrange(8, 800))], rng.choice([4, 32, 128]))
+                bg.append(ex.submit(srv.generate, [rng.randrange(1000, vocab) for _ in range(rng.randrange(8, 800))],
+                                    rng.choice([4, 32, 128])))
         for f in futs:
             outs.add(tuple(f.result()))
+        for f in bg:
+            f.result()
     return {"samples": n, "unique_completions": len(outs)}
 
 
@@ -190,10 +194,12 @@ def check_sample(srv, prompts, T, rng, conc, vocab):
     for c in conc:
         with cf.ThreadPoolExecutor(c * 2) as ex:
             futs = {ex.submit(srv.generate, p, T, sp(i)): i for i, p in enumerate(prompts)}
-            for _ in range(c):
-                ex.submit(srv.generate, [rng.randrange(1000, vocab) for _ in range(rng.choice([16, 300, 1500]))],
-                          rng.choice([8, 64, 256]), {"temperature": 1.0, "seed": rng.randrange(1 << 30)})
+            bg = [ex.submit(srv.generate, [rng.randrange(1000, vocab) for _ in range(rng.choice([16, 300, 1500]))],
+                            rng.choice([8, 64, 256]), {"temperature": 1.0, "seed": rng.randrange(1 << 30)})
+                  for _ in range(c)]
             got = {futs[f]: f.result() for f in cf.as_completed(futs)}
+            for f in bg:
+                f.result()
         bad = [first_divergence(ref[i], got[i]) for i in range(len(prompts))]
         bad = [d for d in bad if d is not None]
         rows.append({"concurrency": c, "requests": len(prompts), "mismatched": len(bad),

@@ -45,8 +45,13 @@ def one(url, ids, out_len, seed=0):
 
 
 def run(url, in_len, out_len, conc, num, seed, shared=0):
-    """shared: the first `shared` input tokens are common to every request (prefix-cache hits)."""
-    rng = random.Random(seed)
+    """shared: the first `shared` input tokens are common to every request (prefix-cache hits).
+
+    The prompt generator is seeded by the whole workload, not only by the repeat index:
+    with `Random(seed)` two workloads of equal input length (512:256:8, 512:256:32) got the
+    same prompts, and the second one, or the temperature-0.8 pass on the same server, then
+    hit the prefix cache. Only `shared` tokens are meant to hit."""
+    rng = random.Random(f"{seed}:{in_len}:{out_len}:{conc}:{shared}:{SAMPLING['temperature']}")
     head = [rng.randrange(1000, 150000) for _ in range(shared)]
     prompts = [head + [rng.randrange(1000, 150000) for _ in range(in_len - shared)] for _ in range(num)]
     if shared:

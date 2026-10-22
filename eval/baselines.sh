@@ -12,7 +12,7 @@ out=$ROOT/results/baselines/$model
 mkdir -p $out
 M=$ROOT/models/$model
 for eng in $engines; do
-  api=openai; flush=flood:70000
+  api=openai; flush=flood:270000  # our engine has no flush route; evicting needs > 2x its 131072-token pool
   case $eng in
     rust|rust-det)
       margs="--attention-backend flashinfer"; [[ $eng == rust-det ]] && margs="--deterministic"
