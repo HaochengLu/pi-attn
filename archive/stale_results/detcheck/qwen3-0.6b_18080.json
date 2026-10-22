@@ -1,0 +1,54 @@
+{
+ "url": "http://127.0.0.1:18080",
+ "tokens": 256,
+ "prompts": 16,
+ "lengths": [
+  24,
+  300,
+  1100,
+  2600
+ ],
+ "batch": [
+  {
+   "concurrency": 4,
+   "requests": 16,
+   "mismatched": 3,
+   "first_divergence_tokens": [
+    33,
+    59,
+    89
+   ]
+  },
+  {
+   "concurrency": 16,
+   "requests": 16,
+   "mismatched": 6,
+   "first_divergence_tokens": [
+    14,
+    15,
+    22,
+    46,
+    75,
+    89
+   ]
+  }
+ ],
+ "prefix": {
+  "full_hit": 0,
+  "partial_hit": 0,
+  "requests": 8
+ },
+ "path": {
+  "requests": 24,
+  "mismatched": 2,
+  "first_divergence_tokens": [
+   65,
+   14
+  ]
+ },
+ "repeat": {
+  "samples": 100,
+  "unique_completions": 14
+ },
+ "seconds": 83.0
+}

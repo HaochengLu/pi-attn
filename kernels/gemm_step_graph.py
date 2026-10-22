@@ -5,7 +5,7 @@ bursts over the 28 layer copies, every launch streaming from DRAM)."""
 import torch
 
 import test_gemm as G
-from gemm_cold import KERNELS, usable
+
 
 LAYERS = 28
 SHAPES = [(4096, 1024), (1024, 2048), (6144, 1024), (1024, 3072)]
@@ -58,7 +58,7 @@ for M in (1, 8, 32):
     for i, (N, K) in enumerate(SHAPES + [HEAD]):
         ws = [layer[i] for layer in weights] if i < len(SHAPES) else [head] * 4
         x = torch.randn(M, K, device="cuda").bfloat16()
-        best[(N, K)] = min((k for k in KERNELS if usable(k, M, N, K)),
+        best[(N, K)] = min(G.candidates(M, N, K),
                            key=lambda k: burst(lambda w: G.ext.linear(x, w, k, False), ws))
     t_cublas = step(M, lambda x, w, N, K: torch.matmul(x, w.T))
     t_best = step(M, lambda x, w, N, K: G.ext.linear(x, w, best[(N, K)], False))

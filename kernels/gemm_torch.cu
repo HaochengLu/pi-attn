@@ -1,18 +1,18 @@
-// PyTorch bindings for the M-invariant GEMM (tests and benchmarks).
+// PyTorch bindings for the M-invariant GEMM (tests and benchmarks). Kernels are launched
+// through the engine's own id table (gemm_dispatch.cuh, symlinked from the engine), so
+// what is tested is what the engine's tuner chooses from.
 #include <ATen/cuda/CUDAContext.h>
 #include <c10/cuda/CUDAGuard.h>
 #include <torch/extension.h>
 
-#include "gemm_inv.cuh"
-#include "gemm_cutlass.cuh"
+#include "gemm_dispatch.cuh"
 
 using namespace pi_gemm;
 
-// kernel: 0 = auto, 1..4 = small with G = kernel,
-// 10.. = CUTLASS tiles (10: 128x256x32 s3, 11: 128x128x32 s4, 12: 64x128x32 s4, 13: 64x64x32 s5,
-// 14: 32x64x64 s5, 15: 64x64x64 s4); 44..47, 50: stream-K over CUTLASS tiles (S = 1 shapes);
-// 48, 49: segment-parallel CUTLASS tiles (S > 1 shapes).
-at::Tensor linear(at::Tensor x, at::Tensor w, int64_t kernel, bool out_fp32) {
+// y = x w^T with kernel id `kernel` (0 = 13; every id gives the same bits). Returns None
+// when the id refuses the shape (cudaErrorInvalidValue). test_gemm.py checks every None
+// against its own expectation, so a launch failure reported with that code still fails it.
+c10::optional<at::Tensor> linear(at::Tensor x, at::Tensor w, int64_t kernel, bool out_fp32) {
   TORCH_CHECK(x.is_cuda() && x.scalar_type() == at::kBFloat16 && w.scalar_type() == at::kBFloat16);
   TORCH_CHECK(x.dim() == 2 && w.dim() == 2 && x.size(1) == w.size(1) && w.is_contiguous());
   TORCH_CHECK(x.stride(1) == 1, "x rows must be contiguous");
@@ -22,106 +22,23 @@ at::Tensor linear(at::Tensor x, at::Tensor w, int64_t kernel, bool out_fp32) {
   TORCH_CHECK(x.data_ptr() != w.data_ptr());
   auto y = at::empty({M, N}, x.options().dtype(out_fp32 ? at::kFloat : at::kBFloat16));
   if (M == 0) return y;
-  int k = (int)kernel;
-  if (k == 0) k = M <= 16 ? 1 : M <= 32 ? 2 : M <= 64 ? 4 : 11;
+  GemmDevice dev;
+  cudaDeviceGetAttribute(&dev.sms, cudaDevAttrMultiProcessorCount, x.get_device());
+  cudaDeviceGetAttribute(&dev.smem_optin, cudaDevAttrMaxSharedMemoryPerBlockOptin, x.get_device());
+  const int k = kernel == 0 ? 13 : (int)kernel;
   auto stream = at::cuda::getCurrentCUDAStream();
-  auto run = [&](auto* out) {
-    using OutT = std::remove_pointer_t<decltype(out)>;
-    auto small = [&](auto kern, int G, int W, int BK = kSmallBK, int ST = kSmallStages) {
-      TORCH_CHECK(K % BK == 0, "K must be a multiple of BK for this variant");
-      const size_t smem = (size_t)ST * (16 * G + 8 * W) * (BK + 8) * sizeof(__nv_bfloat16);
-      cudaFuncSetAttribute(kern, cudaFuncAttributeMaxDynamicSharedMemorySize, smem);
-      kern<<<dim3(N / (8 * W), (M + 16 * G - 1) / (16 * G)), W * 32, smem, stream>>>(
-          (const __nv_bfloat16*)x.data_ptr(), x.stride(0), (const __nv_bfloat16*)w.data_ptr(), out, N, M, N, K);
-    };
-    // 1..4: small kernel, 4 warps, G = 1, 2, 4, 4; 6..9: small kernel W = 1 or 2 warps:
-    // 6 = (G1, W1), 7 = (G1, W2), 8 = (G2, W1), 9 = (G4, W2).
-    if (k == 1) small(gemm_small_kernel<1, 4, OutT>, 1, 4);
-    else if (k == 2) small(gemm_small_kernel<2, 4, OutT>, 2, 4);
-    else if (k == 3 || k == 4) small(gemm_small_kernel<4, 4, OutT>, 4, 4);
-    else if (k == 6) small(gemm_small_kernel<1, 1, OutT>, 1, 1);
-    else if (k == 7) small(gemm_small_kernel<1, 2, OutT>, 1, 2);
-    else if (k == 8) small(gemm_small_kernel<2, 1, OutT>, 2, 1);
-    else if (k == 9) small(gemm_small_kernel<4, 2, OutT>, 4, 2);
-    // Deep-pipeline variants for weight streaming (decode): (G, W, BK, STAGES).
-    else if (k == 20) small(gemm_small_kernel<1, 4, OutT, 128, 6>, 1, 4, 128, 6);
-    else if (k == 21) small(gemm_small_kernel<1, 4, OutT, 256, 3>, 1, 4, 256, 3);
-    else if (k == 22) small(gemm_small_kernel<1, 2, OutT, 256, 4>, 1, 2, 256, 4);
-    else if (k == 23) small(gemm_small_kernel<1, 1, OutT, 256, 6>, 1, 1, 256, 6);
-    else if (k == 24) small(gemm_small_kernel<2, 4, OutT, 128, 5>, 2, 4, 128, 5);
-    else if (k == 25) small(gemm_small_kernel<4, 4, OutT, 128, 3>, 4, 4, 128, 3);
-    // 30..33: balanced, one CTA per SM: (G, BK, STAGES) = (1,256,3) (1,128,6) (2,128,4) (4,128,3).
-    else if (k >= 30 && k <= 33) {
-      int sms = 0, optin = 0;
-      cudaDeviceGetAttribute(&sms, cudaDevAttrMultiProcessorCount, x.get_device());
-      cudaDeviceGetAttribute(&optin, cudaDevAttrMaxSharedMemoryPerBlockOptin, x.get_device());
-      const void* xp = x.data_ptr();
-      const void* wp = w.data_ptr();
-      const int64_t ld = x.stride(0);
-      cudaError_t e;
-      if (k == 30) e = run_balanced<OutT, 1, 256, 3>(xp, ld, wp, out, N, M, N, K, sms, optin, stream);
-      else if (k == 31) e = run_balanced<OutT, 1, 128, 6>(xp, ld, wp, out, N, M, N, K, sms, optin, stream);
-      else if (k == 32) e = run_balanced<OutT, 2, 128, 4>(xp, ld, wp, out, N, M, N, K, sms, optin, stream);
-      else e = run_balanced<OutT, 4, 128, 3>(xp, ld, wp, out, N, M, N, K, sms, optin, stream);
-      TORCH_CHECK(e == cudaSuccess, "balanced gemm ", k, " failed (M too large for it?)");
-    }
-    // 40..43: stream-K, M <= 8, S = 1 shapes: (BK, STAGES, warps per SM) = (128,4,2) (128,4,3) (128,4,4) (256,3,3).
-    else if (k >= 40 && k <= 43) {
-      int sms = 0;
-      cudaDeviceGetAttribute(&sms, cudaDevAttrMultiProcessorCount, x.get_device());
-      const void* xp = x.data_ptr();
-      const void* wp = w.data_ptr();
-      const int64_t ld = x.stride(0);
-      cudaError_t e;
-      if (k == 43) e = run_streamk<OutT, 256, 3>(xp, ld, wp, out, N, M, N, K, 3, sms, stream);
-      else e = run_streamk<OutT, 128, 4>(xp, ld, wp, out, N, M, N, K, k - 38, sms, stream);
-      TORCH_CHECK(e == cudaSuccess, "stream-K gemm ", k, " failed (M > 8 or a segmented shape?)");
-    }
-    // 44..47, 50: stream-K over CUTLASS tiles: 32x64x64 s5 (1 CTA per SM), 32x64x64 s4 (2 per SM), 64x64x64,
-    // 64x128x32, 128x64x64 s3.
-    else if ((k >= 44 && k <= 47) || k == 50) {
-      int sms = 0;
-      cudaDeviceGetAttribute(&sms, cudaDevAttrMultiProcessorCount, x.get_device());
-      const void* xp = x.data_ptr();
-      const void* wp = w.data_ptr();
-      const int64_t ld = x.stride(0);
-      cudaError_t e;
-      if (k == 44) e = CutlassGemm<OutT, 32, 64, 64, 16, 32, 5>::run_streamk(xp, ld, wp, out, N, M, N, K, sms, 1, stream);
-      else if (k == 45) e = CutlassGemm<OutT, 32, 64, 64, 16, 32, 4>::run_streamk(xp, ld, wp, out, N, M, N, K, sms, 2, stream);
-      else if (k == 46) e = CutlassGemm<OutT, 64, 64, 64, 32, 32, 4>::run_streamk(xp, ld, wp, out, N, M, N, K, sms, 1, stream);
-      else if (k == 47) e = CutlassGemm<OutT, 64, 128, 32, 32, 64, 4>::run_streamk(xp, ld, wp, out, N, M, N, K, sms, 1, stream);
-      else e = CutlassGemm<OutT, 128, 64, 64, 64, 32, 3>::run_streamk(xp, ld, wp, out, N, M, N, K, sms, 1, stream);
-      TORCH_CHECK(e == cudaSuccess, "stream-K tile gemm ", k, " failed (a segmented shape?): ", cudaGetErrorString(e));
-    }
-    // 48, 49: segment-parallel CUTLASS tiles: 32x64x64 s5, 64x64x64 s3.
-    else if (k == 48 || k == 49) {
-      const void* xp = x.data_ptr();
-      const void* wp = w.data_ptr();
-      const int64_t ld = x.stride(0);
-      cudaError_t e;
-      if (k == 48) e = CutlassGemm<OutT, 32, 64, 64, 16, 32, 5>::run_segpar(xp, ld, wp, out, N, M, N, K, stream);
-      else e = CutlassGemm<OutT, 64, 64, 64, 32, 32, 3>::run_segpar(xp, ld, wp, out, N, M, N, K, stream);
-      TORCH_CHECK(e == cudaSuccess, "segment-parallel gemm ", k, " failed (an S = 1 shape, or too many tiles?): ",
-                  cudaGetErrorString(e));
-    }
-    else if (k >= 10 && k < 20) {
-      cudaError_t e = cudaSuccess;
-      const void* xp = x.data_ptr();
-      const void* wp = w.data_ptr();
-      if (k == 10) e = CutlassGemm<OutT, 128, 256, 32, 64, 64, 3>::run(xp, x.stride(0), wp, out, N, M, N, K, stream);
-      else if (k == 11) e = CutlassGemm<OutT, 128, 128, 32, 64, 64, 4>::run(xp, x.stride(0), wp, out, N, M, N, K, stream);
-      else if (k == 12) e = CutlassGemm<OutT, 64, 128, 32, 32, 64, 4>::run(xp, x.stride(0), wp, out, N, M, N, K, stream);
-      else if (k == 14) e = CutlassGemm<OutT, 32, 64, 64, 16, 32, 5>::run(xp, x.stride(0), wp, out, N, M, N, K, stream);
-      else if (k == 15) e = CutlassGemm<OutT, 64, 64, 64, 32, 32, 4>::run(xp, x.stride(0), wp, out, N, M, N, K, stream);
-      else e = CutlassGemm<OutT, 64, 64, 32, 32, 32, 5>::run(xp, x.stride(0), wp, out, N, M, N, K, stream);
-      TORCH_CHECK(e == cudaSuccess, "cutlass gemm failed for kernel ", k);
-    } else {
-      TORCH_CHECK(false, "unknown kernel id ", k);
-    }
-  };
-  if (out_fp32) run((float*)y.data_ptr()); else run((__nv_bfloat16*)y.data_ptr());
+  const cudaError_t err =
+      out_fp32 ? run_gemm(k, x.data_ptr(), x.stride(0), w.data_ptr(), (float*)y.data_ptr(), N, M, N, K, dev, stream)
+               : run_gemm(k, x.data_ptr(), x.stride(0), w.data_ptr(), (__nv_bfloat16*)y.data_ptr(), N, M, N, K, dev,
+                          stream);
+  if (err == cudaErrorInvalidValue) return c10::nullopt;
+  TORCH_CHECK(err == cudaSuccess, "gemm kernel ", k, " failed: ", cudaGetErrorString(err));
   C10_CUDA_KERNEL_LAUNCH_CHECK();
   return y;
 }
 
-PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) { m.def("linear", &linear); }
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+  m.def("linear", &linear);
+  m.def("small_kernels", [] { return small_kernels(); }, "ids the engine tunes for M buckets <= 64");
+  m.def("large_kernels", [] { return large_kernels(); }, "ids the engine tunes for every M bucket");
+}

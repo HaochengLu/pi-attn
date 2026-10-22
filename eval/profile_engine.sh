@@ -4,7 +4,7 @@
 # workloads; kernel time by category and the top kernels of each trace.
 # Usage: eval/profile_engine.sh <model> <tag> <workload>... (loadgen in:out:conc[:shared])
 set -uo pipefail
-source /uniparser/users/luhaocheng/pi_attn/env.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../env.sh"
 model=${1:-Qwen3-8B}; tag=${2:-shared}; shift 2 || true
 work=("$@"); [[ ${#work[@]} -gt 0 ]] || work=(4096:128:8:3968)
 out=$ROOT/results/engine_profile/$model.$tag

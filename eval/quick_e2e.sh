@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Quick interleaved FI vs PI comparison on a few loadgen workloads.
-# Usage: eval/quick_e2e.sh <model> <launches> <workload>...
+# Usage: [TEMP=0.8] eval/quick_e2e.sh <model> <launches> <workload>...
 set -uo pipefail
-source /uniparser/users/luhaocheng/pi_attn/env.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../env.sh"
 model=$1; launches=$2; shift 2
 out=$ROOT/results/quick/$model.$(date +%H%M%S); mkdir -p $out
 port=18099
@@ -14,7 +14,7 @@ for l in $(seq 1 $launches); do
     $ROOT/scripts/serve.sh $port $ROOT/models/$model $margs --max-running-req 32 --max-seq-len ${seqlen[$model]} \
       --max-total-tokens ${pool[$model]} --chunked-prefill-size 2048 --log-dir $ROOT/logs > $out/$mode.L$l.server.log 2>&1 &
     for i in $(seq 1 200); do curl -s -m 2 localhost:$port/health >/dev/null && break; sleep 2; done
-    python $ROOT/eval/loadgen.py --url http://127.0.0.1:$port --num 32 --repeats 1 --workloads "$@" \
+    python $ROOT/eval/loadgen.py --url http://127.0.0.1:$port --temperature ${TEMP:-0} --num 32 --repeats 1 --workloads "$@" \
       --out $out/$mode.L$l.json > $out/$mode.L$l.log 2>&1
     bash $ROOT/scripts/stop_all.sh > /dev/null 2>&1; sleep 5
   done

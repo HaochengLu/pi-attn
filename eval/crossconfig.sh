@@ -3,7 +3,7 @@
 # server configuration, then restart the server under other configurations and
 # compare. Usage: eval/crossconfig.sh <mode-args...>   (e.g. --deterministic)
 set -uo pipefail
-source /uniparser/users/luhaocheng/pi_attn/env.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../env.sh"
 mode=("$@")
 tag=$(echo "${mode[*]}" | tr -c "a-z0-9" "_")
 port=18095

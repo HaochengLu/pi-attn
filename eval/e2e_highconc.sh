@@ -4,7 +4,7 @@
 # 4B runs c64 only: its c128 KV does not fit next to the weights on 24 GB.
 # Usage: eval/e2e_highconc.sh [launches]
 set -uo pipefail
-source /uniparser/users/luhaocheng/pi_attn/env.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../env.sh"
 launches=${1:-3}
 port=18096
 out=$ROOT/results/e2e_highconc

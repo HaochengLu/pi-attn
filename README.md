@@ -10,24 +10,32 @@ any of those optimizations off.
 | Path | What |
 |---|---|
 | `llm_infer_rust/` (branch `pi-attn`) | Engine with `--deterministic`; kernels in `src/kernels/pi/`, docs in `docs/deterministic-mode.md` |
-| `kernels/` | PyTorch bindings, invariance tests (`test_invariance.py`, `test_matrix.py`, `test_directed.py`, `test_gemm.py`) and microbenchmarks for the kernels (sources symlinked from the engine) |
-| `ref/` | Bit-level CPU reference model of the attention construction |
+| `kernels/` | PyTorch bindings, invariance tests (`test_invariance.py`, `test_matrix.py`, `test_directed.py`, `test_gemm.py`) and microbenchmarks for the kernels (sources, including the GEMM id table `gemm_dispatch.cuh`, symlinked from the engine) |
 | `detcheck/detcheck.py` | Black-box determinism checker for any OpenAI-compatible server |
 | `eval/` | Serving benchmark (`loadgen.py`), cross-configuration check (`crossconfig.sh`), end-to-end matrices (`e2e_matrix.sh`, `e2e_extended.sh`), same-GPU SGLang/vLLM baselines (`baselines.sh`), GSM8K reproducibility (`accuracy.sh`, `compare_accuracy.py`), fp32 agreement (`fp32_agreement.sh`), kernel benchmarks (`kernel_benches.sh`), and table generators (`summarize_*.py`) |
-| `results/` | Phase reports and results; each `results/<experiment>/` holds the raw JSON/logs and a `SUMMARY.md` |
+| `results/` | Results of the latest `eval/run_all.sh`; `results/README.md` maps each paper table to its files and script |
 | `paper/` | Paper draft |
-| `archive/` | Earlier kernel iterations, kept for history |
+| `requirements/` | Exact package lists of the three Python environments and the model file hashes |
+| `archive/` | Earlier kernel iterations, ceiling probes (`archive/ceiling_probes/README.md`: every measured attempt, kept or rejected), superseded results |
 
 ## Environment (self-contained, reproducible)
 
-Everything is installed under `env/` by `setup_env.sh` (idempotent); nothing touches the
-host system. Versions are recorded in `VERSIONS.txt`.
+Everything, caches included, is installed under `env/` by `setup_env.sh` (idempotent);
+nothing is written to the host system or `$HOME`. The checkout can live anywhere: `env.sh`
+finds it from its own path. Python packages come from the lock files in `requirements/`,
+the models from ModelScope (checked against `requirements/models.sha256`), and
+`VERSIONS.txt` is regenerated on every run.
 
 ```bash
-bash setup_env.sh            # CUDA 12.6 toolkit, gcc 13, Rust 1.95, Python 3.12, torch 2.13.0+cu126, FlashInfer 0.6.18
+# llm_infer_rust/: the engine on branch pi-attn (upstream main e7e2806 plus this work; the
+# branch is not published yet, so copy the checkout along with this directory)
+bash setup_env.sh            # CUDA 12.6, gcc 13, Rust 1.95, Python 3.12, three venvs, Qwen3 models
 source env.sh                # activate
 cd llm_infer_rust && FLASHINFER_CUDA_ARCH=89 cargo build --release   # 80 for A100/A800
 ```
+
+Download sources default to mirrors reachable from mainland China; `setup_env.sh` lists
+the variables that point them elsewhere.
 
 Notes recorded while setting up the RTX 4090 D dev box (driver 535 / CUDA 12.2):
 - torch cu126 wheels run on driver 535 via CUDA minor-version compatibility; the default
@@ -50,14 +58,23 @@ python detcheck/detcheck.py --url http://127.0.0.1:8000 --tokenizer models/Qwen3
 eval/crossconfig.sh --deterministic      # bitwise identity across server configurations
 ```
 
+## Reproducing every result
+
+`eval/run_all.sh` rebuilds the engine for the local GPU and regenerates every result the
+paper uses, stage by stage (logs in `results/run_all/`): kernel tests, kernel benchmarks,
+cross-configuration and detcheck runs, end-to-end matrices, our engine's same-GPU baseline
+rows, GSM8K and fp32 agreement. It takes about 9 hours on one RTX 4090 D (24 GB) and needs
+the whole GPU. The SGLang and vLLM baseline rows are produced separately by
+`eval/baselines.sh Qwen3-1.7B sglang sglang-det sglang-det-triton vllm vllm-det`.
+
 ## Tests
 
-The kernel tests JIT-build the torch extension (`kernels/build.py`) on first import. One
-engine CUDA test, `segmented_prefill_matches_eager_logits_and_kv...` (FlashInfer backend),
-also fails on the upstream `main` branch and is unrelated to this work.
+The kernel tests JIT-build the torch extensions on first import. One engine CUDA test,
+`segmented_prefill_matches_eager_logits_and_kv...` (FlashInfer backend), also fails on
+the upstream `main` branch and is unrelated to this work.
 
 ```bash
-cd kernels && python test_matrix.py && python test_directed.py && python test_gemm.py
+cd kernels && python test_invariance.py && python test_matrix.py && python test_directed.py && python test_gemm.py
 cd llm_infer_rust && VENV_DIR=$VIRTUAL_ENV scripts/run-rust-tests.sh cuda
 SGLANG_E2E_BASE_URL=http://127.0.0.1:8000/v1 SGLANG_E2E_DETERMINISTIC=1 python -m unittest discover -s tests -p "test_*.py"
 ```

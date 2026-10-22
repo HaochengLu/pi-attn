@@ -4,7 +4,7 @@
 # keeps per-sample generations so runs can be compared item by item.
 # Usage: eval/accuracy.sh <model-name> [limit]
 set -uo pipefail
-source /uniparser/users/luhaocheng/pi_attn/env.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../env.sh"
 model=$1; limit=${2:-0}
 port=18097
 out=$ROOT/results/accuracy/$model

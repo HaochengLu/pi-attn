@@ -1,8 +1,10 @@
 """M-invariance, accuracy and speed of the invariant GEMM vs torch/cuBLAS.
 
-Invariance: for every Qwen3 projection shape, row r of Y must be bitwise equal
-whether computed with M = 1, any other M up to 4096, any kernel variant
-(small G=1/2/4, large), and with garbage in the other rows."""
+Invariance: for every projection of the four Qwen3 models (LM heads included), every row
+of Y must be bitwise equal whether computed with M = 1, any other M up to 4096, any kernel
+id the engine can choose (gemm_dispatch.cuh), and with garbage in the other rows. Each id
+must also refuse exactly the shapes `usable` says it cannot run, so the tuner never picks
+an untested (id, shape, M)."""
 import os
 import sys
 
@@ -17,12 +19,16 @@ ext = load(name=f"pi_gemm_sm{major}{minor}", sources=[os.path.join(HERE, "gemm_t
            build_directory=os.environ.get("PI_ATTN_BUILD_DIR"))
 dev = "cuda"
 torch.manual_seed(0)
-SHAPES = {  # name: (N, K)
+SHAPES = {  # name: (N, K), every projection of Qwen3 0.6B/1.7B/4B/8B
     "0.6B qkv": (4096, 1024), "0.6B o": (1024, 2048), "0.6B gateup": (6144, 1024), "0.6B down": (1024, 3072),
-    "0.6B lm_head": (151936, 1024), "1.7B qkv": (4096, 2048), "1.7B o": (2048, 2048), "1.7B down": (2048, 6144),
-    "4B o": (2560, 4096), "4B down": (2560, 9728),
+    "0.6B lm_head": (151936, 1024), "1.7B qkv": (4096, 2048), "1.7B o": (2048, 2048),
+    "1.7B gateup": (12288, 2048), "1.7B down": (2048, 6144), "1.7B lm_head": (151936, 2048),
+    "4B qkv": (6144, 2560), "4B o": (2560, 4096), "4B gateup": (19456, 2560), "4B down": (2560, 9728),
+    "4B lm_head": (151936, 2560),
     "8B qkv": (6144, 4096), "8B o": (4096, 4096), "8B gateup": (24576, 4096), "8B down": (4096, 12288),
-}
+    "8B lm_head": (151936, 4096)}
+KERNELS = tuple(ext.small_kernels()) + tuple(ext.large_kernels())  # the engine's candidates
+SMALL = set(ext.small_kernels())
 
 
 def gemm_segments(N, K):  # mirrors gemm_inv.cuh
@@ -36,6 +42,24 @@ def segpar_fits(k, M, N, K):  # mirrors CutlassGemm::run_segpar: S > 1, fragment
     tm, tn = SEGPAR_TILE[k]
     tiles = -(-M // tm) * -(-N // tn)
     return gemm_segments(N, K) > 1 and tiles <= 1024 and tiles * gemm_segments(N, K) * tm * tn <= 256 * 64 * 128
+
+
+BK = {20: 128, 21: 256, 22: 256, 24: 128, 25: 128, 30: 256, 31: 128, 32: 128, 33: 128,
+      40: 128, 41: 128, 42: 128, 43: 256}  # K granularity (default 64)
+MAX_M = {30: 16, 31: 16, 32: 32, 33: 64, 40: 8, 41: 8, 42: 8, 43: 8}
+STREAMK = {40, 41, 42, 43, 44, 45, 46, 47, 50}  # S = 1 shapes only
+
+
+def usable(k, M, N, K):
+    """Whether kernel id k runs this shape (written independently of gemm_dispatch.cuh)."""
+    if k in SEGPAR_TILE:
+        return segpar_fits(k, M, N, K)
+    return K % BK.get(k, 64) == 0 and M <= MAX_M.get(k, 1 << 30) and not (k in STREAMK and gemm_segments(N, K) > 1)
+
+
+def candidates(M, N, K):
+    """The ids the engine's tuner tries for this shape in an M bucket that holds M."""
+    return [k for k in KERNELS if usable(k, M, N, K) and (M <= 64 or k not in SMALL)]
 
 
 def timeit(fn, iters=30):
@@ -57,21 +81,17 @@ def main(bench):
         W = (torch.randn(N, K, device=dev) * 0.02).bfloat16()
         X = torch.randn(4096, K, device=dev).bfloat16()
         ref = ext.linear(X[:1].contiguous(), W, 1, False)[0]
-        for M in [1, 2, 7, 16, 17, 33, 64, 65, 200, 1000, 4096]:
-            bal = {30: 16, 31: 16, 32: 32, 33: 64}
-            if gemm_segments(N, K) == 1:  # stream-K: S = 1 shapes; 40..43 M <= 8, 44..47 and 50 any M
-                bal.update({40: 8, 41: 8, 42: 8, 43: 8, 44: 1 << 30, 45: 1 << 30, 46: 1 << 30, 47: 1 << 30, 50: 1 << 30})
+        for M in [1, 2, 7, 8, 9, 16, 17, 32, 33, 64, 65, 200, 1000, 4096]:
             Xm = X[:M].clone()
             if M > 1:
                 Xm[1:] = torch.randn_like(Xm[1:]) * 100  # other rows must not matter
             full = ext.linear(Xm, W, 13, False)  # every row of every kernel must match it too
-            segpar = [k for k in (48, 49) if segpar_fits(k, M, N, K)]  # segment-parallel: S > 1 shapes
-            for kern in [1, 2, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 20, 21, 22, 23, 24, 25] + [k for k, mm in bal.items() if M <= mm] + segpar:
-                if kern in (21, 22, 23, 30, 43) and K % 256:
-                    continue
+            for kern in KERNELS:
                 y = ext.linear(Xm, W, kern, False)
-                if not torch.equal(y[0].view(torch.int16), ref.view(torch.int16)) or not torch.equal(
-                        y.view(torch.int16), full.view(torch.int16)):
+                if (y is not None) != usable(kern, M, N, K):
+                    fails.append((name, M, kern, "refused" if y is None else "ran but should refuse"))
+                elif y is not None and (not torch.equal(y[0].view(torch.int16), ref.view(torch.int16))
+                                        or not torch.equal(y.view(torch.int16), full.view(torch.int16))):
                     fails.append((name, M, kern))
         segs = gemm_segments(N, K)
         if segs > 1:  # y = round(((+0 + p_0) + p_1) + ...), p_s = the unsegmented chain over segment s
@@ -96,10 +116,7 @@ def main(bench):
             for M in [1, 8, 32, 64, 128, 256, 1024, 4096]:
                 Xm = X[:M].contiguous()
                 tc = timeit(lambda: torch.matmul(Xm, W.T))
-                best = min((timeit(lambda: ext.linear(Xm, W, kk, False)), kk) for kk in ([1, 2, 4, 6, 7, 8, 9] if M <= 64 else []) + [10, 11, 12, 13, 14, 15]
-                           + ([44, 45, 46, 47, 50] if gemm_segments(N, K) == 1 else [])
-                           + [k for k in (48, 49) if segpar_fits(k, M, N, K)]
-                           + [k for k, mm in {30: 16, 31: 16, 32: 32, 33: 64}.items() if M <= mm])
+                best = min((timeit(lambda: ext.linear(Xm, W, kk, False)), kk) for kk in candidates(M, N, K))
                 ts.append(f"M={M}:{best[0]/tc:.2f}(k{best[1]})")
             line += " | pi/cublas " + " ".join(ts)
         print(line, flush=True)

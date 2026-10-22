@@ -1,8 +1,7 @@
 """Attention latency with fixed planners (no best-of): PI-Attn vs FlashInfer 0.6.18.
 
-Decode baselines: FI default (nondeterministic split-KV), FI tensor-core decode
-with fixed_split_size=2048 (SGLang deterministic decode), FI disable_split_kv
-(vLLM batch-invariant style, num_splits=1). Prefill: FI paged prefill, FI with
+Decode baselines: FI default (nondeterministic split-KV), FI tensor-core decode, and
+FI tensor-core decode with fixed_split_size=2048 (SGLang deterministic decode). Prefill: FI paged prefill, FI with
 fixed_split_size=2048 (deterministic), PI planner. Times in us (median)."""
 import argparse
 import json
@@ -64,8 +63,7 @@ def bench_decode(batch, kv_len, hq, hkv, shared=False):
     q = torch.randn(batch, hq, D, device=dev, dtype=torch.bfloat16)
     ws = torch.empty(256 << 20, device=dev, dtype=torch.uint8)
     res = {}
-    for name, kw, tc in [("fi", {}, False), ("fi_tc", {}, True), ("fi_det_fixed2048", {"fixed_split_size": 2048}, True),
-                         ("fi_nosplit", {"disable_split_kv": True}, False)]:
+    for name, kw, tc in [("fi", {}, False), ("fi_tc", {}, True), ("fi_det_fixed2048", {"fixed_split_size": 2048}, True)]:
         def run():
             w = flashinfer.BatchDecodeWithPagedKVCacheWrapper(ws, "NHD", use_tensor_cores=tc)
             w.plan(indptr.cpu(), indices, last.cpu(), hq, hkv, D, PAGE, q_data_type=torch.bfloat16, **kw)

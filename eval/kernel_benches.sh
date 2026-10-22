@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Kernel-level benchmarks with stored outputs (results/kernels/).
 set -uo pipefail
-source /uniparser/users/luhaocheng/pi_attn/env.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../env.sh"
 out=$ROOT/results/kernels
 mkdir -p $out
 cd $ROOT/kernels

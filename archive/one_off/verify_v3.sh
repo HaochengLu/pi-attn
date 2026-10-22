@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Verification chain after the online-in-group attention rewrite.
 set -uo pipefail
-source /uniparser/users/luhaocheng/pi_attn/env.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../env.sh"
 cd $ROOT/llm_infer_rust && VENV_DIR=$VIRTUAL_ENV scripts/run-rust-tests.sh cuda 2>&1 | grep -E "test result|FAILED|failed" | tail -8
 out=$ROOT/results/detcheck; mkdir -p $out
 port=18097

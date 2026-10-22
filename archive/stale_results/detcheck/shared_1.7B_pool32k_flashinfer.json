@@ -1,0 +1,43 @@
+{
+ "url": "http://127.0.0.1:18099",
+ "tokens": 256,
+ "prompts": 16,
+ "lengths": [
+  24,
+  300,
+  1100,
+  2600
+ ],
+ "shared": {
+  "requests": 32,
+  "prefix_tokens": 2616,
+  "mismatched": 10,
+  "first_divergence_tokens": [
+   0,
+   3,
+   4,
+   10,
+   23,
+   28,
+   30,
+   173,
+   188,
+   239
+  ]
+ },
+ "sample_path": {
+  "requests": 24,
+  "mismatched": 8,
+  "first_divergence_tokens": [
+   2,
+   64,
+   130,
+   92,
+   4,
+   105,
+   189,
+   149
+  ]
+ },
+ "seconds": 114.0
+}

@@ -77,3 +77,32 @@ streams a different copy from a >= 600 MB pool).
     M=512 from 1.10x to 0.99x (435 -> 393 us) and became engine id 50. Unchanged: 1.7B
     down M=128 (1.09x) and 8B down M=128 (1.05x). An 8-warp 64x128x32 stream-K tile gains
     up to 5% only where the engine is already below cuBLAS and was not added.
+
+## Second-round probes (after the full regeneration of 2026-10-22)
+
+11. `decode_ring/`: decode attention with a K/V prefetch ring of 2, 3 or 4 (K, V) tile
+    pairs loaded ahead (`decode_kernel<kStages>`; the engine's kernel holds one K and one
+    V tile). Only the copy schedule changes, never the arithmetic: every ring depth is
+    bitwise identical to the engine on all 66 configurations. None is faster: up to 1K keys
+    at batch 1-4 every depth is within noise of the engine, and wherever the grid is larger
+    (batch >= 16, or 4K+ keys at batch 4 and 16K at batch 1) deeper rings lower occupancy
+    and lose, up to 1.9x hot (hq16 b128 kv64: 17.3 -> 32.3 us) and 1.26x cold. Batch-1
+    decode attention is bandwidth- or latency-bound, not copy-bound: at 16K keys a layer
+    reads 67 MB in 75.6 us cold (0.89 TB/s). Not adopted. `out.txt`.
+12. `streamk_ring/`: stream-K for M <= 8 (ids 40..43) with one continuous cp.async stream
+    through all of a worker's pieces (handed-off prefix, whole tiles, continuation) instead
+    of filling and draining the ring per piece, and the A rows >= M zeroed once instead of
+    zero-filled per stage (`gemm_inv.cuh`, same arithmetic; test_gemm.py passed). Slower:
+    8B down M=1 113.5 -> 117.6 us and M=8 117.3 -> 120.7 us (k40); 1.7B down and 4B o lose
+    their stream-K winners. Not adopted. `gemm_burst.py 1 8 16` in one session: `out_engine.txt`
+    (engine kernels), `out_ring.txt` (this variant).
+13. `tuner_edges/`: the tuner times kernels at one M per bucket and runs that choice for
+    every M in the bucket. `gemm_grid.py` times every candidate at 42 M values in 17..2048
+    on the 16 projection shapes (`grid.json`) and scores bucket policies (`out.txt`). With
+    power-of-two buckets, the M that prefill graphs are captured at (192, 320, 384, 448,
+    640, ...) ran a tile tuned for the next power of two: 2.7% slower than the best tile on
+    average and up to 55% (0.6B down at M=192: k15 23.5 us vs k49 15.1 us). Choosing per
+    bucket the tile with the best worst case over its two ends halves the worst loss but
+    keeps a 2.2% mean. The engine now uses the graph capture sizes as buckets, so every
+    graph runs the tile timed at its own M (loss 0 at those sizes; 1.3% mean over all grid
+    M, which only eager forwards reach, against 3.2% before).

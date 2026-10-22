@@ -4,11 +4,12 @@
 # high-concurrency decode, same-GPU baselines (our engine only; SGLang/vLLM rows are unchanged), GSM8K and
 # fp32 agreement. Each stage logs to results/run_all/<stage>.log.
 set -uo pipefail
-source /uniparser/users/luhaocheng/pi_attn/env.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../env.sh"
 log=$ROOT/results/run_all; mkdir -p $log
 stage() { echo "[$(date +%H:%M)] $1"; }
 stage build
-(cd $ROOT/llm_infer_rust && FLASHINFER_CUDA_ARCH=89 cargo build --release) > $log/build.log 2>&1 || { echo build failed; exit 1; }
+arch=${FLASHINFER_CUDA_ARCH:-$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -1 | tr -d .)}  # 89 = 4090, 80 = A800
+(cd $ROOT/llm_infer_rust && FLASHINFER_CUDA_ARCH=$arch cargo build --release) > $log/build.log 2>&1 || { echo build failed; exit 1; }
 stage kernel-tests
 (cd $ROOT/kernels && for t in test_invariance test_directed test_matrix test_gemm; do python $t.py; echo "$t exit=$?"; done) > $log/kernel_tests.log 2>&1
 grep "exit=" $log/kernel_tests.log
@@ -31,6 +32,10 @@ done > $log/detcheck.log 2>&1
 stage e2e-matrix
 bash $ROOT/eval/e2e_matrix.sh > $log/e2e_matrix.log 2>&1
 python $ROOT/eval/summarize_matrix.py $ROOT/results/e2e_matrix > $ROOT/results/e2e_matrix/SUMMARY.md 2>&1
+# Startup tuning time and the tile chosen per M bucket (server logs are not committed).
+for f in $ROOT/results/e2e_matrix/*.deterministic.L1.server.log; do
+  echo "== $(basename $f .deterministic.L1.server.log)"; grep -h 'PI GEMM tile' $f | sed 's/\x1b\[[0-9;]*m//g; s/^.*INFO | //'
+done > $ROOT/results/e2e_matrix/tuning.txt
 stage e2e-extended
 bash $ROOT/eval/e2e_extended.sh 3 > $log/e2e_extended.log 2>&1
 python $ROOT/eval/summarize_extended.py $ROOT/results/e2e_extended > $ROOT/results/e2e_extended/SUMMARY.md 2>&1

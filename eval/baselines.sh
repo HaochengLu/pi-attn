@@ -4,7 +4,7 @@
 # the greedy loadgen workloads of eval/e2e_matrix.sh on one model.
 # Usage: eval/baselines.sh [model] [engines...]
 set -uo pipefail
-source /uniparser/users/luhaocheng/pi_attn/env.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../env.sh"
 model=${1:-Qwen3-1.7B}; shift || true
 engines=${*:-rust rust-det sglang sglang-det sglang-det-triton vllm vllm-det}
 port=18098

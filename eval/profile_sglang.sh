@@ -3,7 +3,7 @@
 # generation (10 requests x 64 prompt / 256 output tokens, CUDA-graph nodes traced)
 # with and without --enable-deterministic-inference; kernel time by category.
 set -uo pipefail
-source /uniparser/users/luhaocheng/pi_attn/env.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../env.sh"
 out=$ROOT/results/sglang_profile
 mkdir -p $out
 port=18094

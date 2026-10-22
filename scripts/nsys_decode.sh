@@ -3,7 +3,7 @@
 # CUDA-graph node tracing; prints the per-kernel time summary.
 # Usage: scripts/nsys_decode.sh <name> [server args...]
 set -euo pipefail
-source /uniparser/users/luhaocheng/pi_attn/env.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../env.sh"
 name=$1; shift
 out=$ROOT/results/nsys/$name
 mkdir -p $ROOT/results/nsys
