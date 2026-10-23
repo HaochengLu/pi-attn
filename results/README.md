@@ -16,6 +16,7 @@ the engine commit named in the paper.
 | §7.3 throughput matrix | `e2e_matrix/SUMMARY.md`, one JSON per launch | `eval/e2e_matrix.sh`, `eval/summarize_matrix.py` |
 | §7.3 long context and shared prefixes | `e2e_extended/SUMMARY.md` | `eval/e2e_extended.sh`, `eval/summarize_extended.py` |
 | §7.3 high concurrency | `e2e_highconc/SUMMARY.md` | `eval/e2e_highconc.sh`, `eval/summarize_extended.py` |
+| §7.3 components (PI attention vs row-invariant GEMM) | `e2e_ablation/SUMMARY.md`, one JSON per launch | `eval/e2e_ablation.sh`, `eval/summarize_ablation.py` (engine 870c171) |
 | §7.3 GEMM tuning time at startup | `e2e_matrix/tuning.txt` | `run_all.sh` (the engine's `PI GEMM tiles tuned` and `PI GEMM tile choice` log lines) |
 
 Server logs (`*.server.log`) are kept on disk but not committed (`.gitignore`).

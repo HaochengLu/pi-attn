@@ -28,9 +28,12 @@ long-prefix extend shape. Our Rust serving engine with `--deterministic` is bitw
 across concurrency, cache state, shared-prefix batches, decode vs re-prefill, seeded
 sampling, chunk sizes, CUDA graphs, page sizes, batch limits and restarts. On Qwen3
 0.6B–8B its end-to-end throughput is −1.8% to +8.5% relative to the non-deterministic
-engine, and 1.9–3.5× that of SGLang's deterministic mode. It is slower only at batch 1 on
-1.7B and 8B (by 0.6–1.8%), where its weight-streaming projections run 1–3% behind cuBLAS's
-GEMV on long rows, and at one 0.6B point with 128 concurrent requests (1.6%). GSM8K
+engine, and 1.9–3.5× that of SGLang's deterministic mode. Its decode throughput is lower
+only at batch 1 on 1.7B and 8B (by 0.6–1.8%), where its weight-streaming projections run
+2–4% behind cuBLAS's GEMV on the widest and longest weights, and at one 0.6B point with
+128 concurrent requests (1.6%), which a component ablation places in the attention
+backend's decode step but not in the decode kernel; on prefill-bound requests it is within 0.3%, with time
+to first token up to 1.6% higher on the longest 32-head prompts. GSM8K
 accuracy is unchanged, and every generation is identical between client concurrency 1
 and 16.
 
@@ -233,8 +236,10 @@ that two boards of the same model agree follows from A1–A3 and is not tested.
 - **(A2)** `ex2.approx` is a deterministic function of its input.
 - **(A3)** The compiled binary does not reassociate the arithmetic we spell out with
   round-to-nearest intrinsics.
+- **(A4)** An MMA whose accumulator input is not −0 does not return −0 (as IEEE
+  round-to-nearest addition would not; the PTX specification does not state it).
 
-A1–A2 hold per GPU model, so claims are scoped to the same GPU model and build.
+A1, A2 and A4 hold per GPU model, so claims are scoped to the same GPU model and build.
 
 **Attention.** Keys are cut at absolute positions into tiles of T = 32 keys and fold groups
 of 16 tiles (512 keys). For query row i at position p, the canonical program runs the
@@ -268,7 +273,7 @@ Two details make the program well defined on every path.
 1. **Masked steps are no-ops.** A prefill row may meet a tile entirely after its
    position, which decode never processes. For that step, m′ = m and σ = 2^0 = 1, so d is
    unchanged. All P are 0, and o + 0 = o unless o = −0. Rescaling by fma(o, σ, +0) maps
-   −0 to +0, and an MMA result cannot be −0 when its accumulator is not −0, so o never
+   −0 to +0, and an MMA result is not −0 when its accumulator is not −0 (A4), so o never
    holds −0. Fully masked steps therefore leave the state bit-identical, as if skipped.
 2. **The first fold is exact.** Folding into the identity returns the partial exactly:
    α = 0, β = 1 and fma(0, 0, x) = x. So it does not matter whether a kernel holds the
@@ -353,8 +358,8 @@ are not free to change any element's sequence.
   rows per warp, both states fit in registers.
 
 The register choice is deliberate. We first used 32 rows per warp, FlashInfer's
-choice, with the cross-group total kept in an fp32 scratch in L2. That version was
-8–10% slower on long prompts, because the total's read-modify-write every 512 keys costs
+choice, with the cross-group total kept in an fp32 scratch in L2. In an earlier kernel
+version that variant measured 8–10% slower on long prompts (ceiling probe 5), because the total's read-modify-write every 512 keys costs
 more L2 bandwidth than the halved fragment reuse of 16-row warps.
 
 For long prefixes with few query rows, a wave-model planner splits a row tile's groups
@@ -382,13 +387,13 @@ scheduling accident, but the folded values and their order are not.
 
 No CTA-wide barrier may follow the arrival. Our first version parked the whole CTA while
 thread 0's atomic round-tripped through L2, and that doubled kernel time when L2 was busy
-(shared-prefix batch 32: 248 µs instead of 129 µs). The workspace is batch × groups
+(shared-prefix batch 32: 248 µs instead of 129 µs; `archive/decode_fuse_probe/out.txt`). The workspace is batch × groups
 rows, and the grid depends only on the batch and the page-table width, so CUDA-graph
 replay needs no host planning.
 
 An earlier design computed independent 64-key chunk partials in any number of splits, a
 FlashDecoding-style free split. It had three costs:
-- it wrote 6–13% extra traffic;
+- it wrote a partial per 64-key chunk instead of per 512-key group;
 - its merge serialised hundreds of folds at long context;
 - under prefix sharing it overflowed a pool-sized workspace and fell back to a
   sequential path.
@@ -424,7 +429,7 @@ per (SM, warp). A tile cut between workers w and w+1 stays one chain: w runs the
 steps from zero, stores the fp32 accumulator and raises a flag, and w+1 continues the same
 MMA chain from it. The result is bit-identical to the uncut chain (Lemma 2).
 `test_gemm.py` checks this, as for every kernel, on every output row of every shape for
-M from 1 to 4096.
+14 values of M from 1 to 4096 (including 7, 9, 17, 33 and 65, which straddle tile edges).
 
 Two choices make the waits short and rule out deadlock. Each worker runs its handed-off
 prefix first and its continuation last. And a worker only ever waits on the next-lower
@@ -502,6 +507,10 @@ With lazy tuning, the first mixed batches of each new size stalled inside measur
 requests, and time to first token at concurrency 32 rose by 17%.
 A tuning failure falls back to a heuristic choice, which is numerically identical.
 
+For ablation, `--attention-backend pi` runs PI attention with cuBLAS projections, and
+`--row-invariant-gemm` runs the row-invariant GEMM and the deterministic sampler with
+FlashInfer attention. Neither is deterministic on its own.
+
 ## 7 Evaluation
 
 **Setup.** One RTX 4090 D (sm_89, 114 SMs, 72 MB L2, driver 535, CUDA 12.6), Qwen3
@@ -514,7 +523,10 @@ prefix caching, chunked prefill (2048 tokens),
 mixed batches, CUDA graphs and overlap enabled. Baselines on the same GPU: SGLang
 0.5.5.post3 (`--enable-deterministic-inference`) and vLLM 0.11.2
 (`VLLM_BATCH_INVARIANT=1`). Exact versions are in VERSIONS.txt. Every number in this
-section comes from one regeneration run (`eval/run_all.sh`, engine commit fdc184b).
+section comes from one regeneration run (`eval/run_all.sh`, engine commit fdc184b), except
+the SGLang and vLLM rows, which run in their own environments (`results/README.md`), the
+component ablation in Section 7.3 (`eval/e2e_ablation.sh`, engine commit 870c171, which
+adds only the ablation flag), and results marked as probes, whose scripts and outputs are in `archive/ceiling_probes/`.
 
 ### 7.1 Determinism
 
@@ -595,10 +607,38 @@ within 1.4 points of greedy everywhere):
 | 4B | +0.1% | +5.9% | +6.1% | +3.2% | +3.0% |
 | 8B | −0.6% | +1.5% | +3.3% | +0.6% | +0.9% |
 
-On batched workloads PI is faster than the non-deterministic engine it replaces,
-consistent with its decode attention being faster than FlashInfer's (Kernels, below).
+On batched workloads PI is faster than the non-deterministic engine it replaces.
 At batch 1 it ranges from −1.4% (1.7B) to +2.0% (0.6B) greedy and from −1.7% to +1.2%
 sampled; Section 7.4 breaks the batch-1 step down.
+
+**Components.** Each half of the mode run alone (`eval/e2e_ablation.sh`; greedy, 32
+requests per point, or 256 at c128; four modes interleaved over 3 launches, median;
+`results/e2e_ablation/SUMMARY.md`). Output throughput relative to the original engine:
+
+| model | workload | PI attention, cuBLAS GEMM | row-invariant GEMM, FlashInfer | both (`--deterministic`) |
+|---|---|---|---|---|
+| 0.6B | 64/256 c1 | +2.0% | −0.1% | +1.9% |
+| 0.6B | 512/256 c32 | +1.5% | +2.4% | +3.3% |
+| 0.6B | 512/256 c128 | −1.3% | +0.1% | −1.4% |
+| 1.7B | 64/256 c1 | +0.9% | −2.3% | −1.0% |
+| 1.7B | 512/256 c32 | +0.8% | +4.3% | +4.9% |
+| 8B | 64/256 c1 | +1.1% | −1.9% | −0.6% |
+| 8B | 512/256 c32 | +0.6% | +2.6% | +3.2% |
+
+The three launches of each cell are within 0.5% of each other at batch 1 and within
+0.8% elsewhere, except GEMM-only 1.7B at c32 (1.7%). The last column is a separate
+launch from the tables above and differs from them by up to 1.0 point (0.6B c32).
+
+PI attention alone is faster at batch 1 and at c32 on every model. The row-invariant
+GEMM is what costs at batch 1 (−1.9% to −2.3% on 1.7B and 8B), and it contributes most
+of the batched gain (+2.4% to +4.3% at c32), consistent with the tuned kernels' lead
+over cuBLAS at M = 8–64 (Kernels, below). The two effects add to within 0.6 points of
+the combined mode. The 0.6B c128 loss comes from attention, and from decode: time per
+output token rises from 13.97 to 14.16 ms (+1.4%) and TTFT by 0.8%. The decode
+kernel does not explain it. At that run's shapes (batch 128, 512–768 keys, uniform or
+mixed lengths, contiguous or shuffled pages) PI decode takes 0.94–0.99× the time of
+FlashInfer's, and sizing the grid for the engine's 8192-key page table, as its decode
+graph does, adds under 1 µs (probe 20). We have not found the cause.
 
 Long-context and shared-prefix workloads (`eval/e2e_extended.sh`, 3 interleaved launches
 per mode, median):
@@ -643,17 +683,17 @@ corresponding extend shape is faster in isolation (0.91×); we have not attribut
 | 4B | 512 / 256 / c64 | +3.7% | −2.0% |
 | 4B | 128 / 512 / c64 | +6.7% | −1.7% |
 
-0.6B at 512 / 256 / c128 is the one batched point where PI is slower (−1.6%). Its decode
-runs the projections at M = 128. There 0.6B's two segmented projections are PI's largest
-kernel gaps (Kernels, below), but its qkv projection is 0.76× cuBLAS, so a layer's four
-projections together take 1.4 µs less with PI (`gemm_burst.txt`). A traced run does not
-reproduce the same schedule in both modes (probe 19), so we have not attributed the
-difference.
+0.6B at 512 / 256 / c128 is the one batched point where PI is slower (−1.6%). The
+component ablation above places the loss in the attention backend, not in the
+projections, and in decode rather than prefill. Its cause is not identified (probes 19
+and 20).
 
 § 16384 + 256 exceeds the 8B server's context limit, so each request produces one token
 and only TTFT is meaningful.
 
-**Same-GPU baselines,** greedy output tok/s on Qwen3-1.7B (`eval/baselines.sh`):
+**Same-GPU baselines,** greedy output tok/s on Qwen3-1.7B (`eval/baselines.sh`; its
+original and PI rows are a separate launch from the matrix above, which explains their
+differences of up to 0.8% from it):
 
 | engine | 64/256 c1 | 512/256 c8 | 512/256 c32 | 2048/256 c16 | 4096/128 c4 |
 |---|---|---|---|---|---|
@@ -685,6 +725,11 @@ without determinism on four of the five workloads, and faster than vLLM on all f
   - M = 128–512: 0.76–1.23×;
   - M = 1024–2048: 0.90–1.01×.
 
+  Timed one launch at a time after an L2 flush (`gemm_cold.txt`), some M = 1 kernels
+  rank worse (4B and 8B gate-up 1.16×, 8B down 1.20× cuBLAS): a lone eager launch adds a
+  ramp that back-to-back launches in a graph hide. The decode trace agrees with the
+  burst numbers (8B down: 110.8 µs per launch traced, 110.4 µs in the burst; Section 7.4).
+
   Every gap above 1.05× is at M = 128–256: 0.6B's two segmented projections (o 1.19× at
   M = 128 and 256, down 1.14× and 1.23×) and 1.7B down at M = 128 (1.13×). cuBLAS runs
   split-K there. Neither smaller segment-parallel tiles nor four segments instead of two
@@ -693,8 +738,9 @@ without determinism on four of the five workloads, and faster than vLLM on all f
 ### 7.4 Where the batch-1 cost goes
 
 Batch-1 decode streams every weight once per step. On this GPU a plain `ldg.128` stream of
-a projection's weights reaches 946–994 GB/s and cuBLAS's GEMV 890–986 GB/s, so the
-projections leave little room either way. A node-level trace of greedy decode at batch 1
+a 1.7B or 8B projection's weights reaches 932–992 GB/s (`archive/ceiling_probes/out.txt`),
+and cuBLAS's GEMV on the same projections 862–972 GB/s in a CUDA graph
+(`gemm_burst.txt`), so the projections leave little room either way. A node-level trace of greedy decode at batch 1
 (`scripts/nsys_decode.sh`, `scripts/nsys_compare.py`, `results/nsys/b1_compare.txt`)
 splits each step by kernel category. Tracing every graph node lengthens the gaps between
 kernels, so these numbers attribute the difference; the step times are those of
@@ -746,7 +792,9 @@ unattributed; it is 0.2–0.5% of a traced step.
   ≤ 16 only; FP8 is not covered.
 - **Residual gaps.** One long-prefix extend shape is 1.21× FlashInfer, and 0.6B's
   segmented projections are 1.14–1.23× cuBLAS at M = 128–256 (Section 7.3). Batch-1 decode
-  of 1.7B pays 1.4–1.8% and of 8B 0.6–0.7%, and 0.6B at concurrency 128 1.6%.
+  of 1.7B pays 1.4–1.8% and of 8B 0.6–0.7%, which the ablation assigns to the
+  row-invariant GEMM. 0.6B at concurrency 128 pays 1.6%, which it assigns to the attention
+  backend's decode step without a kernel-level cause.
 - **Single stream.** The GEMM segment, stream-K and segment-parallel workspaces and
   counters and the decode fold counters are static per-device state that every launch
   leaves zeroed. Launches that use

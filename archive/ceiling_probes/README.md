@@ -166,3 +166,13 @@ streams a different copy from a >= 600 MB pool).
     after start-up. Under tracing the two modes do not run the same schedule (FlashInfer
     mode spent 371 ms in M = 1 GEMV, and the GPU spans differ by 33%), so the totals are not
     comparable and the point stays unattributed. `out.txt`.
+20. `c128_decode/`: the component ablation (`results/e2e_ablation/`) puts probe 19's loss
+    in attention: PI attention with cuBLAS GEMM is -1.3% at 0.6B 512/256/c128, the
+    row-invariant GEMM with FlashInfer +0.1%, and both -1.4%; it is decode-side (TPOT
+    13.97 -> 14.16 ms median, about 190 us per step; TTFT +0.8%).
+    `probe.py` times the decode kernel at that run's shapes (batch 128, 16 query and 8 KV
+    heads): PI is 0.94-0.99x the faster FlashInfer decode at 512-1024 keys; sizing the
+    grid for 8192 keys, as the engine's decode graph does from the page-table stride, adds
+    under 1 us; mixed lengths 512-766 with contiguous or shuffled pages give 0.97x. None
+    of these explains the loss, which stays unattributed inside the PI backend's decode
+    step. `out.txt`.

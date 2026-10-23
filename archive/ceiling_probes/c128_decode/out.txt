@@ -1,0 +1,16 @@
+b=128 hq=16 kv= 512: fi=306.0 fi_tc=308.8 fi_det_fixed2048=306.3 pi=287.6 | pi/best_fi=0.94
+b=128 hq=16 kv= 513: fi=303.4 fi_tc=308.5 fi_det_fixed2048=309.1 pi=297.8 | pi/best_fi=0.98
+b=128 hq=16 kv= 576: fi=337.6 fi_tc=341.4 fi_det_fixed2048=344.0 pi=333.1 | pi/best_fi=0.99
+b=128 hq=16 kv= 640: fi=372.6 fi_tc=378.1 fi_det_fixed2048=378.4 pi=367.5 | pi/best_fi=0.99
+b=128 hq=16 kv= 704: fi=407.5 fi_tc=416.2 fi_det_fixed2048=417.1 pi=402.2 | pi/best_fi=0.99
+b=128 hq=16 kv= 768: fi=442.2 fi_tc=446.7 fi_det_fixed2048=446.1 pi=438.7 | pi/best_fi=0.99
+b=128 hq=16 kv=1024: fi=582.1 fi_tc=585.2 fi_det_fixed2048=584.1 pi=574.1 | pi/best_fi=0.99
+grid sized for 8192 keys, as in the engine's decode graph:
+b=128 kv=640: grid for own length 367.5 us, grid for 8192 368.4 us
+b=128 kv=768: grid for own length 437.2 us, grid for 8192 438.0 us
+b= 64 kv=640: grid for own length 189.3 us, grid for 8192 189.8 us
+b= 32 kv=640: grid for own length 95.5 us, grid for 8192 86.3 us
+b=  1 kv=320: grid for own length 15.6 us, grid for 8192 15.5 us
+mixed lengths 512-767, pages contiguous or shuffled:
+contiguous: fi=375.6 fi_tc=378.4 pi=365.7 | pi/best_fi=0.97
+shuffled  : fi=376.3 fi_tc=379.9 pi=366.3 | pi/best_fi=0.97
