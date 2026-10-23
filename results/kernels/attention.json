@@ -7,11 +7,10 @@
    "hkv": 8,
    "batch": 1,
    "kv_len": 1024,
-   "fi": 30.6,
-   "fi_tc": 33.3,
+   "fi": 30.2,
+   "fi_tc": 31.7,
    "fi_det_fixed2048": 35.9,
-   "fi_nosplit": 29.2,
-   "pi": 20.7
+   "pi": 20.6
   },
   {
    "kind": "decode",
@@ -19,11 +18,10 @@
    "hkv": 8,
    "batch": 1,
    "kv_len": 8192,
-   "fi": 32.1,
-   "fi_tc": 37.7,
-   "fi_det_fixed2048": 124.4,
-   "fi_nosplit": 32.1,
-   "pi": 25.7
+   "fi": 31.6,
+   "fi_tc": 36.8,
+   "fi_det_fixed2048": 123.6,
+   "pi": 26.1
   },
   {
    "kind": "decode",
@@ -31,11 +29,10 @@
    "hkv": 8,
    "batch": 1,
    "kv_len": 32768,
-   "fi": 170.1,
-   "fi_tc": 171.1,
-   "fi_det_fixed2048": 513.2,
-   "fi_nosplit": 170.6,
-   "pi": 155.5
+   "fi": 169.2,
+   "fi_tc": 170.7,
+   "fi_det_fixed2048": 514.2,
+   "pi": 154.5
   },
   {
    "kind": "decode",
@@ -43,10 +40,9 @@
    "hkv": 8,
    "batch": 8,
    "kv_len": 2048,
-   "fi": 41.3,
-   "fi_tc": 44.9,
-   "fi_det_fixed2048": 49.4,
-   "fi_nosplit": 41.5,
+   "fi": 41.9,
+   "fi_tc": 45.3,
+   "fi_det_fixed2048": 49.3,
    "pi": 29.3
   },
   {
@@ -55,11 +51,10 @@
    "hkv": 8,
    "batch": 8,
    "kv_len": 16384,
-   "fi": 585.0,
-   "fi_tc": 593.9,
-   "fi_det_fixed2048": 589.7,
-   "fi_nosplit": 583.6,
-   "pi": 575.1
+   "fi": 583.0,
+   "fi_tc": 587.3,
+   "fi_det_fixed2048": 589.4,
+   "pi": 573.3
   },
   {
    "kind": "decode",
@@ -67,11 +62,10 @@
    "hkv": 8,
    "batch": 32,
    "kv_len": 1024,
-   "fi": 167.5,
-   "fi_tc": 171.3,
-   "fi_det_fixed2048": 170.9,
-   "fi_nosplit": 168.7,
-   "pi": 151.2
+   "fi": 168.4,
+   "fi_tc": 170.0,
+   "fi_det_fixed2048": 170.0,
+   "pi": 150.8
   },
   {
    "kind": "decode",
@@ -79,11 +73,10 @@
    "hkv": 8,
    "batch": 32,
    "kv_len": 8192,
-   "fi": 1132.3,
-   "fi_tc": 1168.6,
-   "fi_det_fixed2048": 1168.3,
-   "fi_nosplit": 1131.8,
-   "pi": 1131.2
+   "fi": 1133.3,
+   "fi_tc": 1166.5,
+   "fi_det_fixed2048": 1167.7,
+   "pi": 1130.3
   },
   {
    "kind": "decode",
@@ -91,11 +84,10 @@
    "hkv": 8,
    "batch": 128,
    "kv_len": 1024,
-   "fi": 580.5,
-   "fi_tc": 585.2,
-   "fi_det_fixed2048": 585.3,
-   "fi_nosplit": 580.1,
-   "pi": 572.3
+   "fi": 580.9,
+   "fi_tc": 584.6,
+   "fi_det_fixed2048": 583.7,
+   "pi": 571.8
   },
   {
    "kind": "decode",
@@ -103,11 +95,10 @@
    "hkv": 8,
    "batch": 128,
    "kv_len": 4096,
-   "fi": 2223.8,
-   "fi_tc": 2237.1,
-   "fi_det_fixed2048": 2236.3,
-   "fi_nosplit": 2221.2,
-   "pi": 2253.9
+   "fi": 2220.5,
+   "fi_tc": 2228.5,
+   "fi_det_fixed2048": 2228.1,
+   "pi": 2253.2
   },
   {
    "kind": "decode_shared",
@@ -115,11 +106,10 @@
    "hkv": 8,
    "batch": 8,
    "kv_len": 4096,
-   "fi": 56.9,
-   "fi_tc": 61.7,
-   "fi_det_fixed2048": 74.1,
-   "fi_nosplit": 56.4,
-   "pi": 42.0
+   "fi": 56.1,
+   "fi_tc": 61.3,
+   "fi_det_fixed2048": 73.4,
+   "pi": 41.7
   },
   {
    "kind": "decode_shared",
@@ -127,11 +117,10 @@
    "hkv": 8,
    "batch": 32,
    "kv_len": 4096,
-   "fi": 154.8,
-   "fi_tc": 184.6,
-   "fi_det_fixed2048": 183.9,
-   "fi_nosplit": 154.0,
-   "pi": 131.6
+   "fi": 155.3,
+   "fi_tc": 204.9,
+   "fi_det_fixed2048": 202.4,
+   "pi": 132.0
   },
   {
    "kind": "prefill",
@@ -140,8 +129,8 @@
    "batch": 1,
    "q_len": 512,
    "prefix": 0,
-   "fi": 75.7,
-   "fi_det_fixed2048": 60.1,
+   "fi": 75.2,
+   "fi_det_fixed2048": 60.0,
    "pi": 42.1
   },
   {
@@ -151,9 +140,9 @@
    "batch": 1,
    "q_len": 2048,
    "prefix": 0,
-   "fi": 258.3,
-   "fi_det_fixed2048": 259.6,
-   "pi": 205.6
+   "fi": 261.1,
+   "fi_det_fixed2048": 257.9,
+   "pi": 206.4
   },
   {
    "kind": "prefill",
@@ -162,9 +151,9 @@
    "batch": 1,
    "q_len": 8192,
    "prefix": 0,
-   "fi": 2490.5,
-   "fi_det_fixed2048": 2503.6,
-   "pi": 2509.3
+   "fi": 2482.6,
+   "fi_det_fixed2048": 2509.7,
+   "pi": 2518.9
   },
   {
    "kind": "prefill",
@@ -173,9 +162,9 @@
    "batch": 8,
    "q_len": 1024,
    "prefix": 0,
-   "fi": 369.2,
-   "fi_det_fixed2048": 368.8,
-   "pi": 357.9
+   "fi": 373.6,
+   "fi_det_fixed2048": 370.7,
+   "pi": 359.1
   },
   {
    "kind": "prefill",
@@ -184,9 +173,9 @@
    "batch": 32,
    "q_len": 512,
    "prefix": 0,
-   "fi": 385.0,
-   "fi_det_fixed2048": 386.8,
-   "pi": 378.0
+   "fi": 385.7,
+   "fi_det_fixed2048": 386.1,
+   "pi": 380.2
   },
   {
    "kind": "prefill",
@@ -195,9 +184,9 @@
    "batch": 1,
    "q_len": 512,
    "prefix": 8192,
-   "fi": 385.2,
-   "fi_det_fixed2048": 556.8,
-   "pi": 389.7
+   "fi": 384.6,
+   "fi_det_fixed2048": 558.8,
+   "pi": 390.8
   },
   {
    "kind": "prefill",
@@ -206,8 +195,8 @@
    "batch": 1,
    "q_len": 128,
    "prefix": 4096,
-   "fi": 75.7,
-   "fi_det_fixed2048": 288.2,
+   "fi": 75.9,
+   "fi_det_fixed2048": 289.6,
    "pi": 70.5
   },
   {
@@ -217,9 +206,9 @@
    "batch": 1,
    "q_len": 128,
    "prefix": 16384,
-   "fi": 178.0,
-   "fi_det_fixed2048": 1020.6,
-   "pi": 187.2
+   "fi": 178.5,
+   "fi_det_fixed2048": 1024.3,
+   "pi": 190.0
   },
   {
    "kind": "prefill",
@@ -228,9 +217,9 @@
    "batch": 4,
    "q_len": 2048,
    "prefix": 2048,
-   "fi": 1735.5,
-   "fi_det_fixed2048": 1736.5,
-   "pi": 1825.6
+   "fi": 1729.3,
+   "fi_det_fixed2048": 1738.7,
+   "pi": 1829.1
   },
   {
    "kind": "decode",
@@ -238,11 +227,10 @@
    "hkv": 8,
    "batch": 1,
    "kv_len": 1024,
-   "fi": 28.9,
-   "fi_tc": 31.9,
-   "fi_det_fixed2048": 35.4,
-   "fi_nosplit": 28.7,
-   "pi": 20.5
+   "fi": 29.8,
+   "fi_tc": 32.4,
+   "fi_det_fixed2048": 35.6,
+   "pi": 20.4
   },
   {
    "kind": "decode",
@@ -250,11 +238,10 @@
    "hkv": 8,
    "batch": 1,
    "kv_len": 8192,
-   "fi": 35.7,
-   "fi_tc": 36.8,
-   "fi_det_fixed2048": 121.3,
-   "fi_nosplit": 35.3,
-   "pi": 25.7
+   "fi": 35.6,
+   "fi_tc": 36.4,
+   "fi_det_fixed2048": 122.0,
+   "pi": 25.8
   },
   {
    "kind": "decode",
@@ -262,11 +249,10 @@
    "hkv": 8,
    "batch": 1,
    "kv_len": 32768,
-   "fi": 172.1,
+   "fi": 172.3,
    "fi_tc": 170.9,
-   "fi_det_fixed2048": 502.0,
-   "fi_nosplit": 172.1,
-   "pi": 159.1
+   "fi_det_fixed2048": 504.0,
+   "pi": 156.9
   },
   {
    "kind": "decode",
@@ -274,11 +260,10 @@
    "hkv": 8,
    "batch": 8,
    "kv_len": 2048,
-   "fi": 46.5,
-   "fi_tc": 45.5,
-   "fi_det_fixed2048": 48.8,
-   "fi_nosplit": 46.9,
-   "pi": 28.9
+   "fi": 47.0,
+   "fi_tc": 44.7,
+   "fi_det_fixed2048": 49.1,
+   "pi": 28.7
   },
   {
    "kind": "decode",
@@ -286,11 +271,10 @@
    "hkv": 8,
    "batch": 8,
    "kv_len": 16384,
-   "fi": 593.6,
-   "fi_tc": 590.7,
-   "fi_det_fixed2048": 590.4,
-   "fi_nosplit": 594.2,
-   "pi": 581.9
+   "fi": 593.3,
+   "fi_tc": 590.1,
+   "fi_det_fixed2048": 588.6,
+   "pi": 581.4
   },
   {
    "kind": "decode",
@@ -298,11 +282,10 @@
    "hkv": 8,
    "batch": 32,
    "kv_len": 1024,
-   "fi": 177.5,
-   "fi_tc": 173.8,
-   "fi_det_fixed2048": 171.9,
-   "fi_nosplit": 176.0,
-   "pi": 153.0
+   "fi": 170.3,
+   "fi_tc": 170.0,
+   "fi_det_fixed2048": 169.8,
+   "pi": 151.2
   },
   {
    "kind": "decode",
@@ -310,11 +293,10 @@
    "hkv": 8,
    "batch": 32,
    "kv_len": 8192,
-   "fi": 1146.1,
-   "fi_tc": 1169.7,
-   "fi_det_fixed2048": 1168.8,
-   "fi_nosplit": 1146.6,
-   "pi": 1144.4
+   "fi": 1147.5,
+   "fi_tc": 1168.2,
+   "fi_det_fixed2048": 1167.9,
+   "pi": 1143.7
   },
   {
    "kind": "decode",
@@ -322,11 +304,10 @@
    "hkv": 8,
    "batch": 128,
    "kv_len": 1024,
-   "fi": 600.0,
-   "fi_tc": 588.7,
+   "fi": 597.0,
+   "fi_tc": 588.5,
    "fi_det_fixed2048": 588.5,
-   "fi_nosplit": 599.9,
-   "pi": 579.7
+   "pi": 580.1
   },
   {
    "kind": "decode",
@@ -334,11 +315,10 @@
    "hkv": 8,
    "batch": 128,
    "kv_len": 4096,
-   "fi": 2309.7,
-   "fi_tc": 2235.4,
-   "fi_det_fixed2048": 2234.8,
-   "fi_nosplit": 2309.3,
-   "pi": 2279.8
+   "fi": 2270.5,
+   "fi_tc": 2237.2,
+   "fi_det_fixed2048": 2235.8,
+   "pi": 2278.4
   },
   {
    "kind": "decode_shared",
@@ -346,11 +326,10 @@
    "hkv": 8,
    "batch": 8,
    "kv_len": 4096,
-   "fi": 74.9,
-   "fi_tc": 62.4,
-   "fi_det_fixed2048": 73.8,
-   "fi_nosplit": 68.9,
-   "pi": 42.7
+   "fi": 67.3,
+   "fi_tc": 62.0,
+   "fi_det_fixed2048": 72.9,
+   "pi": 43.1
   },
   {
    "kind": "decode_shared",
@@ -358,11 +337,10 @@
    "hkv": 8,
    "batch": 32,
    "kv_len": 4096,
-   "fi": 205.5,
-   "fi_tc": 189.2,
-   "fi_det_fixed2048": 193.7,
-   "fi_nosplit": 203.7,
-   "pi": 133.1
+   "fi": 203.4,
+   "fi_tc": 206.4,
+   "fi_det_fixed2048": 189.9,
+   "pi": 133.0
   },
   {
    "kind": "prefill",
@@ -371,9 +349,9 @@
    "batch": 1,
    "q_len": 512,
    "prefix": 0,
-   "fi": 85.1,
-   "fi_det_fixed2048": 89.6,
-   "pi": 48.2
+   "fi": 85.0,
+   "fi_det_fixed2048": 84.7,
+   "pi": 47.5
   },
   {
    "kind": "prefill",
@@ -382,9 +360,9 @@
    "batch": 1,
    "q_len": 2048,
    "prefix": 0,
-   "fi": 411.2,
-   "fi_det_fixed2048": 410.0,
-   "pi": 370.8
+   "fi": 406.4,
+   "fi_det_fixed2048": 414.8,
+   "pi": 371.8
   },
   {
    "kind": "prefill",
@@ -393,9 +371,9 @@
    "batch": 1,
    "q_len": 8192,
    "prefix": 0,
-   "fi": 4496.1,
-   "fi_det_fixed2048": 4512.9,
-   "pi": 4741.5
+   "fi": 4499.6,
+   "fi_det_fixed2048": 4514.7,
+   "pi": 4756.0
   },
   {
    "kind": "prefill",
@@ -404,9 +382,9 @@
    "batch": 8,
    "q_len": 1024,
    "prefix": 0,
-   "fi": 650.0,
-   "fi_det_fixed2048": 647.2,
-   "pi": 669.9
+   "fi": 652.7,
+   "fi_det_fixed2048": 649.5,
+   "pi": 670.3
   },
   {
    "kind": "prefill",
@@ -415,9 +393,9 @@
    "batch": 32,
    "q_len": 512,
    "prefix": 0,
-   "fi": 725.3,
-   "fi_det_fixed2048": 724.0,
-   "pi": 720.4
+   "fi": 729.4,
+   "fi_det_fixed2048": 725.0,
+   "pi": 723.8
   },
   {
    "kind": "prefill",
@@ -426,9 +404,9 @@
    "batch": 1,
    "q_len": 512,
    "prefix": 8192,
-   "fi": 1028.8,
-   "fi_det_fixed2048": 1029.1,
-   "pi": 815.1
+   "fi": 1005.8,
+   "fi_det_fixed2048": 1006.4,
+   "pi": 814.0
   },
   {
    "kind": "prefill",
@@ -437,9 +415,9 @@
    "batch": 1,
    "q_len": 128,
    "prefix": 4096,
-   "fi": 112.5,
-   "fi_det_fixed2048": 289.6,
-   "pi": 105.8
+   "fi": 112.9,
+   "fi_det_fixed2048": 289.4,
+   "pi": 106.4
   },
   {
    "kind": "prefill",
@@ -449,8 +427,8 @@
    "q_len": 128,
    "prefix": 16384,
    "fi": 315.8,
-   "fi_det_fixed2048": 1023.1,
-   "pi": 384.9
+   "fi_det_fixed2048": 1023.8,
+   "pi": 385.3
   },
   {
    "kind": "prefill",
@@ -459,9 +437,9 @@
    "batch": 4,
    "q_len": 2048,
    "prefix": 2048,
-   "fi": 3257.3,
-   "fi_det_fixed2048": 3259.0,
-   "pi": 3556.1
+   "fi": 3264.1,
+   "fi_det_fixed2048": 3263.8,
+   "pi": 3569.1
   }
  ]
 }
