@@ -7,6 +7,10 @@ uv: uv 0.12.3 (x86_64-unknown-linux-gnu)
 micromamba: 2.9.0
 host gcc: gcc (Debian 14.2.0-19) 14.2.0
 build g++: x86_64-conda-linux-gnu-g++ (conda-forge gcc 13.4.0-20) 13.4.0
+build sysroot: sysroot_linux-64 2.28 (h4ee821c_9), kernel-headers_linux-64 4.18.0 (2026-10-23; was 2.39 / 6.12.0, whose
+  binaries need GLIBC_2.32 and do not load on the Ubuntu 20.04 A800 host; 4090 results before engine commit 870c171 were built with 2.39)
+runtime libstdc++: env/stdcxx -> gcc13/lib (libstdc++.so.6.0.36, libgcc_s.so.1) on LD_LIBRARY_PATH (2026-10-23), for FlashInfer JIT ops on hosts with an older libstdc++
+A800 host (2026-10-23): NVIDIA A800-SXM4-80GB, driver 535.129.03, Ubuntu 20.04.6, glibc 2.31; same env/ via the shared path
 libnuma: libnuma-2.0.18-hb03c661_4.json
 engine venv (Python 3.12.13): torch 2.13.0+cu126 flashinfer-python 0.6.18 transformers 5.20.2 lm-eval 0.4.13
 sglang venv: sglang 0.5.5.post3 torch 2.8.0 flashinfer-python 0.5.2 sgl-kernel 0.3.17.post1 transformers 4.57.1

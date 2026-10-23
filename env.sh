@@ -8,7 +8,9 @@ export LIBTORCH_USE_PYTORCH=1
 export UV_PYTHON_INSTALL_DIR=$ROOT/env/python UV_CACHE_DIR=$ROOT/env/uv-cache
 export UV_PYTHON_INSTALL_MIRROR=${UV_PYTHON_INSTALL_MIRROR-https://registry.npmmirror.com/-/binary/python-build-standalone}
 export TORCH_LIB=$(ls -d $ROOT/env/venv/lib/python*/site-packages/torch/lib)
-export LD_LIBRARY_PATH=$TORCH_LIB:$ROOT/env/cuda-12.6/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+# gcc 13's libstdc++/libgcc_s (env/stdcxx) for JIT-built FlashInfer ops, which need GLIBCXX_3.4.32;
+# older hosts (Ubuntu 20.04 on the A800 box) ship an older libstdc++.
+export LD_LIBRARY_PATH=$TORCH_LIB:$ROOT/env/cuda-12.6/lib64:$ROOT/env/stdcxx${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
 export HF_ENDPOINT=${HF_ENDPOINT:-https://hf-mirror.com} HF_HOME=$ROOT/env/hf-home
 export TMPDIR=$ROOT/env/tmp
 # Every cache stays inside the project, never in $HOME (the dev box's home is not shared):

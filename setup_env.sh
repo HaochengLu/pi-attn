@@ -42,8 +42,16 @@ if [[ ! -x $ENV/gcc13/bin/x86_64-conda-linux-gnu-g++ ]]; then
     https://micro.mamba.pm/api/micromamba/linux-64/$MICROMAMBA_VER
   tar -xjf $ENV/downloads/micromamba.tar.bz2 -C $ENV/mamba bin/micromamba
   HOME=$ENV/mamba MAMBA_ROOT_PREFIX=$ENV/mamba $ENV/mamba/bin/micromamba create -y -p $ENV/gcc13 --override-channels \
-    -c $CONDA_CHANNEL gcc_linux-64=13.4.0 gxx_linux-64=13.4.0
+    -c $CONDA_CHANNEL gcc_linux-64=13.4.0 gxx_linux-64=13.4.0 sysroot_linux-64=2.28
 fi
+# glibc 2.28 headers, so builds also run on older hosts (the A800 box is Ubuntu 20.04, glibc
+# 2.31); with the default 2.39 sysroot libstdc++ references __libc_single_threaded (GLIBC_2.32).
+ls $ENV/gcc13/conda-meta | grep -q '^sysroot_linux-64-2.28' || HOME=$ENV/mamba MAMBA_ROOT_PREFIX=$ENV/mamba \
+  $ENV/mamba/bin/micromamba install -y -p $ENV/gcc13 --override-channels -c $CONDA_CHANNEL sysroot_linux-64=2.28
+
+mkdir -p $ENV/stdcxx
+ln -sf ../gcc13/lib/libstdc++.so.6 $ENV/stdcxx/libstdc++.so.6
+ln -sf ../gcc13/lib/libgcc_s.so.1 $ENV/stdcxx/libgcc_s.so.1
 
 # 1c. libnuma (needed by the SGLang baseline's sgl_kernel; absent on the dev box) into $ENV/syslibs.
 [[ -f $ENV/syslibs/lib/libnuma.so.1 ]] || HOME=$ENV/mamba MAMBA_ROOT_PREFIX=$ENV/mamba $ENV/mamba/bin/micromamba create -y \
@@ -98,7 +106,9 @@ export LIBTORCH_USE_PYTORCH=1
 export UV_PYTHON_INSTALL_DIR=\$ROOT/env/python UV_CACHE_DIR=\$ROOT/env/uv-cache
 export UV_PYTHON_INSTALL_MIRROR=\${UV_PYTHON_INSTALL_MIRROR-$UV_PYTHON_INSTALL_MIRROR}
 export TORCH_LIB=\$(ls -d \$ROOT/env/venv/lib/python*/site-packages/torch/lib)
-export LD_LIBRARY_PATH=\$TORCH_LIB:\$ROOT/env/cuda-12.6/lib64\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}
+# gcc 13's libstdc++/libgcc_s (env/stdcxx) for JIT-built FlashInfer ops, which need GLIBCXX_3.4.32;
+# older hosts (Ubuntu 20.04 on the A800 box) ship an older libstdc++.
+export LD_LIBRARY_PATH=\$TORCH_LIB:\$ROOT/env/cuda-12.6/lib64:\$ROOT/env/stdcxx\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}
 export HF_ENDPOINT=\${HF_ENDPOINT:-$HF_ENDPOINT} HF_HOME=\$ROOT/env/hf-home
 export TMPDIR=\$ROOT/env/tmp
 # Every cache stays inside the project, never in \$HOME (the dev box's home is not shared):
