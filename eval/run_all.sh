@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Regenerate every result on the current kernels, in order: build, kernel tests,
 # kernel benchmarks, cross-configuration and detcheck runs, end-to-end matrices,
-# high-concurrency decode, same-GPU baselines (our engine only; SGLang/vLLM rows are unchanged), GSM8K and
-# fp32 agreement. Each stage logs to results/run_all/<stage>.log.
+# high-concurrency decode, same-GPU baselines (our engine only; SGLang/vLLM rows are unchanged), GSM8K,
+# fp32 agreement and node-level traces of batch-1 decode. Each stage logs to results/run_all/<stage>.log.
 set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../env.sh"
 log=$ROOT/results/run_all; mkdir -p $log
@@ -52,5 +52,14 @@ python $ROOT/eval/compare_accuracy.py $ROOT/results/accuracy/Qwen3-1.7B > $ROOT/
 python $ROOT/eval/compare_accuracy.py $ROOT/results/accuracy/Qwen3-8B > $ROOT/results/accuracy/Qwen3-8B/SUMMARY.md 2>&1
 stage fp32
 bash $ROOT/eval/fp32_agreement.sh > $log/fp32.log 2>&1
+stage nsys
+for M in 0.6B 1.7B 4B 8B; do
+  MODEL=Qwen3-$M bash $ROOT/scripts/nsys_decode.sh b1_${M}_fi --attention-backend flashinfer --chunked-prefill-size 2048
+  MODEL=Qwen3-$M bash $ROOT/scripts/nsys_decode.sh b1_${M}_pi --deterministic --chunked-prefill-size 2048
+done > $log/nsys.log 2>&1
+for M in 0.6B 1.7B 4B 8B; do
+  echo "== Qwen3-$M: FlashInfer mode -> deterministic"
+  python $ROOT/scripts/nsys_compare.py $ROOT/results/nsys/b1_${M}_fi.sqlite $ROOT/results/nsys/b1_${M}_pi.sqlite
+done > $ROOT/results/nsys/b1_compare.txt 2>&1
 stage done
 echo RUN_ALL_DONE

@@ -1,6 +1,8 @@
-"""Decode-shaped GEMM time in a burst of back-to-back launches, each over another
-weight copy (so every launch streams from DRAM and launch gaps overlap as in a
-forward): the engine's candidate kernel ids vs cuBLAS. Usage: python gemm_burst.py [M ...]."""
+"""Decode-shaped GEMM time in a burst of back-to-back launches captured in one CUDA graph, as
+the engine runs decode, each over another weight copy so every launch streams from DRAM: the
+engine's candidate kernel ids vs cuBLAS. Launched eagerly from Python, a burst of kernels
+shorter than ~10 us measures launch overhead instead (cuBLAS on 0.6B o at M = 1: 9.2 us eager,
+6.5 us in a graph; archive/ceiling_probes, probe 16). Usage: python gemm_burst.py [M ...]."""
 import sys
 
 import torch
@@ -11,12 +13,17 @@ POOL = 600 << 20  # > 8x L2: every launch streams its weights from DRAM
 
 
 def burst(fn, Ws, X, n=64, reps=5):
+    fn(X, Ws[0])
+    torch.cuda.synchronize()
+    g = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(g):
+        for i in range(n):
+            fn(X, Ws[i % len(Ws)])
     ts = []
     for _ in range(reps + 1):
         s, e = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
         s.record()
-        for i in range(n):
-            fn(X, Ws[i % len(Ws)])
+        g.replay()
         e.record()
         torch.cuda.synchronize()
         ts.append(s.elapsed_time(e) * 1000 / n)

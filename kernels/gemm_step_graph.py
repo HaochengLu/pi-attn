@@ -1,6 +1,6 @@
 """One decode step's GEMMs (Qwen3-0.6B: 28 layers x qkv/o/gate_up/down + lm_head,
 independent weights, 1.2 GB streamed from DRAM) captured in a CUDA graph, M = 1/8/32:
-cuBLAS vs each fixed invariant kernel id vs best-per-shape (tuned as the engine does:
+cuBLAS vs each fixed invariant kernel id vs best-per-shape (chosen from graph-captured
 bursts over the 28 layer copies, every launch streaming from DRAM)."""
 import torch
 
@@ -42,11 +42,17 @@ def step(M, pick):
 
 
 def burst(fn, ws, reps=7):
+    fn(ws[0])
+    torch.cuda.synchronize()
+    g = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(g):
+        for w in ws: fn(w)
     ts = []
     for _ in range(reps + 1):
+        flush.zero_()
         s, e = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
         s.record()
-        for w in ws: fn(w)
+        g.replay()
         e.record()
         torch.cuda.synchronize()
         ts.append(s.elapsed_time(e))

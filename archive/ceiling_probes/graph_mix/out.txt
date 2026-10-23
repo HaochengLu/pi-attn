@@ -1,0 +1,28 @@
+== graph_mix.py (0.6B, M = 1, 28 layers; tuned ids qkv 7, o 31, gate_up 1, down 31), before ids 54/55
+cublas per-shape graphs  311.6  200.2  433.8  264.4 | sum  1209.9 us | mixed step  1150.3 us | mixed - sum  -59.6 us
+pi     per-shape graphs  344.4  246.9  469.5  312.5 | sum  1373.4 us | mixed step  1218.0 us | mixed - sum -155.4 us
+
+== same 28-launch sequences, eager vs graph (us, whole sequence)
+cublas (4096, 1024) eager 328.3 graph 311.6
+cublas (1024, 2048) eager 216.9 graph 200.1
+cublas (6144, 1024) eager 450.4 graph 433.6
+cublas (1024, 3072) eager 280.3 graph 264.5
+pi (4096, 1024) eager 361.7 graph 344.5
+pi (1024, 2048) eager 263.2 graph 246.6
+pi (6144, 1024) eager 486.4 graph 469.8
+pi (1024, 3072) eager 328.2 graph 312.1
+
+== eager_vs_graph.py: 64-launch burst over DRAM-resident copies, us per launch
+0.6B o     cublas eager   9.24 graph   6.49 | pi best eager k31   7.65 (graph   6.97) | pi best graph k31   6.97
+0.6B down  cublas eager   9.41 graph   8.73 | pi best eager k30   9.87 (graph   9.32) | pi best graph k31   9.32
+0.6B gateup cublas eager  15.39 graph  14.65 | pi best eager k21  15.46 (graph  14.81) | pi best graph k1  14.80
+8B down    cublas eager 107.97 graph 107.24 | pi best eager k53 111.08 (graph 110.24) | pi best graph k53 110.24
+8B gateup  cublas eager 207.50 graph 206.75 | pi best eager k21 209.31 (graph 208.22) | pi best graph k14 208.19
+
+== segsplit.py: ids 54/55 (bitwise equal to id 31), graph bursts, us per launch
+0.6B o 1     cublas:6.59 30:7.14 31:7.04 48:7.91 54:6.26 55:6.05
+0.6B down 1  cublas:8.86 30:9.43 31:9.42 48:10.20 54:8.57 55:8.29
+0.6B o 8     cublas:12.47 30:7.30 31:7.32 48:7.89 54:7.59 55:7.10
+0.6B down 8  cublas:10.38 30:9.68 31:9.85 48:10.23 54:9.81 55:9.29
+0.6B o 16    cublas:12.50 30:7.64 31:7.45 48:7.97 54:8.95 55:8.89
+0.6B down 16 cublas:17.76 30:9.79 31:9.87 48:10.08 54:11.16 55:11.15

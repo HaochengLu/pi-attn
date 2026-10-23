@@ -124,3 +124,20 @@ streams a different copy from a >= 600 MB pool).
     M=4096: k13 3396 vs 3650 us, k11 2804 vs 2839), which can flip the choice (8B gateup
     M=4096: zero X picks k12, 1.5% slower than k10 on random X). The tuner now fills X with
     fixed pseudo-random values and pretune uses random weights. `out.txt`.
+16. `graph_mix/`: where does batch-1 decode lose to the original engine? A node-level nsys
+    trace per model (`scripts/nsys_compare.py`, `results/nsys/b1_compare.txt`) puts it in the
+    projections: in the decode graph PI's M = 1 kernels took 0.4-7% longer per launch than
+    cuBLAS's GEMV, most on 0.6B o and down (6.60 -> 6.99, 8.77 -> 9.35 us). `gemm_burst.py`
+    had shown the opposite (0.6B o: PI 0.82x cuBLAS) because it launched eagerly from Python:
+    a burst of kernels shorter than ~10 us is then launch-bound, and cuBLAS's launch path
+    is the slower one (`eager_vs_graph.py`: cuBLAS 0.6B o 9.24 us eager, 6.49 us in a graph).
+    `gemm_burst.py` and `gemm_step_graph.py` now time graph-captured bursts; the engine's
+    tuner (C++ launches) already chose the graph-best id or one within 1%. `graph_mix.py`
+    shows the gap is per kernel, not from switching kernels: for both libraries the mixed
+    step costs less than the per-shape graphs it is made of. On the two S = 2 shapes the balanced kernel pays a global fold (partial,
+    arrival counter, re-read) and a second pipeline pass in the CTA that crosses the segment
+    boundary. Engine: segment-split ids 54/55 (one CTA per n8 tile, one warp and cp.async
+    ring per segment, fold through shared memory in segment order; 0 failures in
+    test_gemm.py). `segsplit.py`: at M = 1, 0.6B o 7.04 -> 6.05 us (cuBLAS 6.59), down
+    9.42 -> 8.29 (8.86); at M = 8 o 7.30 -> 7.10, down 9.68 -> 9.29; at M = 16 the balanced
+    kernel stays faster. `out.txt`.

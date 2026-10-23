@@ -45,16 +45,19 @@ def segpar_fits(k, M, N, K):  # mirrors CutlassGemm::run_segpar: S > 1, fragment
 
 
 BK = {20: 128, 21: 256, 22: 256, 24: 128, 25: 128, 30: 256, 31: 128, 32: 128, 33: 128,
-      40: 128, 41: 128, 42: 128, 43: 256, 51: 512, 53: 1024}  # K granularity (default 64)
-MAX_M = {30: 16, 31: 16, 32: 32, 33: 64, 40: 8, 41: 8, 42: 8, 43: 8, 51: 8, 53: 8}
+      40: 128, 41: 128, 42: 128, 43: 256, 51: 512, 53: 1024, 54: 128}  # K granularity (default 64)
+MAX_M = {30: 16, 31: 16, 32: 32, 33: 64, 40: 8, 41: 8, 42: 8, 43: 8, 51: 8, 53: 8, 54: 16, 55: 16}
 STREAMK = {40, 41, 42, 43, 44, 45, 46, 47, 50, 51, 53}  # S = 1 shapes only
+SEGSPLIT = {54, 55}  # S > 1 shapes only
 
 
 def usable(k, M, N, K):
     """Whether kernel id k runs this shape (written independently of gemm_dispatch.cuh)."""
     if k in SEGPAR_TILE:
         return segpar_fits(k, M, N, K)
-    return K % BK.get(k, 64) == 0 and M <= MAX_M.get(k, 1 << 30) and not (k in STREAMK and gemm_segments(N, K) > 1)
+    segmented = gemm_segments(N, K) > 1
+    return (K % BK.get(k, 64) == 0 and M <= MAX_M.get(k, 1 << 30)
+            and not (k in STREAMK and segmented) and not (k in SEGSPLIT and not segmented))
 
 
 def candidates(M, N, K):
