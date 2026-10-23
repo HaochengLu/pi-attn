@@ -292,6 +292,87 @@ cudaError_t run_balanced(const void* x, int64_t ldx, const void* w, OutT* y, int
   return cudaGetLastError();
 }
 
+// ------------------------------------------------------ segment-split, M <= 16 ----
+// Decode GEMMs of S > 1 shapes (0.6B o and down: 128 n8 tiles, K = 2048 / 3072) stream a
+// few MB in a few microseconds, so the balanced kernel's global fold (partial to g_seg_ws,
+// arrival counter, re-read) and the second pipeline pass of the CTA whose items cross
+// the segment boundary are a visible share of the time. Here a CTA owns one n8 tile and
+// gives each segment its own warp with its own cp.async ring; the per-segment sequence is
+// gemm_small_kernel's, and warp 0 folds the partials from shared memory in ascending
+// segment order, as gemm_small_kernel's tot does.
+template <int BK, int STAGES>
+constexpr size_t segsplit_smem_bytes(int segs) {
+  return (size_t)segs * STAGES * (16 + 8) * (BK + 8) * sizeof(__nv_bfloat16) + (size_t)segs * 32 * 4 * sizeof(float);
+}
+
+template <typename OutT, int BK, int STAGES>
+__global__ void gemm_segsplit_kernel(const __nv_bfloat16* __restrict__ x, int64_t ldx,
+                                     const __nv_bfloat16* __restrict__ w, OutT* __restrict__ y,
+                                     int64_t ldy, int M, int N, int K) {
+  constexpr int kStride = BK + 8, kRows = 16, kStageElems = (kRows + 8) * kStride;
+  extern __shared__ __align__(16) __nv_bfloat16 smem[];
+  const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, segs = blockDim.x >> 5;
+  const int seg_k = K / segs, ktiles = seg_k / BK, k0 = warp * seg_k, n0 = blockIdx.x * 8;
+  __nv_bfloat16* ring = smem + warp * STAGES * kStageElems;
+  float* part = reinterpret_cast<float*>(smem + segs * STAGES * kStageElems);
+  auto issue = [&](int kt) {
+    __nv_bfloat16* st = ring + (kt % STAGES) * kStageElems;
+    constexpr int kVec = BK / 8;
+    for (int i = lane; i < (kRows + 8) * kVec; i += 32) {
+      const int r = i / kVec, v = i % kVec, kc = k0 + kt * BK + v * 8;
+      if (r >= kRows) cp_async16(st + r * kStride + v * 8, w + (int64_t)(n0 + r - kRows) * K + kc, 16);
+      else if (r < M) cp_async16(st + r * kStride + v * 8, x + (int64_t)r * ldx + kc, 16);
+      else cp_async16(st + r * kStride + v * 8, x, 0);  // zero rows >= M, as gemm_small_kernel
+    }
+  };
+#pragma unroll
+  for (int s = 0; s < STAGES - 1; ++s) {
+    if (s < ktiles) issue(s);
+    cp_async_commit();
+  }
+  float acc[4] = {0.f, 0.f, 0.f, 0.f};
+  const int mat = lane >> 3, r8 = lane & 7;
+  for (int kt = 0; kt < ktiles; ++kt) {
+    cp_async_wait<STAGES - 2>();
+    __syncwarp();  // the ring is this warp's own: a warp barrier orders its reuse
+    if (kt + STAGES - 1 < ktiles) issue(kt + STAGES - 1);
+    cp_async_commit();
+    const __nv_bfloat16* sx = ring + (kt % STAGES) * kStageElems;
+    const __nv_bfloat16* sw = sx + kRows * kStride;
+#pragma unroll
+    for (int ks = 0; ks < BK / 16; ks += 2) {
+      uint32_t b[4];
+      ldmatrix_x4(b, sw + r8 * kStride + ks * 16 + mat * 8);
+#pragma unroll
+      for (int kk = 0; kk < 2; ++kk) {
+        uint32_t a[4];
+        ldmatrix_x4(a, sx + ((mat & 1) * 8 + r8) * kStride + (ks + kk) * 16 + (mat >> 1) * 8);
+        mma_bf16(acc, a, b[2 * kk], b[2 * kk + 1]);
+      }
+    }
+  }
+  cp_async_wait<0>();
+#pragma unroll
+  for (int i = 0; i < 4; ++i) part[(warp * 32 + lane) * 4 + i] = acc[i];
+  __syncthreads();
+  if (warp) return;
+  float tot[4] = {0.f, 0.f, 0.f, 0.f};
+  for (int sg = 0; sg < segs; ++sg)
+#pragma unroll
+    for (int i = 0; i < 4; ++i) tot[i] = add(tot[i], part[(sg * 32 + lane) * 4 + i]);
+  const int g = lane >> 2, n = n0 + (lane & 3) * 2;
+#pragma unroll
+  for (int h = 0; h < 2; ++h) {
+    const int m = g + h * 8;
+    if (m >= M) continue;
+    if constexpr (sizeof(OutT) == 2) {
+      *reinterpret_cast<__nv_bfloat162*>(y + (int64_t)m * ldy + n) = __floats2bfloat162_rn(tot[2 * h], tot[2 * h + 1]);
+    } else {
+      *reinterpret_cast<float2*>(y + (int64_t)m * ldy + n) = make_float2(tot[2 * h], tot[2 * h + 1]);
+    }
+  }
+}
+
 // ------------------------------------------------------------- stream-K, M <= 8 ----
 // Decode GEMMs whose n8 tiles divide unevenly over the SMs (8B down: 512 tiles on 114
 // SMs) leave the busiest SMs streaming one tile more than the average. Here the work
