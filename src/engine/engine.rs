@@ -59,6 +59,9 @@ pub struct ServerArgs {
     pub attention_backend: String,
     /// Bitwise-deterministic serving: PI attention and the row-invariant GEMM.
     pub deterministic: bool,
+    /// Ablation: the row-invariant GEMM (tuned as in deterministic mode) and the
+    /// deterministic sampler with any attention backend. Not deterministic by itself.
+    pub row_invariant_gemm: bool,
     pub trust_remote_code: bool,
 }
 
@@ -84,6 +87,7 @@ impl ServerArgs {
             device: "auto".to_owned(),
             attention_backend: "fa".to_owned(),
             deterministic: false,
+            row_invariant_gemm: false,
             trust_remote_code: false,
         }
     }
@@ -220,16 +224,18 @@ impl Engine {
     ) -> Result<Self> {
         let (kind, device) =
             Self::validate_for_serving(&server_args, runtime_config, tp_rank, factory)?;
-        if server_args.deterministic
+        let pi_gemm = server_args.deterministic || server_args.row_invariant_gemm;
+        if pi_gemm
             && (!crate::kernels::pi::available()
                 || !matches!(device, Device::Cuda(_))
                 || kind != Kind::BFloat16)
         {
             return Err(EngineError::InvalidArgument(
-                "--deterministic requires CUDA, bfloat16 and a build with the PI kernels".into(),
+                "--deterministic and --row-invariant-gemm require CUDA, bfloat16 and a build with the PI kernels"
+                    .into(),
             ));
         }
-        crate::kernels::pi::set_deterministic(server_args.deterministic);
+        crate::kernels::pi::set_deterministic(pi_gemm);
         // GPU serving performs small CPU metadata operations. A large default
         // intra-op pool causes contention/long tails without helping GPU kernels.
         // Match upstream's CUDA policy, while honoring explicit thread settings.
@@ -249,7 +255,7 @@ impl Engine {
         let weights = load_hf_safetensors(&server_args.model_path).map_err(|error| {
             EngineError::InvalidArgument(format!("Hugging Face 权重加载失败: {error}"))
         })?;
-        if server_args.deterministic {
+        if pi_gemm {
             // Every projection runs through the row-invariant GEMM; reject shapes it
             // cannot run before serving instead of failing on the first request.
             for (name, tensor) in weights.iter() {
@@ -272,7 +278,7 @@ impl Engine {
             Self::with_cache_spec(server_args, runtime_config, tp_rank, kind, device, spec)?;
         engine.attach_model_runner(runner)?;
         engine.capture_graphs()?;
-        if engine.server_args.deterministic {
+        if pi_gemm {
             // Largest forward: a prefill chunk (or a whole prompt) plus the running decodes.
             let args = &engine.server_args;
             let prefill = if args.chunked_prefill_size > 0 { args.chunked_prefill_size } else { args.max_seq_len };

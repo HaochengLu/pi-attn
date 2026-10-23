@@ -29,6 +29,7 @@ Options:\n\
   --page-size N             KV cache page size (default 16)\n\
   --attention-backend NAME  Attention backend: fa, pt, flashinfer, or pi\n\
   --deterministic           Bitwise-deterministic outputs (pi attention + row-invariant GEMM)\n\
+  --row-invariant-gemm      Ablation: row-invariant GEMM with the chosen attention backend (not deterministic)\n\
   --dtype NAME              Model dtype: auto, bfloat16, float16, float32\n\
   --device NAME             Device: auto, cpu, or cuda (default auto)\n\
   --trust-remote-code       Request Hugging Face remote code\n\
@@ -86,6 +87,7 @@ pub fn parse_args(args: impl IntoIterator<Item = String>) -> Result<ServeArgs, S
                 attention_backend_explicit = true;
             }
             "--deterministic" => engine.deterministic = true,
+            "--row-invariant-gemm" => engine.row_invariant_gemm = true,
             "--dtype" => {
                 let dtype = value()?;
                 if !["auto", "bfloat16", "float16", "float32"].contains(&dtype.as_str()) {
@@ -151,6 +153,17 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn row_invariant_gemm_keeps_the_attention_backend() {
+        let args = parse_args(
+            ["--model-path", "/tmp/model", "--row-invariant-gemm", "--attention-backend", "flashinfer"]
+                .map(str::to_owned),
+        )
+        .unwrap();
+        assert!(args.engine.row_invariant_gemm && !args.engine.deterministic);
+        assert_eq!(args.engine.attention_backend, "flashinfer");
     }
 
     #[test]
