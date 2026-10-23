@@ -1,0 +1,79 @@
+0.6B qkv     norm cost after: cublas  1.73 k1  1.77 k2  1.80 k4  1.73 k7  1.77 k20  1.74 k21  1.74 k22  1.71 k24  1.72 k25  1.73 k30  1.73 k31  1.68 k32  1.68 k33  1.67 k40  1.67 k41  1.67 k42  1.67 k43  1.68 k51  1.66 k53  1.67 k10  1.68 k11  1.67 k12  1.67 k13  1.68 k14  1.64 k15  1.66 k44  1.64 k45  1.67 k46  1.66 k47  1.67 k50  1.72
+0.6B o       norm cost after: cublas  1.20 k1  1.16 k2  1.18 k4  1.19 k7  1.18 k20  1.18 k21  1.19 k22  1.18 k24  1.18 k25  1.19 k30  1.20 k31  1.19 k32  1.19 k33  1.23 k54  1.20 k55  1.18 k10  1.19 k11  1.18 k12  1.18 k13  1.12 k14  1.20 k15  1.18 k48  1.20 k49  1.20
+0.6B gateup  norm cost after: cublas  2.10 k1  2.03 k2  2.06 k4  2.05 k7  2.07 k20  2.02 k21  2.05 k22  2.07 k24  2.06 k25  2.04 k30  2.03 k31  2.06 k32  2.02 k33  2.05 k40  2.05 k41  2.01 k42  2.02 k43  2.05 k51  2.14 k53  2.03 k10  2.07 k11  2.15 k12  2.14 k13  2.14 k14  2.13 k15  2.12 k44  2.13 k45  2.11 k46  2.14 k47  2.17 k50  2.12
+0.6B down    norm cost after: cublas  1.18 k1  1.20 k2  1.20 k4  1.19 k7  1.18 k20  1.20 k21  1.20 k22  1.18 k24  1.20 k25  1.16 k30  1.21 k31  1.21 k32  1.22 k33  1.20 k54  1.16 k55  1.20 k10  1.17 k11  1.20 k12  1.19 k13  1.30 k14  1.18 k15  1.26 k48  1.20 k49  1.19
+1.7B qkv     norm cost after: cublas  1.65 k1  1.72 k2  1.65 k4  1.70 k7  1.68 k20  1.72 k21  1.71 k22  1.73 k24  1.74 k25  1.74 k30  1.72 k31  1.71 k32  1.73 k33  1.70 k40  1.70 k41  1.65 k42  1.70 k43  1.68 k51  1.65 k53  1.69 k10  1.67 k11  1.67 k12  1.63 k13  1.64 k14  1.68 k15  1.67 k44  1.69 k45  1.68 k46  1.71 k47  1.69 k50  1.69
+1.7B o       norm cost after: cublas  1.44 k1  1.40 k2  1.44 k4  1.45 k7  1.45 k20  1.43 k21  1.45 k22  1.44 k24  1.44 k25  1.40 k30  1.45 k31  1.42 k32  1.44 k33  1.44 k40  1.42 k41  1.44 k42  1.44 k43  1.45 k51  1.43 k53  1.43 k10  1.41 k11  1.44 k12  1.41 k13  1.44 k14  1.57 k15  1.42 k44  1.43 k45  1.42 k46  1.44 k47  1.41 k50  1.44
+1.7B gateup  norm cost after: cublas  2.66 k1  2.62 k2  2.71 k4  2.59 k7  2.70 k20  2.63 k21  2.65 k22  2.65 k24  2.65 k25  2.59 k30  2.62 k31  2.62 k32  2.64 k33  2.66 k40  2.80 k41  2.78 k42  2.78 k43  2.64 k51  2.87 k53  2.62 k10  2.66 k11  2.76 k12  2.70 k13  2.62 k14  2.67 k15  2.65 k44  2.69 k45  2.65 k46  2.66 k47  2.69 k50  2.71
+1.7B down    norm cost after: cublas  1.40 k1  1.37 k2  1.41 k4  1.42 k7  1.41 k20  1.40 k21  1.44 k22  1.40 k24  1.43 k25  1.42 k30  1.41 k31  1.47 k32  1.44 k33  1.44 k40  1.38 k41  1.36 k42  1.40 k43  1.42 k51  1.53 k53  1.42 k10  1.43 k11  1.44 k12  1.39 k13  1.43 k14  1.44 k15  1.43 k44  1.40 k45  1.38 k46  1.40 k47  1.45 k50  1.40
+4B qkv       norm cost after: cublas  2.12 k1  2.01 k2  2.04 k4  2.04 k7  2.09 k20  1.99 k21  2.03 k22  2.02 k24  2.03 k25  2.03 k30  2.03 k31  1.98 k32  2.06 k33  1.99 k40  2.01 k41  2.07 k42  2.06 k43  2.02 k51  2.21 k10  2.03 k11  2.07 k12  2.06 k13  1.98 k14  2.05 k15  2.04 k44  2.04 k45  2.05 k46  2.01 k47  1.98 k50  2.03
+4B o         norm cost after: cublas  1.63 k1  1.63 k2  1.61 k4  1.60 k7  1.60 k20  1.58 k21  1.59 k22  1.58 k24  1.52 k25  1.61 k30  1.61 k31  1.57 k32  1.59 k33  1.60 k40  1.56 k41  1.60 k42  1.57 k43  1.57 k51  1.59 k53  1.62 k10  1.58 k11  1.58 k12  1.61 k13  1.55 k14  1.65 k15  1.63 k44  1.57 k45  1.59 k46  1.60 k47  1.59 k50  1.59
+4B gateup    norm cost after: cublas  3.97 k1  4.55 k2  4.56 k4  4.05 k7  4.50 k20  4.37 k21  4.36 k22  4.21 k24  4.39 k25  4.04 k30  4.50 k31  4.43 k32  4.38 k33  4.56 k40  4.33 k41  4.39 k42  4.31 k43  4.35 k51  4.49 k10  3.94 k11  4.46 k12  4.58 k13  4.51 k14  4.42 k15  4.53 k44  4.14 k45  4.52 k46  4.09 k47  4.58 k50  4.02
+4B down      norm cost after: cublas  1.66 k1  1.55 k2  1.63 k4  1.58 k7  1.57 k20  1.58 k21  1.58 k22  1.60 k24  1.54 k25  1.55 k30  1.56 k31  1.53 k32  1.63 k33  1.59 k40  1.54 k41  1.58 k42  1.56 k43  1.59 k51  1.57 k10  1.47 k11  1.59 k12  1.59 k13  1.57 k14  1.58 k15  1.73 k44  1.63 k45  1.58 k46  1.57 k47  1.57 k50  1.60
+8B qkv       norm cost after: cublas  2.09 k1  2.02 k2  2.04 k4  1.99 k7  2.05 k20  1.99 k21  2.00 k22  2.02 k24  2.00 k25  2.08 k30  2.00 k31  2.02 k32  2.00 k33  2.07 k40  2.02 k41  1.96 k42  2.00 k43  2.00 k51  2.19 k53  2.00 k10  2.05 k11  2.13 k12  2.12 k13  2.09 k14  2.08 k15  2.15 k44  2.10 k45  2.11 k46  2.13 k47  2.14 k50  2.13
+8B o         norm cost after: cublas  1.66 k1  1.69 k2  1.72 k4  1.65 k7  1.65 k20  1.68 k21  1.67 k22  1.68 k24  1.70 k25  1.68 k30  1.66 k31  1.67 k32  1.69 k33  1.73 k40  1.66 k41  1.67 k42  1.61 k43  1.64 k51  1.75 k53  1.62 k10  1.63 k11  1.65 k12  1.66 k13  1.64 k14  1.61 k15  1.68 k44  1.69 k45  1.60 k46  1.64 k47  1.65 k50  1.60
+8B gateup    norm cost after: cublas  3.73 k1  4.87 k2  4.74 k4  4.16 k7  4.65 k20  4.71 k21  4.65 k22  4.15 k24  4.68 k25  4.07 k30  4.58 k31  4.77 k32  4.59 k33  4.70 k40  4.67 k41  4.66 k42  4.49 k43  4.76 k51  4.49 k53  4.47 k10  4.62 k11  4.77 k12  4.92 k13  4.84 k14  4.75 k15  4.69 k44  4.42 k45  4.40 k46  4.48 k47  4.48 k50  4.62
+8B down      norm cost after: cublas  1.77 k1  1.99 k2  2.05 k4  1.89 k7  1.85 k20  1.95 k21  2.06 k22  1.87 k24  1.98 k25  1.80 k30  2.05 k31  1.93 k32  1.96 k33  1.83 k40  1.92 k41  2.01 k42  1.90 k43  2.01 k51  2.09 k53  1.80 k10  1.82 k11  1.82 k12  1.84 k13  1.88 k14  2.02 k15  1.98 k44  2.00 k45  1.92 k46  1.92 k47  1.83 k50  1.87
+== 0.6B
+     84.7 ( 56.0) ->    93.9 ( 56.0)  per-launch   1.51 ->   1.68  void flashinfer::norm::FusedAddRMSNormKernel<(unsigned int)8, __nv_bfl
+     36.9 ( 28.0) ->    36.9 ( 28.0)  per-launch   1.32 ->   1.32  void <unnamed>::silu_mul_vector_kernel<__nv_bfloat16, (long)3072>(cons
+     35.5 ( 28.0) ->    34.7 ( 28.0)  per-launch   1.27 ->   1.24  void <unnamed>::rope_kernel<__nv_bfloat16>(T1 *, T1 *, const long *, c
+     32.1 ( 28.0) ->    33.2 ( 28.0)  per-launch   1.14 ->   1.19  void sglang::store_kvcache<(long)2048, (long)2048, (int)4, (bool)0, in
+     31.8 ( 28.0) ->    32.4 ( 28.0)  per-launch   1.14 ->   1.16  void sglang::fused_qknorm_warp<(long)128, (bool)0, __nv_bfloat16>(sgla
+      1.8 (  1.0) ->     1.9 (  1.0)  per-launch   1.81 ->   1.94  void at::native::<unnamed>::indexSelectSmallIndex<c10::BFloat16, long,
+      1.6 (  1.0) ->     2.0 (  1.0)  per-launch   1.62 ->   2.00  void at::native::<unnamed>::indexSelectSmallIndex<long, long, unsigned
+      1.5 (  1.0) ->     1.6 (  1.0)  per-launch   1.53 ->   1.64  void flashinfer::norm::RMSNormKernel<(unsigned int)8, __nv_bfloat16>(T
+      1.4 (  1.0) ->     1.6 (  1.0)  per-launch   1.42 ->   1.60  void at::native::index_elementwise_kernel<(int)128, (int)4, void at::n
+      1.0 (  1.0) ->     1.3 (  1.0)  per-launch   0.96 ->   1.32  void at::native::vectorized_elementwise_kernel<(int)4, at::native::Fil
+      1.1 (  1.0) ->     1.1 (  1.0)  per-launch   1.09 ->   1.12  void at::native::vectorized_elementwise_kernel<(int)2, at::native::<un
+== 1.7B
+     89.9 ( 56.0) ->   100.4 ( 56.0)  per-launch   1.61 ->   1.79  void flashinfer::norm::FusedAddRMSNormKernel<(unsigned int)8, __nv_bfl
+     36.9 ( 28.0) ->    37.6 ( 28.0)  per-launch   1.32 ->   1.34  void <unnamed>::silu_mul_vector_kernel<__nv_bfloat16, (long)0>(const T
+     34.7 ( 28.0) ->    39.2 ( 28.0)  per-launch   1.24 ->   1.40  void <unnamed>::rope_kernel<__nv_bfloat16>(T1 *, T1 *, const long *, c
+     31.4 ( 28.0) ->    35.5 ( 28.0)  per-launch   1.12 ->   1.27  void sglang::store_kvcache<(long)2048, (long)2048, (int)4, (bool)0, in
+     30.6 ( 28.0) ->    31.7 ( 28.0)  per-launch   1.09 ->   1.13  void sglang::fused_qknorm_warp<(long)128, (bool)0, __nv_bfloat16>(sgla
+      1.9 (  1.0) ->     2.0 (  1.0)  per-launch   1.84 ->   1.97  void at::native::<unnamed>::indexSelectSmallIndex<c10::BFloat16, long,
+      1.6 (  1.0) ->     1.9 (  1.0)  per-launch   1.64 ->   1.92  void at::native::<unnamed>::indexSelectSmallIndex<long, long, unsigned
+      1.5 (  1.0) ->     1.6 (  1.0)  per-launch   1.55 ->   1.64  void flashinfer::norm::RMSNormKernel<(unsigned int)8, __nv_bfloat16>(T
+      1.4 (  1.0) ->     1.5 (  1.0)  per-launch   1.40 ->   1.55  void at::native::index_elementwise_kernel<(int)128, (int)4, void at::n
+      0.9 (  1.0) ->     1.3 (  1.0)  per-launch   0.93 ->   1.28  void at::native::vectorized_elementwise_kernel<(int)4, at::native::Fil
+      1.1 (  1.0) ->     1.1 (  1.0)  per-launch   1.07 ->   1.08  void at::native::vectorized_elementwise_kernel<(int)2, at::native::<un
+      2.1 (  0.4) ->     0.0 (  0.0)  per-launch   5.13 ->   0.00  void flashinfer::BatchPrefillWithPagedKVCacheKernel<flashinfer::Kernel
+      0.0 (  0.0) ->     0.8 (  0.4)  per-launch   1.47 ->   1.98  void at::native::elementwise_kernel<(int)128, (int)4, void at::native:
+      0.1 (  0.1) ->     0.0 (  0.0)  per-launch   0.97 ->   0.00  void at::native::vectorized_elementwise_kernel<(int)4, at::native::CUD
+      0.0 (  0.0) ->     0.0 (  0.0)  per-launch   0.90 ->   0.88  void at::native::vectorized_elementwise_kernel<(int)2, at::native::Fil
+      0.0 (  0.0) ->     0.0 (  0.0)  per-launch   1.23 ->   0.00  void at::native::vectorized_elementwise_kernel<(int)4, at::native::BUn
+      0.0 (  0.0) ->     0.0 (  0.0)  per-launch   2.40 ->   0.00  void at::native::<unnamed>::write_indices<long>(long *, at::native::<u
+      0.0 (  0.0) ->     0.0 (  0.0)  per-launch   1.54 ->   0.00  void at::native::<unnamed>::CatArrayBatchedCopy_alignedK_contig<at::na
+      0.0 (  0.0) ->     0.0 (  0.0)  per-launch   1.47 ->   0.00  void at_cuda_detail::cub::DeviceScanKernel<at_cuda_detail::cub::Device
+      0.0 (  0.0) ->     0.0 (  0.0)  per-launch   1.34 ->   0.00  void at_cuda_detail::cub::DeviceSelectSweepKernel<at_cuda_detail::cub:
+      0.0 (  0.0) ->     0.0 (  0.0)  per-launch   1.18 ->   0.00  void at_cuda_detail::cub::DeviceReduceSingleTileKernel<at_cuda_detail:
+      0.0 (  0.0) ->     0.0 (  0.0)  per-launch   0.96 ->   0.00  void <unnamed>::elementwise_kernel_with_index<int, at::native::arange_
+      0.0 (  0.0) ->     0.0 (  0.0)  per-launch   0.93 ->   0.00  void at::native::unrolled_elementwise_kernel<at::native::CUDAFunctor_a
+      0.0 (  0.0) ->     0.0 (  0.0)  per-launch   0.86 ->   0.00  void at_cuda_detail::cub::DeviceCompactInitKernel<at_cuda_detail::cub:
+      0.0 (  0.0) ->     0.0 (  0.0)  per-launch   0.83 ->   0.00  void at_cuda_detail::cub::DeviceScanInitKernel<at_cuda_detail::cub::Sc
+== 4B
+    119.9 ( 72.0) ->   134.1 ( 72.0)  per-launch   1.67 ->   1.86  void flashinfer::norm::FusedAddRMSNormKernel<(unsigned int)8, __nv_bfl
+     47.7 ( 36.0) ->    55.0 ( 36.0)  per-launch   1.33 ->   1.53  void <unnamed>::silu_mul_vector_kernel<__nv_bfloat16, (long)0>(const T
+     46.6 ( 36.0) ->    51.8 ( 36.0)  per-launch   1.29 ->   1.44  void <unnamed>::rope_kernel<__nv_bfloat16>(T1 *, T1 *, const long *, c
+     40.6 ( 36.0) ->    45.7 ( 36.0)  per-launch   1.13 ->   1.27  void sglang::store_kvcache<(long)2048, (long)2048, (int)4, (bool)0, in
+     39.6 ( 36.0) ->    41.7 ( 36.0)  per-launch   1.10 ->   1.16  void sglang::fused_qknorm_warp<(long)128, (bool)0, __nv_bfloat16>(sgla
+      1.8 (  1.0) ->     1.9 (  1.0)  per-launch   1.81 ->   1.89  void at::native::<unnamed>::indexSelectSmallIndex<c10::BFloat16, long,
+      1.6 (  1.0) ->     1.9 (  1.0)  per-launch   1.59 ->   1.91  void at::native::<unnamed>::indexSelectSmallIndex<long, long, unsigned
+      1.6 (  1.0) ->     1.7 (  1.0)  per-launch   1.59 ->   1.70  void flashinfer::norm::RMSNormKernel<(unsigned int)8, __nv_bfloat16>(T
+      1.4 (  1.0) ->     1.6 (  1.0)  per-launch   1.38 ->   1.55  void at::native::index_elementwise_kernel<(int)128, (int)4, void at::n
+      0.9 (  1.0) ->     1.3 (  1.0)  per-launch   0.92 ->   1.29  void at::native::vectorized_elementwise_kernel<(int)4, at::native::Fil
+      1.1 (  1.0) ->     1.1 (  1.0)  per-launch   1.07 ->   1.08  void at::native::vectorized_elementwise_kernel<(int)2, at::native::<un
+== 8B
+    134.8 ( 72.0) ->   152.4 ( 72.0)  per-launch   1.87 ->   2.12  void flashinfer::norm::FusedAddRMSNormKernel<(unsigned int)8, __nv_bfl
+     48.0 ( 36.0) ->    56.0 ( 36.0)  per-launch   1.33 ->   1.56  void <unnamed>::silu_mul_vector_kernel<__nv_bfloat16, (long)0>(const T
+     46.4 ( 36.0) ->    52.5 ( 36.0)  per-launch   1.29 ->   1.46  void <unnamed>::rope_kernel<__nv_bfloat16>(T1 *, T1 *, const long *, c
+     40.2 ( 36.0) ->    45.8 ( 36.0)  per-launch   1.12 ->   1.27  void sglang::store_kvcache<(long)2048, (long)2048, (int)4, (bool)0, in
+     39.8 ( 36.0) ->    41.2 ( 36.0)  per-launch   1.11 ->   1.15  void sglang::fused_qknorm_warp<(long)128, (bool)0, __nv_bfloat16>(sgla
+      1.6 (  1.0) ->     1.9 (  1.0)  per-launch   1.62 ->   1.91  void at::native::<unnamed>::indexSelectSmallIndex<c10::BFloat16, long,
+      1.7 (  1.0) ->     1.8 (  1.0)  per-launch   1.70 ->   1.83  void flashinfer::norm::RMSNormKernel<(unsigned int)8, __nv_bfloat16>(T
+      1.6 (  1.0) ->     1.9 (  1.0)  per-launch   1.59 ->   1.92  void at::native::<unnamed>::indexSelectSmallIndex<long, long, unsigned
+      1.4 (  1.0) ->     1.5 (  1.0)  per-launch   1.36 ->   1.54  void at::native::index_elementwise_kernel<(int)128, (int)4, void at::n
+      0.9 (  1.0) ->     1.3 (  1.0)  per-launch   0.92 ->   1.31  void at::native::vectorized_elementwise_kernel<(int)4, at::native::Fil
+      1.1 (  1.0) ->     1.1 (  1.0)  per-launch   1.08 ->   1.09  void at::native::vectorized_elementwise_kernel<(int)2, at::native::<un
+FOLLOW_DONE

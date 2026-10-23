@@ -1,0 +1,22 @@
+span 2232131 -> 1485641 us (-33.4%); GPU us (a -> b)
+  projections        989906 ->     902461     -87446
+  attention          935646 ->     333603    -602043
+  other kernels      177655 ->     144560     -33095
+  argmax               4338 ->       2542      -1796
+  busy              2107546 ->    1383166
+     796107 ->         0  void flashinfer::BatchDecodeWithPagedKVCacheKernel<(flashinfer::PosEncodingMode)0, (unsign
+     370857 ->         0  std::enable_if<!T7, void>::type internal::gemvx::kernel<int, int, __nv_bfloat16, __nv_bflo
+     311605 ->         0  void cutlass::Kernel2<cutlass_80_tensorop_bf16_s16816gemm_relu_bf16_64x64_32x6_tn_align8>(
+          0 ->    311039  void cutlass::Kernel<cutlass::gemm::kernel::Gemm<cutlass::gemm::threadblock::MmaMultistage
+          0 ->    197917  pi_attn::decode_kernel(const __nv_bfloat16 *, const __nv_bfloat16 *, const __nv_bfloat16 *
+     176117 ->         0  ampere_bf16_s1688gemm_bf16_64x128_sliced1x2_ldg8_f2f_tn
+          0 ->    167631  void cutlass::Kernel<pi_gemm::SegmentedKernel<cutlass::gemm::kernel::Gemm<cutlass::gemm::t
+          0 ->    135686  pi_attn::prefill_kernel(const __nv_bfloat16 *, __nv_bfloat16 *, const __nv_bfloat16 *, con
+          0 ->    113853  void pi_gemm::gemm_small_kernel<(int)1, (int)4, __nv_bfloat16, (int)64, (int)4>(const __nv
+          0 ->    110309  void pi_gemm::gemm_segsplit_kernel<__nv_bfloat16, (int)64, (int)6>(const __nv_bfloat16 *, 
+          0 ->    102928  void pi_gemm::gemm_small_kernel<(int)1, (int)4, __nv_bfloat16, (int)256, (int)3>(const __n
+      92649 ->         0  void flashinfer::BatchPrefillWithPagedKVCacheKernel<flashinfer::KernelTraits<(flashinfer::
+          0 ->     74472  void pi_gemm::gemm_small_kernel<(int)1, (int)2, __nv_bfloat16, (int)64, (int)4>(const __nv
+      52349 ->         0  ampere_bf16_s1688gemm_bf16_128x64_sliced1x2_ldg8_f2f_tn
+      45694 ->     39658  void <unnamed>::rope_kernel<__nv_bfloat16>(T1 *, T1 *, const long *, const float *, const 
+      44566 ->     39456  void flashinfer::norm::FusedAddRMSNormKernel<(unsigned int)8, __nv_bfloat16>(T2 *, T2 *, T

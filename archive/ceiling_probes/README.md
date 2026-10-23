@@ -141,3 +141,28 @@ streams a different copy from a >= 600 MB pool).
     test_gemm.py). `segsplit.py`: at M = 1, 0.6B o 7.04 -> 6.05 us (cuBLAS 6.59), down
     9.42 -> 8.29 (8.86); at M = 8 o 7.30 -> 7.10, down 9.68 -> 9.29; at M = 16 the balanced
     kernel stays faster. `out.txt`.
+17. `follow/`: in the batch-1 traces the non-projection kernels (FusedAddRMSNorm, RoPE, KV
+    store, SiLU-mul) take 0.1-0.25 us longer per launch in deterministic mode (1.7B: +20 us
+    per step; breakdown by kernel name: `other.py`). Hypothesis: the PI GEMM
+    before them (more shared memory, different L2 footprint) slows the next kernel.
+    `follow.py` times a CUDA graph of 64 x (GEMM, FlashInfer fused_add_rmsnorm) minus 64 x
+    GEMM, per shape and kernel id: on 0.6B and 1.7B the norm costs the same after every PI
+    id as after cuBLAS (within 0.05-0.1 us, e.g. 0.6B o: cuBLAS 1.18, k55 1.16 us); on 4B/8B
+    gate_up and down the spread across ids (and cuBLAS) is +-0.4 us with no PI-wide offset.
+    The hypothesis is not supported; the traced difference is unattributed. `out.txt`.
+18. `segpar_tiles/`: graph-timed, 0.6B's two S = 2 projections run 1.14-1.23x cuBLAS at
+    M = 128-256 (`results/kernels/gemm_burst.txt`), the largest remaining kernel gaps.
+    cuBLAS runs a 64x64 split-K kernel plus a reduce kernel there. (a) Smaller or other
+    segment-parallel tiles (prototype ids 56: 32x32, 57: 64x32, 60: 128x32, 61: 64x64 with
+    k32 x 5 stages; `prototype_ids.patch`, reverted; 64x32 with 32x16 warps and 32x32 with
+    16x16 warps do not compile in CUTLASS 2.x) do not help: at M = 128 the best is still
+    10.6 us on o (cuBLAS 8.8) and 14.0 on down (12.2), and PI time is flat from M = 32 to
+    192, `out_tiles.txt`. (b) Shorter chains do not help either: with the segment rule
+    changed to S = 4 for these shapes (`gemm_segments`: K % 1024 == 0 ? 4), every M is
+    slower or equal (M = 1: 1.11x cuBLAS instead of 0.91x; M = 128: 1.34x), `out_s4.txt`
+    from `s4.py`. The rule stays S = 2; the mid-M gap on these two shapes is unexplained.
+19. `c128/`: 0.6B at 512/256/c128 is the one batched point where PI is slower (-1.6%).
+    `trace_c128.sh` traces 128 such requests per mode and `cat_totals.py` sums GPU time
+    after start-up. Under tracing the two modes do not run the same schedule (FlashInfer
+    mode spent 371 ms in M = 1 GEMV, and the GPU spans differ by 33%), so the totals are not
+    comparable and the point stays unattributed. `out.txt`.

@@ -1,2 +1,2 @@
-compare {"greedy": {"requests": 16, "mismatched": 2, "first_divergence_tokens": [88, 133]}, "sampled": {"requests": 16, "mismatched": 9, "first_divergence_tokens": [0, 0, 0, 2, 7, 10, 17, 119, 133]}}
-NONDETERMINISTIC (11 failing comparisons)
+compare {"greedy": {"requests": 16, "mismatched": 4, "first_divergence_tokens": [6, 33, 59, 66]}, "sampled": {"requests": 16, "mismatched": 9, "first_divergence_tokens": [0, 0, 2, 7, 10, 10, 27, 29, 133]}}
+NONDETERMINISTIC (13 failing comparisons)

@@ -1,4 +1,4 @@
 Qwen3-8B deterministic c=1: |gsm8k| 3|flexible-extract| 5|exact_match|↑ |0.028|± |0.0074| | | |strict-match | 5|exact_match|↑ |0.902|± |0.0133| 
 Qwen3-8B deterministic c=16: |gsm8k| 3|flexible-extract| 5|exact_match|↑ |0.028|± |0.0074| | | |strict-match | 5|exact_match|↑ |0.902|± |0.0133| 
 Qwen3-8B flashinfer c=1: |gsm8k| 3|flexible-extract| 5|exact_match|↑ |0.014|± |0.0053| | | |strict-match | 5|exact_match|↑ |0.900|± |0.0134| 
-Qwen3-8B flashinfer c=16: |gsm8k| 3|flexible-extract| 5|exact_match|↑ | 0.02|± |0.0063| | | |strict-match | 5|exact_match|↑ | 0.90|± |0.0134| 
+Qwen3-8B flashinfer c=16: |gsm8k| 3|flexible-extract| 5|exact_match|↑ |0.016|± |0.0056| | | |strict-match | 5|exact_match|↑ |0.906|± |0.0131| 

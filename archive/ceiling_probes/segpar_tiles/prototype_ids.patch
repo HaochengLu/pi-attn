@@ -1,0 +1,15 @@
+diff --git a/src/kernels/pi/gemm_dispatch.cuh b/src/kernels/pi/gemm_dispatch.cuh
+index 49aee68..f7d0854 100644
+--- a/src/kernels/pi/gemm_dispatch.cuh
++++ b/src/kernels/pi/gemm_dispatch.cuh
+@@ -122,6 +122,10 @@ cudaError_t run_gemm(int k, const void* x, int64_t ldx, const void* w, OutT* y,
+     case 48: return CutlassGemm<OutT, 32, 64, 64, 16, 32, 5>::run_segpar(x, ldx, w, y, ldy, M, N, K, st);
+     case 49: return CutlassGemm<OutT, 64, 64, 64, 32, 32, 3>::run_segpar(x, ldx, w, y, ldy, M, N, K, st);
+     case 50: return CutlassGemm<OutT, 128, 64, 64, 64, 32, 3>::run_streamk(x, ldx, w, y, ldy, M, N, K, dev.sms, 1, st);
++    case 56: return CutlassGemm<OutT, 32, 32, 64, 16, 32, 5>::run_segpar(x, ldx, w, y, ldy, M, N, K, st);
++    case 57: return CutlassGemm<OutT, 64, 32, 64, 32, 32, 4>::run_segpar(x, ldx, w, y, ldy, M, N, K, st);
++    case 60: return CutlassGemm<OutT, 128, 32, 64, 32, 32, 3>::run_segpar(x, ldx, w, y, ldy, M, N, K, st);
++    case 61: return CutlassGemm<OutT, 64, 64, 32, 32, 32, 5>::run_segpar(x, ldx, w, y, ldy, M, N, K, st);
+     default: return cudaErrorInvalidValue;
+   }
+ }
