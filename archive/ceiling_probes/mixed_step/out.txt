@@ -1,0 +1,6 @@
+0 x 512-token prompts + 128 decode rows: FI prefill 382.3 us, PI prefill 365.3 us (0.96x) | decode rows alone via PI decode kernel 364.7 us
+1 x 512-token prompts + 127 decode rows: FI prefill 391.6 us, PI prefill 376.5 us (0.96x) | decode rows alone via PI decode kernel 362.9 us
+2 x 512-token prompts + 126 decode rows: FI prefill 414.1 us, PI prefill 393.6 us (0.95x) | decode rows alone via PI decode kernel 359.5 us
+4 x 512-token prompts + 124 decode rows: FI prefill 420.4 us, PI prefill 413.4 us (0.98x) | decode rows alone via PI decode kernel 352.3 us
+1 x 512-token prompts +  32 decode rows: FI prefill 91.5 us, PI prefill 84.6 us (0.92x) | decode rows alone via PI decode kernel 34.1 us
+4 x 512-token prompts +   0 decode rows: FI prefill 91.2 us, PI prefill 71.6 us (0.79x)

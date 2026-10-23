@@ -176,3 +176,14 @@ streams a different copy from a >= 600 MB pool).
     under 1 us; mixed lengths 512-766 with contiguous or shuffled pages give 0.97x. None
     of these explains the loss, which stays unattributed inside the PI backend's decode
     step. `out.txt`.
+21. `mixed_step/`: after the first token the c128 run also has mixed steps, in which the
+    engine puts new prompts and running decode rows in one prefill-phase batch and both
+    backends run the decode rows (q = 1) through their prefill kernel; probe 20 timed only
+    the decode kernel. `probe.py` times FlashInfer's and PI's prefill on 0-4 512-token
+    prompts plus 124-128 decode rows at 512-766 keys (16/8 heads): PI is 0.95-0.98x
+    (0.92x with 32 decode rows, 0.79x prompts only). The decode rows alone through the
+    decode kernel take 352-365 us against 365-413 us in the PI prefill path, but FlashInfer
+    mode runs them through its prefill too, so this is not a loss relative to it.
+    `plan_prefill` is host arithmetic plus a workspace allocation, with no device sync.
+    The c128 loss is therefore not in any attention kernel at that run's shapes and stays
+    unattributed. `out.txt`.

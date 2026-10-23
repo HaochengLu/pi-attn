@@ -32,8 +32,9 @@ engine, and 1.9–3.5× that of SGLang's deterministic mode. Its decode throughp
 only at batch 1 on 1.7B and 8B (by 0.6–1.8%), where its weight-streaming projections run
 2–4% behind cuBLAS's GEMV on the widest and longest weights, and at one 0.6B point with
 128 concurrent requests (1.6%), which a component ablation places in the attention
-backend's decode step but not in the decode kernel; on prefill-bound requests it is within 0.3%, with time
-to first token up to 1.6% higher on the longest 32-head prompts. GSM8K
+backend although none of its kernels is slower at that run's shapes. On prefill-bound
+requests its throughput is −0.3% to +2.2%, with time to first token up to 1.6% higher on
+the longest 32-head prompts. GSM8K
 accuracy is unchanged, and every generation is identical between client concurrency 1
 and 16.
 
@@ -228,7 +229,7 @@ summation [DN13] makes sums order-independent at higher cost; we instead fix the
 library versions) and weights, every response is a bitwise function of the request's
 token ids, sampling parameters and seed. The claim does not extend to other GPU models,
 other builds, tensor parallelism or FP8 (Section 8). We test it on one physical RTX 4090 D;
-that two boards of the same model agree follows from A1–A3 and is not tested.
+that two boards of the same model agree follows from A1–A4 and is not tested.
 
 **Model of computation.** We assume:
 - **(A1)** A tensor-core MMA instruction computes each output element as a deterministic
@@ -509,7 +510,8 @@ A tuning failure falls back to a heuristic choice, which is numerically identica
 
 For ablation, `--attention-backend pi` runs PI attention with cuBLAS projections, and
 `--row-invariant-gemm` runs the row-invariant GEMM and the deterministic sampler with
-FlashInfer attention. Neither is deterministic on its own.
+the backend chosen by `--attention-backend` (FlashInfer in Section 7.3). Neither is
+deterministic on its own.
 
 ## 7 Evaluation
 
@@ -627,18 +629,25 @@ requests per point, or 256 at c128; four modes interleaved over 3 launches, medi
 
 The three launches of each cell are within 0.5% of each other at batch 1 and within
 0.8% elsewhere, except GEMM-only 1.7B at c32 (1.7%). The last column is a separate
-launch from the tables above and differs from them by up to 1.0 point (0.6B c32).
+launch from the matrix above and the high-concurrency table below, and differs from them
+by up to 1.0 point (0.6B c32).
 
 PI attention alone is faster at batch 1 and at c32 on every model. The row-invariant
 GEMM is what costs at batch 1 (−1.9% to −2.3% on 1.7B and 8B), and it contributes most
 of the batched gain (+2.4% to +4.3% at c32), consistent with the tuned kernels' lead
-over cuBLAS at M = 8–64 (Kernels, below). The two effects add to within 0.6 points of
-the combined mode. The 0.6B c128 loss comes from attention, and from decode: time per
-output token rises from 13.97 to 14.16 ms (+1.4%) and TTFT by 0.8%. The decode
-kernel does not explain it. At that run's shapes (batch 128, 512–768 keys, uniform or
-mixed lengths, contiguous or shuffled pages) PI decode takes 0.94–0.99× the time of
-FlashInfer's, and sizing the grid for the engine's 8192-key page table, as its decode
-graph does, adds under 1 µs (probe 20). We have not found the cause.
+over cuBLAS at M = 8–64 (Kernels, below). The two effects add to within 0.7 points of
+the combined mode.
+
+The 0.6B c128 loss comes from attention, and mostly after the first token: time per
+output token rises from 13.97 to 14.16 ms (+1.4%), TTFT by 0.8%. Those steps are pure
+decode steps, which run the decode kernel inside a CUDA graph, and mixed steps, in which
+both backends run the decode rows (q = 1) through their prefill kernel together with new
+prompts. Neither kernel is slower at that run's shapes (batch 128, 16 query and 8 KV
+heads, 512–768 keys). PI decode takes 0.94–0.99× the time of FlashInfer's, with uniform or
+mixed lengths and contiguous or shuffled pages, and sizing its grid for the engine's
+8192-key page table, as the decode graph does, adds under 1 µs (probe 20). PI prefill on
+mixed batches of up to four 512-token prompts and 124–128 decode rows takes 0.95–0.98×
+(probe 21). The planner does no device synchronisation. We have not found the cause.
 
 Long-context and shared-prefix workloads (`eval/e2e_extended.sh`, 3 interleaved launches
 per mode, median):
@@ -685,8 +694,8 @@ corresponding extend shape is faster in isolation (0.91×); we have not attribut
 
 0.6B at 512 / 256 / c128 is the one batched point where PI is slower (−1.6%). The
 component ablation above places the loss in the attention backend, not in the
-projections, and in decode rather than prefill. Its cause is not identified (probes 19
-and 20).
+projections, but no attention kernel is slower at that run's shapes, and the cause is not
+identified (probes 19–21).
 
 § 16384 + 256 exceeds the 8B server's context limit, so each request produces one token
 and only TTFT is meaningful.
@@ -784,7 +793,7 @@ unattributed; it is 0.2–0.5% of a traced step.
 ## 8 Limitations
 
 - **Scope of the guarantee.** Bitwise claims hold for one GPU model and one build
-  (A1–A3). The segment rule depends on shapes only, so it is GPU-independent, but MMA
+  (A1–A4). The segment rule depends on shapes only, so it is GPU-independent, but MMA
   internals are not specified across architectures. One route to cross-architecture
   identity is explicit IEEE fp32 accumulation, as in [2609.25624]; we have not measured
   its cost for this program.
@@ -794,7 +803,7 @@ unattributed; it is 0.2–0.5% of a traced step.
   segmented projections are 1.14–1.23× cuBLAS at M = 128–256 (Section 7.3). Batch-1 decode
   of 1.7B pays 1.4–1.8% and of 8B 0.6–0.7%, which the ablation assigns to the
   row-invariant GEMM. 0.6B at concurrency 128 pays 1.6%, which it assigns to the attention
-  backend's decode step without a kernel-level cause.
+  backend, although no attention kernel is slower at that run's shapes.
 - **Single stream.** The GEMM segment, stream-K and segment-parallel workspaces and
   counters and the decode fold counters are static per-device state that every launch
   leaves zeroed. Launches that use
