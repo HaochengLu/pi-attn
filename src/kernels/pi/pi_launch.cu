@@ -105,11 +105,11 @@ const char* pi_attn_decode(const void* q, const void* k_cache, const void* v_cac
     return fail("PI decode workspace smaller than batch * fold groups per request");
   auto st = (cudaStream_t)stream;
   set_smem(decode_kernel, decode_smem_bytes());
-  decode_kernel<<<dim3(max_groups, num_kv_heads, batch), kDecodeWarps * 32, decode_smem_bytes(), st>>>(
+  decode_kernel<<<decode_grid(max_groups, num_kv_heads, batch), kDecodeWarps * 32, decode_smem_bytes(), st>>>(
       (const __nv_bfloat16*)q, (const __nv_bfloat16*)k_cache, (const __nv_bfloat16*)v_cache,
       nullptr, page_table, table_stride, seqlens, ws_o, (float2*)ws_ml, counters, (__nv_bfloat16*)out,
       max_groups, num_qo_heads, num_kv_heads, page_size, page_shift_of(page_size),
-      (float)(sm_scale * 1.4426950408889634));
+      (float)(sm_scale * 1.4426950408889634), decode_group_fastest(batch));
   return check_launch("pi decode");
 }
 

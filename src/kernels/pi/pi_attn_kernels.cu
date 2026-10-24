@@ -359,7 +359,7 @@ inline void prefill_plan(int batch, int num_qo_heads, int num_kv_heads, int max_
 }
 
 
-// Decode. grid = (max_groups, num_kv_heads, batch), 4 warps. One CTA runs the
+// Decode. grid = decode_grid(...), 4 warps. One CTA runs the
 // canonical online sequence of fold group fg for the GQA rows of (b, kvh) and
 // writes the group partial (m, d, o) at ws row b * max_groups + fg. A request
 // with one group finishes in place (the first fold into the identity is exact);
@@ -371,6 +371,16 @@ inline void prefill_plan(int batch, int num_qo_heads, int num_kv_heads, int max_
 // the two key k-steps in ascending order); the tile max is exact under any
 // split; P is rounded elementwise; warp 0 sums P from smem in exactly
 // online_step's order.
+// Grid order (scheduling only). A CUDA graph's grid covers max_groups for every
+// request, and CTAs past a request's length return at once. With several requests the
+// group is the slowest index: every working CTA is dispatched before the empty ones, and
+// the kv heads of a token, adjacent in the cache, are read together. A single request
+// keeps the group fastest, which measured faster at large grids
+// (archive/ceiling_probes/a800/decode_grid_order.txt).
+inline bool decode_group_fastest(int batch) { return batch == 1; }
+inline dim3 decode_grid(int max_groups, int num_kv_heads, int batch) {
+  return decode_group_fastest(batch) ? dim3(max_groups, num_kv_heads, 1) : dim3(num_kv_heads, batch, max_groups);
+}
 constexpr int kDecodeWarps = 4;
 constexpr int decode_smem_bytes() { return (2 * kTile * kHeadDim + 16 * (kTile + 8)) * 2 + kDecodeWarps * 16 * 4; }
 
@@ -380,7 +390,8 @@ __global__ void __launch_bounds__(kDecodeWarps * 32)
                    const int32_t* __restrict__ kv_page_indices, int64_t table_stride,
                    const int32_t* __restrict__ kv_lens, float* __restrict__ ws_o, float2* __restrict__ ws_ml,
                    int* __restrict__ counters, __nv_bfloat16* __restrict__ out, int max_groups,
-                   int num_qo_heads, int num_kv_heads, int page_size, int page_shift, float scale_log2) {
+                   int num_qo_heads, int num_kv_heads, int page_size, int page_shift, float scale_log2,
+                   bool group_fastest) {
   static_assert(kTileNS == kDecodeWarps && kNTilesO % kDecodeWarps == 0, "one S n-tile per warp");
   constexpr int kON = kNTilesO / kDecodeWarps, kPStride = kTile + 8;
   extern __shared__ __align__(16) __nv_bfloat16 smem[];
@@ -388,7 +399,8 @@ __global__ void __launch_bounds__(kDecodeWarps * 32)
   __nv_bfloat16* sV = sK + kTile * kHeadDim;
   __nv_bfloat16* sP = sV + kTile * kHeadDim;  // [16 rows][kTile] rounded P
   float* sMax = reinterpret_cast<float*>(sP + 16 * kPStride);  // [warps][16]
-  const int fg = blockIdx.x, kvh = blockIdx.y, b = blockIdx.z;
+  const int kvh = group_fastest ? blockIdx.y : blockIdx.x, b = group_fastest ? 0 : blockIdx.y;
+  const int fg = group_fastest ? blockIdx.x : blockIdx.z;
   const int kv_len = kv_lens[b], pos = kv_len - 1;
   const int n_tiles = (kv_len + kTile - 1) / kTile;
   const int t_begin = fg * kGroupTiles;
