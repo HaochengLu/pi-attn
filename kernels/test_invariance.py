@@ -169,6 +169,9 @@ def main():
             for (L, p), out in zip(group, decode(pool, reqs)):
                 if not same(out[0], alone[L][p]):
                     fails.append(("path", L, p))
+        for L, p in probes[:8]:  # alone: a single request runs another grid order (decode_grid)
+            if not same(decode(pool, [(seqs[L][0][p:p + 1].contiguous(), pages[L], p + 1)])[0][0], alone[L][p]):
+                fails.append(("path alone", L, p))
 
     # Accuracy vs float64 and vs bf16 SDPA.
     for L in [517, 2049]:

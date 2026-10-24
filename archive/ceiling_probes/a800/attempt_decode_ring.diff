@@ -1,0 +1,324 @@
+diff --git a/src/kernels/pi/pi_attn_kernels.cu b/src/kernels/pi/pi_attn_kernels.cu
+index 0cc56ec..1f48f79 100644
+--- a/src/kernels/pi/pi_attn_kernels.cu
++++ b/src/kernels/pi/pi_attn_kernels.cu
+@@ -359,7 +359,7 @@ inline void prefill_plan(int batch, int num_qo_heads, int num_kv_heads, int max_
+ }
+ 
+ 
+-// Decode. grid = (max_groups, num_kv_heads, batch), 4 warps. One CTA runs the
++// Decode. grid = (num_kv_heads, batch, max_groups), 4 warps. One CTA runs the
+ // canonical online sequence of fold group fg for the GQA rows of (b, kvh) and
+ // writes the group partial (m, d, o) at ws row b * max_groups + fg. A request
+ // with one group finishes in place (the first fold into the identity is exact);
+@@ -371,9 +371,26 @@ inline void prefill_plan(int batch, int num_qo_heads, int num_kv_heads, int max_
+ // the two key k-steps in ascending order); the tile max is exact under any
+ // split; P is rounded elementwise; warp 0 sums P from smem in exactly
+ // online_step's order.
++//
++// Loads (scheduling only): RING = 1 holds one K and one V tile; K(t + 1) is issued once
++// every warp has read K(t), V(t + 1) at the end of tile t. RING >= 2 holds RING tiles of
++// each: tiles t + 1 .. t + RING - 2 are in flight at the top of tile t, which issues tile
++// t + RING - 1 into the slots tile t - 1 freed. At few CTAs per SM the deeper ring keeps
++// more of a group's DRAM reads in flight; its smem allows fewer CTAs per SM
++// (decode_ring).
+ constexpr int kDecodeWarps = 4;
+-constexpr int decode_smem_bytes() { return (2 * kTile * kHeadDim + 16 * (kTile + 8)) * 2 + kDecodeWarps * 16 * 4; }
++template <int RING>
++constexpr int decode_smem_bytes() {
++  return (2 * RING * kTile * kHeadDim + 16 * (kTile + 8)) * 2 + kDecodeWarps * 16 * 4;
++}
++// Ring depth for a decode launch, fixed per CUDA-graph bucket (batch): 3 on sm_80 while
++// two fold groups per (request, kv head) fit one wave at the 3 CTAs per SM its 50 KB
++// allow, else 1. Measured on the A800 only (archive/ceiling_probes/a800/decode_ring.txt).
++inline int decode_ring(int cc_major, int cc_minor, int batch, int num_kv_heads, int sms) {
++  return cc_major == 8 && cc_minor == 0 && 2 * batch * num_kv_heads <= 3 * sms ? 3 : 1;
++}
+ 
++template <int RING>
+ __global__ void __launch_bounds__(kDecodeWarps * 32)
+     decode_kernel(const __nv_bfloat16* __restrict__ q, const __nv_bfloat16* __restrict__ k_cache,
+                    const __nv_bfloat16* __restrict__ v_cache, const int32_t* __restrict__ kv_page_indptr,
+@@ -382,13 +399,17 @@ __global__ void __launch_bounds__(kDecodeWarps * 32)
+                    int* __restrict__ counters, __nv_bfloat16* __restrict__ out, int max_groups,
+                    int num_qo_heads, int num_kv_heads, int page_size, int page_shift, float scale_log2) {
+   static_assert(kTileNS == kDecodeWarps && kNTilesO % kDecodeWarps == 0, "one S n-tile per warp");
++  static_assert(RING >= 1, "at least the tile in use");
+   constexpr int kON = kNTilesO / kDecodeWarps, kPStride = kTile + 8;
+   extern __shared__ __align__(16) __nv_bfloat16 smem[];
+-  __nv_bfloat16* sK = smem;
+-  __nv_bfloat16* sV = sK + kTile * kHeadDim;
+-  __nv_bfloat16* sP = sV + kTile * kHeadDim;  // [16 rows][kTile] rounded P
++  __nv_bfloat16* sKr = smem;                         // RING K slots
++  __nv_bfloat16* sVr = sKr + RING * kTile * kHeadDim;  // RING V slots
++  __nv_bfloat16* sP = sVr + RING * kTile * kHeadDim;  // [16 rows][kTile] rounded P
+   float* sMax = reinterpret_cast<float*>(sP + 16 * kPStride);  // [warps][16]
+-  const int fg = blockIdx.x, kvh = blockIdx.y, b = blockIdx.z;
++  // Group slowest: a CUDA graph's grid covers max_groups for every request, and CTAs
++  // past a request's length return at once; dispatched last, they no longer delay the
++  // working ones (archive/ceiling_probes/a800/decode_ring.txt).
++  const int kvh = blockIdx.x, b = blockIdx.y, fg = blockIdx.z;
+   const int kv_len = kv_lens[b], pos = kv_len - 1;
+   const int n_tiles = (kv_len + kTile - 1) / kTile;
+   const int t_begin = fg * kGroupTiles;
+@@ -398,12 +419,28 @@ __global__ void __launch_bounds__(kDecodeWarps * 32)
+   const int g = lane >> 2, t4 = lane & 3, mat = lane >> 3, r8 = lane & 7;
+   const int group = num_qo_heads / num_kv_heads;
+   const int32_t* pages = request_pages(kv_page_indices, kv_page_indptr, table_stride, b);
+-  int64_t row;
+-  row = tile_row(pages, page_size, page_shift, t_begin, kv_len, num_kv_heads, kvh, tid);
+-  issue_tile(sK, k_cache, row, tid);
+-  cp_async_commit();
+-  issue_tile(sV, v_cache, row, tid);
+-  cp_async_commit();
++  // RING >= 2: one commit group per tile (K and V); tiles t_begin .. t_begin + RING - 2
++  // in flight. RING = 1: K and V of a tile are separate groups.
++  auto issue_kv = [&](int t, int64_t row) {
++    if (t < t_end) {
++      issue_tile(sKr + (t % RING) * kTile * kHeadDim, k_cache, row, tid);
++      issue_tile(sVr + (t % RING) * kTile * kHeadDim, v_cache, row, tid);
++    }
++    cp_async_commit();
++  };
++  // Cache row of this thread's key of the next tile to issue, read a tile ahead.
++  int64_t row = tile_row(pages, page_size, page_shift, t_begin, kv_len, num_kv_heads, kvh, tid);
++  if constexpr (RING == 1) {
++    issue_tile(sKr, k_cache, row, tid);
++    cp_async_commit();
++    issue_tile(sVr, v_cache, row, tid);
++    cp_async_commit();
++  } else {
++#pragma unroll
++    for (int i = 0; i < RING - 1; ++i)
++      issue_kv(t_begin + i, tile_row(pages, page_size, page_shift, t_begin + i, kv_len, num_kv_heads, kvh, tid));
++    row = tile_row(pages, page_size, page_shift, t_begin + RING - 1, kv_len, num_kv_heads, kvh, tid);
++  }
+   QFrag qf;
+   const int64_t q_stride = (int64_t)num_qo_heads * kHeadDim;
+   load_q(qf, [&](int r) -> const __nv_bfloat16* {
+@@ -415,9 +452,18 @@ __global__ void __launch_bounds__(kDecodeWarps * 32)
+   for (int n = 0; n < kON; ++n) O[n][0] = O[n][1] = O[n][2] = O[n][3] = 0.f;
+ 
+   for (int t = t_begin; t < t_end; ++t) {
+-    if (t + 1 < t_end) row = tile_row(pages, page_size, page_shift, t + 1, kv_len, num_kv_heads, kvh, tid);
+-    cp_async_wait<1>();  // K(t) landed
+-    __syncthreads();
++    if constexpr (RING == 1) {
++      if (t + 1 < t_end) row = tile_row(pages, page_size, page_shift, t + 1, kv_len, num_kv_heads, kvh, tid);
++      cp_async_wait<1>();  // K(t) landed
++      __syncthreads();
++    } else {
++      cp_async_wait<RING - 2>();  // K(t), V(t) landed
++      __syncthreads();            // ... for all threads; everyone is done with tile t - 1
++      issue_kv(t + RING - 1, row);
++      row = tile_row(pages, page_size, page_shift, t + RING, kv_len, num_kv_heads, kvh, tid);
++    }
++    const __nv_bfloat16* sK = sKr + (t % RING) * kTile * kHeadDim;
++    const __nv_bfloat16* sV = sVr + (t % RING) * kTile * kHeadDim;
+     float s[4] = {0.f, 0.f, 0.f, 0.f};
+ #pragma unroll
+     for (int ks = 0; ks < kKStepsQK; ++ks) {
+@@ -441,9 +487,11 @@ __global__ void __launch_bounds__(kDecodeWarps * 32)
+       sMax[warp * 16 + g] = mx[0];
+       sMax[warp * 16 + g + 8] = mx[1];
+     }
+-    __syncthreads();  // all warps done with K(t), maxima published
+-    if (t + 1 < t_end) issue_tile(sK, k_cache, row, tid);
+-    cp_async_commit();
++    __syncthreads();  // maxima published (RING = 1: and every warp is done with K(t))
++    if constexpr (RING == 1) {
++      if (t + 1 < t_end) issue_tile(sKr, k_cache, row, tid);
++      cp_async_commit();
++    }
+     float mm[2], scale[2];
+ #pragma unroll
+     for (int r = 0; r < 2; ++r) {
+@@ -463,8 +511,8 @@ __global__ void __launch_bounds__(kDecodeWarps * 32)
+       *reinterpret_cast<uint32_t*>(sP + g * kPStride + key) = pack_bf16(p[0], p[1]);
+       *reinterpret_cast<uint32_t*>(sP + (g + 8) * kPStride + key) = pack_bf16(p[2], p[3]);
+     }
+-    cp_async_wait<1>();  // V(t) landed
+-    __syncthreads();
++    if constexpr (RING == 1) cp_async_wait<1>();  // V(t) landed
++    __syncthreads();  // P published
+     if (warp == 0) {  // d in exactly online_step's order
+       float ls[2] = {0.f, 0.f};
+ #pragma unroll
+@@ -506,12 +554,15 @@ __global__ void __launch_bounds__(kDecodeWarps * 32)
+         mma_bf16(O[n], pa[j], bv[0], bv[1]);
+         mma_bf16(O[n + 1], pa[j], bv[2], bv[3]);
+       }
+-    __syncthreads();  // all warps done with V(t) and P
+-    if (t + 1 < t_end) issue_tile(sV, v_cache, row, tid);
+-    cp_async_commit();
++    if constexpr (RING == 1) {
++      __syncthreads();  // all warps done with V(t) and P
++      if (t + 1 < t_end) issue_tile(sVr, v_cache, row, tid);
++      cp_async_commit();
++    }
+   }
+   cp_async_wait<0>();
+-  float* sL = sMax;  // the loop is done with sMax: publish warp 0's row sums
++  if constexpr (RING > 1) __syncthreads();  // every warp is done with sMax and sP
++  float* sL = sMax;  // publish warp 0's row sums
+   if (warp == 0 && t4 == 0) {
+     sL[g] = D;
+     sL[g + 8] = Dh;
+diff --git a/src/kernels/pi/pi_launch.cu b/src/kernels/pi/pi_launch.cu
+index 11676e2..680e1d4 100644
+--- a/src/kernels/pi/pi_launch.cu
++++ b/src/kernels/pi/pi_launch.cu
+@@ -39,6 +39,7 @@ struct DeviceInfo {
+   int sms = 0, smem_optin = 0;
+   bool prefill_qreg = false;  // prefill kernel variant (prefill_qreg in pi_attn_kernels.cu)
+   bool prefill_tail_splits = false;  // prefill planner (prefill_tail_splits)
++  int cc_major = 0, cc_minor = 0;
+ };
+ 
+ DeviceInfo device_info() {
+@@ -57,6 +58,8 @@ DeviceInfo device_info() {
+   cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, device);
+   info.prefill_qreg = prefill_qreg(major, minor);
+   info.prefill_tail_splits = prefill_tail_splits(major, minor);
++  info.cc_major = major;
++  info.cc_minor = minor;
+   cache[device] = info;
+   return info;
+ }
+@@ -104,12 +107,21 @@ const char* pi_attn_decode(const void* q, const void* k_cache, const void* v_cac
+   if (ws_rows < (int64_t)batch * max_groups)
+     return fail("PI decode workspace smaller than batch * fold groups per request");
+   auto st = (cudaStream_t)stream;
+-  set_smem(decode_kernel, decode_smem_bytes());
+-  decode_kernel<<<dim3(max_groups, num_kv_heads, batch), kDecodeWarps * 32, decode_smem_bytes(), st>>>(
+-      (const __nv_bfloat16*)q, (const __nv_bfloat16*)k_cache, (const __nv_bfloat16*)v_cache,
+-      nullptr, page_table, table_stride, seqlens, ws_o, (float2*)ws_ml, counters, (__nv_bfloat16*)out,
+-      max_groups, num_qo_heads, num_kv_heads, page_size, page_shift_of(page_size),
+-      (float)(sm_scale * 1.4426950408889634));
++  auto launch = [&](auto kernel, int smem) {
++    set_smem(kernel, smem);
++    kernel<<<dim3(num_kv_heads, batch, max_groups), kDecodeWarps * 32, smem, st>>>(
++        (const __nv_bfloat16*)q, (const __nv_bfloat16*)k_cache, (const __nv_bfloat16*)v_cache,
++        nullptr, page_table, table_stride, seqlens, ws_o, (float2*)ws_ml, counters, (__nv_bfloat16*)out,
++        max_groups, num_qo_heads, num_kv_heads, page_size, page_shift_of(page_size),
++        (float)(sm_scale * 1.4426950408889634));
++  };
++  // The ring depth, like the grid, depends only on (batch, table_stride): fixed per
++  // CUDA-graph bucket.
++  const DeviceInfo dev = device_info();
++  if (decode_ring(dev.cc_major, dev.cc_minor, batch, num_kv_heads, dev.sms) == 3)
++    launch(decode_kernel<3>, decode_smem_bytes<3>());
++  else
++    launch(decode_kernel<1>, decode_smem_bytes<1>());
+   return check_launch("pi decode");
+ }
+ 
+diff --git a/kernels/pi_attn_torch.cu b/kernels/pi_attn_torch.cu
+index 2904227..a0df82a 100644
+--- a/kernels/pi_attn_torch.cu
++++ b/kernels/pi_attn_torch.cu
+@@ -92,7 +92,7 @@ at::Tensor prefill(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Ten
+ // before the first call and left zero by each.
+ at::Tensor decode(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Tensor kv_page_indptr,
+                   at::Tensor kv_page_indices, at::Tensor kv_lens, at::Tensor ws_o, at::Tensor ws_ml,
+-                  at::Tensor counters, int64_t max_kv_len, double sm_scale) {
++                  at::Tensor counters, int64_t max_kv_len, double sm_scale, int64_t ring) {
+   check_inputs(q, k_cache, v_cache, {kv_page_indptr, kv_page_indices, kv_lens});
+   const c10::cuda::CUDAGuard guard(q.device());
+   auto out = at::empty_like(q);
+@@ -108,13 +108,26 @@ at::Tensor decode(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Tens
+   const int max_groups = (int)((max_kv_len + kGroupKeys - 1) / kGroupKeys);
+   TORCH_CHECK(ws_o.size(0) >= (int64_t)batch * max_groups, "decode workspace below batch * max_groups");
+   auto stream = at::cuda::getCurrentCUDAStream();
+-  cudaFuncSetAttribute(decode_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, decode_smem_bytes());
+-  decode_kernel<<<dim3(max_groups, hkv, batch), kDecodeWarps * 32, decode_smem_bytes(), stream>>>(
+-      (const __nv_bfloat16*)q.data_ptr(), (const __nv_bfloat16*)k_cache.data_ptr(),
+-      (const __nv_bfloat16*)v_cache.data_ptr(), kv_page_indptr.data_ptr<int32_t>(),
+-      kv_page_indices.data_ptr<int32_t>(), (int64_t)0, kv_lens.data_ptr<int32_t>(), ws_o.data_ptr<float>(),
+-      (float2*)ws_ml.data_ptr<float>(), counters.data_ptr<int32_t>(), (__nv_bfloat16*)out.data_ptr(),
+-      max_groups, hq, hkv, page_size, page_shift_of(page_size), (float)(sm_scale * 1.4426950408889634));
++  auto launch = [&](auto kernel, int smem) {
++    cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem);
++    kernel<<<dim3(hkv, batch, max_groups), kDecodeWarps * 32, smem, stream>>>(
++        (const __nv_bfloat16*)q.data_ptr(), (const __nv_bfloat16*)k_cache.data_ptr(),
++        (const __nv_bfloat16*)v_cache.data_ptr(), kv_page_indptr.data_ptr<int32_t>(),
++        kv_page_indices.data_ptr<int32_t>(), (int64_t)0, kv_lens.data_ptr<int32_t>(), ws_o.data_ptr<float>(),
++        (float2*)ws_ml.data_ptr<float>(), counters.data_ptr<int32_t>(), (__nv_bfloat16*)out.data_ptr(),
++        max_groups, hq, hkv, page_size, page_shift_of(page_size), (float)(sm_scale * 1.4426950408889634));
++  };
++  if (ring == 0) {
++    int major = 0, minor = 0;
++    cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, q.get_device());
++    cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, q.get_device());
++    ring = decode_ring(major, minor, batch, hkv, sm_count(q));
++  }
++  TORCH_CHECK(ring >= 1 && ring <= 4, "ring: 0 (the engine's choice) or 1 .. 4");
++  if (ring == 1) launch(decode_kernel<1>, decode_smem_bytes<1>());
++  else if (ring == 2) launch(decode_kernel<2>, decode_smem_bytes<2>());
++  else if (ring == 3) launch(decode_kernel<3>, decode_smem_bytes<3>());
++  else launch(decode_kernel<4>, decode_smem_bytes<4>());
+   C10_CUDA_KERNEL_LAUNCH_CHECK();
+   return out;
+ }
+@@ -123,7 +136,9 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+   m.def("prefill", &prefill, py::arg("q"), py::arg("k_cache"), py::arg("v_cache"), py::arg("qo_indptr"),
+         py::arg("kv_page_indptr"), py::arg("kv_page_indices"), py::arg("kv_lens"), py::arg("max_q_len"),
+         py::arg("max_kv_len"), py::arg("sm_scale"), py::arg("kv_splits"), py::arg("variant") = 0);
+-  m.def("decode", &decode);
++  m.def("decode", &decode, py::arg("q"), py::arg("k_cache"), py::arg("v_cache"), py::arg("kv_page_indptr"),
++        py::arg("kv_page_indices"), py::arg("kv_lens"), py::arg("ws_o"), py::arg("ws_ml"), py::arg("counters"),
++        py::arg("max_kv_len"), py::arg("sm_scale"), py::arg("ring") = 0);
+   m.attr("TILE") = kTile;
+   m.attr("DECODE_WARPS") = kDecodeWarps;
+   m.attr("GROUP_KEYS") = kGroupKeys;
+diff --git a/kernels/test_invariance.py b/kernels/test_invariance.py
+index b34b4c6..8f90557 100644
+--- a/kernels/test_invariance.py
++++ b/kernels/test_invariance.py
+@@ -26,6 +26,8 @@ SCALE = 1 / math.sqrt(D)
+ KVSPLITS = int(__import__('os').environ.get('PI_KVSPLITS', '1'))
+ # Prefill kernel variant: 0 = the device's choice, 1 = Q in smem, 2 = Q in registers.
+ VARIANT = 0
++# Decode K/V ring depth (decode_kernel<RING>; 0 = the engine's choice, decode_ring).
++RING = 0
+ # Decode arrival counters, shared by every call as in the engine: each call must
+ # leave them zero for the next.
+ COUNTERS = torch.zeros(1 << 20, dtype=torch.int32, device=dev)
+@@ -93,7 +95,7 @@ def decode(pool, reqs):
+     ws_o = torch.full((rows, HQ, D), float("nan"), device=dev)
+     ws_ml = torch.full((rows, HQ, 2 * ext.DECODE_WARPS), float("nan"), device=dev)
+     out = ext.decode(q, pool.k, pool.v, m["kv_page_indptr"], m["kv_page_indices"], m["kv_lens"],
+-                     ws_o, ws_ml, COUNTERS, max_kv, SCALE)
++                     ws_o, ws_ml, COUNTERS, max_kv, SCALE, RING)
+     assert COUNTERS.count_nonzero().item() == 0, "decode left arrival counters set"
+     return list(out.split(1))
+ 
+@@ -112,7 +114,7 @@ def exact(q, k, v):
+ 
+ 
+ def main():
+-    global KVSPLITS, VARIANT
++    global KVSPLITS, VARIANT, RING
+     pool = Pool()
+     fails = []
+     lens = [1, 15, 63, 64, 65, 200, 517, 1300, 2049]
+@@ -158,8 +160,8 @@ def main():
+     KVSPLITS, VARIANT = 0, 0
+ 
+     # path + batch: decode token p (cache holds 0..p) vs prefill row p, at tile
+-    # (32) and fold-group (512) boundaries, in two random batchings.
+-    for _ in range(2):
++    # (32) and fold-group (512) boundaries, in two random batchings, at each ring depth.
++    for RING, _ in [(r, i) for r in (0, 1, 2, 3, 4) for i in range(2)]:
+         probes = [(L, p) for L in lens for p in sorted({0, L // 2, L - 1, random.randrange(L)} |
+                                                       {b for b in (31, 32, 511, 512, 513, 1023, 1024) if b < L})]
+         random.shuffle(probes)
+@@ -168,7 +170,7 @@ def main():
+             reqs = [(seqs[L][0][p:p + 1].contiguous(), pages[L], p + 1) for L, p in group]
+             for (L, p), out in zip(group, decode(pool, reqs)):
+                 if not same(out[0], alone[L][p]):
+-                    fails.append(("path", L, p))
++                    fails.append(("path", RING, L, p))
+ 
+     # Accuracy vs float64 and vs bf16 SDPA.
+     for L in [517, 2049]:

@@ -1,0 +1,204 @@
+# decode_kernel K/V ring depth and grid order, engine regime (28 caches per graph replay; kernels/probe_ring.py, probe_ring_old.py),
+# 16 qo / 8 kv heads, us per call, grid for 4096 keys (32768 for kv >= 8192). same = bitwise equal across depths.
+# old = the kernel before the ring (now RING = 1: one K and one V slot, K(t+1) issued after the max barrier,
+# V(t+1) at the end of tile t). ring2..4 = RING slots each, tile t + RING - 1 issued at the top of tile t.
+# smem per CTA: old / ring2 33.8 KB (register-limited to 5 CTAs/SM), ring3 50 KB (3/SM), ring4 66 KB (2/SM).
+## old
+b= 1 kv=  512: old   25.0
+b= 1 kv=  640: old   26.3
+b= 1 kv= 1024: old   26.4
+b= 1 kv= 2048: old   27.1
+b= 1 kv= 4096: old   28.7
+b= 4 kv=  512: old   28.5
+b= 4 kv=  640: old   31.7
+b= 4 kv= 1024: old   34.1
+b= 4 kv= 2048: old   36.5
+b= 4 kv= 4096: old   54.6
+b= 8 kv=  512: old   32.8
+b= 8 kv=  640: old   38.2
+b= 8 kv= 1024: old   45.6
+b= 8 kv= 2048: old   58.0
+b= 8 kv= 4096: old   96.3
+b=16 kv=  512: old   38.6
+b=16 kv=  640: old   42.7
+b=16 kv= 1024: old   57.2
+b=16 kv= 2048: old   96.3
+b=16 kv= 4096: old  186.2
+b=32 kv=  512: old   56.3
+b=32 kv=  640: old   68.3
+b=32 kv= 1024: old   97.2
+b=32 kv= 2048: old  185.8
+b=32 kv= 4096: old  360.6
+b= 1 kv= 8192: old   41.6
+b= 1 kv=16384: old   61.8
+b= 1 kv=30000: old   97.9
+b= 2 kv= 8192: old   59.8
+b= 2 kv=16384: old   99.5
+b= 2 kv=30000: old  177.7
+b=64 kv=  256: old   48.5
+b=64 kv=  512: old   96.1
+b=64 kv= 1024: old  186.3
+b=128 kv=  256: old   97.2
+b=128 kv=  512: old  184.2
+b=128 kv= 1024: old  361.9
+## ring2 / ring3 / ring4 (first build of the ring kernel, RING >= 2 only)
+b= 1 kv=  512: ring2   24.5 ring3   24.0 ring4   21.7 same=True
+b= 1 kv=  640: ring2   26.6 ring3   26.2 ring4   23.9 same=True
+b= 1 kv= 1024: ring2   26.6 ring3   26.3 ring4   23.8 same=True
+b= 1 kv= 2048: ring2   27.0 ring3   26.8 ring4   24.4 same=True
+b= 1 kv= 4096: ring2   28.5 ring3   28.4 ring4   26.1 same=True
+b= 4 kv=  512: ring2   28.5 ring3   28.0 ring4   25.0 same=True
+b= 4 kv=  640: ring2   32.4 ring3   32.5 ring4   27.2 same=True
+b= 4 kv= 1024: ring2   35.4 ring3   35.3 ring4   29.2 same=True
+b= 4 kv= 2048: ring2   37.1 ring3   37.2 ring4   32.4 same=True
+b= 4 kv= 4096: ring2   54.7 ring3   52.9 ring4   64.6 same=True
+b= 8 kv=  512: ring2   32.4 ring3   30.9 ring4   28.1 same=True
+b= 8 kv=  640: ring2   35.5 ring3   34.0 ring4   31.1 same=True
+b= 8 kv= 1024: ring2   42.1 ring3   37.0 ring4   32.1 same=True
+b= 8 kv= 2048: ring2   57.1 ring3   51.7 ring4   63.5 same=True
+b= 8 kv= 4096: ring2  111.3 ring3   95.9 ring4  101.9 same=True
+b=16 kv=  512: ring2   37.4 ring3   35.9 ring4   32.3 same=True
+b=16 kv=  640: ring2   42.5 ring3   40.5 ring4   42.6 same=True
+b=16 kv= 1024: ring2   56.5 ring3   52.6 ring4   62.3 same=True
+b=16 kv= 2048: ring2  112.3 ring3   96.2 ring4  101.9 same=True
+b=16 kv= 4096: ring2  192.0 ring3  187.1 ring4  182.4 same=True
+b=32 kv=  512: ring2   56.4 ring3   55.0 ring4   62.4 same=True
+b=32 kv=  640: ring2   72.7 ring3   75.0 ring4   74.3 same=True
+b=32 kv= 1024: ring2  111.7 ring3   99.4 ring4  101.8 same=True
+b=32 kv= 2048: ring2  191.9 ring3  186.8 ring4  183.0 same=True
+b=32 kv= 4096: ring2  363.7 ring3  352.9 ring4  347.0 same=True
+b= 1 kv= 8192: ring2   44.1 ring3   38.5 ring4   33.9 same=True
+b= 1 kv=16384: ring2   60.4 ring3   54.8 ring4   66.0 same=True
+b= 1 kv=30000: ring2  115.5 ring3   95.7 ring4  103.2 same=True
+b= 2 kv= 8192: ring2   59.0 ring3   57.2 ring4   66.3 same=True
+b= 2 kv=16384: ring2  115.2 ring3   97.5 ring4  104.0 same=True
+b= 2 kv=30000: ring2  186.5 ring3  172.9 ring4  173.9 same=True
+b= 2 kv=  640: ring2   27.0 ring3   26.7 ring4   24.3 same=True
+b= 2 kv= 1024: ring2   27.1 ring3   26.8 ring4   24.5 same=True
+b= 2 kv= 2048: ring2   28.1 ring3   27.9 ring4   25.8 same=True
+b= 2 kv= 3072: ring2   32.7 ring3   32.1 ring4   31.4 same=True
+b= 4 kv=  640: ring2   32.6 ring3   32.5 ring4   27.0 same=True
+b= 4 kv= 1024: ring2   35.3 ring3   35.1 ring4   29.2 same=True
+b= 4 kv= 2048: ring2   37.0 ring3   37.3 ring4   32.4 same=True
+b= 4 kv= 3072: ring2   44.0 ring3   43.6 ring4   41.3 same=True
+b=64 kv=  256: ring2   51.7 ring3   51.2 ring4   52.5 same=True
+b=64 kv=  512: ring2  105.0 ring3   93.8 ring4   96.6 same=True
+b=64 kv= 1024: ring2  192.3 ring3  186.9 ring4  184.4 same=True
+b=128 kv=  256: ring2   99.1 ring3  100.2 ring4  102.2 same=True
+b=128 kv=  512: ring2  188.3 ring3  185.5 ring4  177.7 same=True
+b=128 kv= 1024: ring2  364.8 ring3  355.5 ring4  352.8 same=True
+
+## Second build: RING = 1 is the old kernel's load order (same code path), grid for 32768 keys and the old grid
+## order (group fastest): ring 3's gain vanishes when most of the grid's CTAs return at once.
+b= 8 kv=  512: ring1   33.8 ring2   33.7 ring3   33.5 ring4   31.4 same=True
+b= 8 kv=  640: ring1   36.2 ring2   36.5 ring3   35.6 ring4   34.6 same=True
+b= 8 kv= 1024: ring1   42.1 ring2   41.8 ring3   38.2 ring4   36.2 same=True
+b=16 kv=  512: ring1   40.1 ring2   40.3 ring3   40.1 ring4   41.7 same=True
+b=16 kv=  640: ring1   45.6 ring2   45.8 ring3   46.6 ring4   49.9 same=True
+b=16 kv= 1024: ring1   59.8 ring2   57.1 ring3   56.8 ring4   62.4 same=True
+b= 8 kv=  640: ring1   35.4 ring2   34.9 ring3   34.4 ring4   31.7 same=True
+b=16 kv=  640: ring1   42.6 ring2   42.3 ring3   40.9 ring4   42.7 same=True
+
+## Grid order (kv head, request, group) with the group slowest; ring1 = old load order. Same harness.
+b= 1 kv=  512: ring1   28.0 ring2   27.9 ring3   27.3 ring4   25.8 same=True
+b= 1 kv=  640: ring1   29.1 ring2   29.5 ring3   29.2 ring4   27.6 same=True
+b= 1 kv= 1024: ring1   29.3 ring2   29.6 ring3   29.1 ring4   27.7 same=True
+b= 8 kv=  512: ring1   28.9 ring2   28.7 ring3   28.6 ring4   26.9 same=True
+b= 8 kv=  640: ring1   33.1 ring2   31.6 ring3   32.5 ring4   31.0 same=True
+b= 8 kv= 1024: ring1   35.0 ring2   32.3 ring3   32.7 ring4   31.9 same=True
+b=16 kv=  512: ring1   33.7 ring2   32.3 ring3   30.8 ring4   29.6 same=True
+b=16 kv=  640: ring1   39.9 ring2   38.5 ring3   38.1 ring4   38.9 same=True
+b=16 kv= 1024: ring1   55.3 ring2   54.4 ring3   52.5 ring4   62.4 same=True
+b=32 kv=  512: ring1   54.4 ring2   55.4 ring3   52.5 ring4   63.1 same=True
+b=32 kv=  640: ring1   66.4 ring2   67.1 ring3   72.1 ring4   79.8 same=True
+b=32 kv= 1024: ring1   96.8 ring2  109.1 ring3   95.1 ring4  107.3 same=True
+b= 8 kv=  640: ring1   32.0 ring2   32.5 ring3   33.0 ring4   31.4 same=True
+b= 8 kv= 4096: ring1   91.9 ring2  105.0 ring3   95.5 ring4  101.6 same=True
+b=16 kv=  640: ring1   39.9 ring2   39.6 ring3   39.7 ring4   38.8 same=True
+b=16 kv= 4096: ring1  177.5 ring2  178.5 ring3  181.1 ring4  182.9 same=True
+b=32 kv=  640: ring1   66.4 ring2   67.2 ring3   65.4 ring4   71.7 same=True
+b=32 kv= 4096: ring1  349.4 ring2  337.9 ring3  342.7 ring4  352.9 same=True
+b= 1 kv=30000: ring1   91.3 ring2  110.6 ring3   96.7 ring4  105.4 same=True
+
+## Old kernel and old grid order (group fastest), same grids, same session
+b= 1 kv=  512: old   25.1
+b= 1 kv=  640: old   28.0
+b= 1 kv= 1024: old   30.4
+b= 8 kv=  512: old   33.5
+b= 8 kv=  640: old   36.1
+b= 8 kv= 1024: old   42.2
+b=16 kv=  512: old   40.2
+b=16 kv=  640: old   45.8
+b=16 kv= 1024: old   60.0
+b=32 kv=  512: old   59.5
+b=32 kv=  640: old   72.7
+b=32 kv= 1024: old  102.0
+b= 1 kv=  640: old   26.3
+b= 1 kv= 4096: old   28.3
+b= 8 kv=  640: old   38.6
+b= 8 kv= 4096: old   91.2
+b=16 kv=  640: old   42.6
+b=16 kv= 4096: old  179.1
+b=32 kv=  640: old   68.3
+b=32 kv= 4096: old  360.5
+b= 1 kv=30000: old   91.0
+
+## Small batches across grid sizes: ring1 = new order, old = old order
+GRID 4096
+b= 1 kv=  256: ring1   13.4 same=True
+b= 1 kv=  512: ring1   24.9 same=True
+b= 1 kv= 1024: ring1   26.2 same=True
+b= 2 kv=  256: ring1   14.1 same=True
+b= 2 kv=  512: ring1   25.0 same=True
+b= 2 kv= 1024: ring1   26.8 same=True
+b= 4 kv=  256: ring1   15.8 same=True
+b= 4 kv=  512: ring1   28.2 same=True
+b= 4 kv= 1024: ring1   30.4 same=True
+b= 1 kv=  256: old   13.7
+b= 1 kv=  512: old   25.0
+b= 1 kv= 1024: old   26.5
+b= 2 kv=  256: old   14.3
+b= 2 kv=  512: old   25.2
+b= 2 kv= 1024: old   26.7
+b= 4 kv=  256: old   15.8
+b= 4 kv=  512: old   28.3
+b= 4 kv= 1024: old   34.1
+GRID 8192
+b= 1 kv=  256: ring1   13.6 same=True
+b= 1 kv=  512: ring1   24.9 same=True
+b= 1 kv= 1024: ring1   26.2 same=True
+b= 2 kv=  256: ring1   15.5 same=True
+b= 2 kv=  512: ring1   27.9 same=True
+b= 2 kv= 1024: ring1   29.6 same=True
+b= 4 kv=  256: ring1   15.8 same=True
+b= 4 kv=  512: ring1   28.2 same=True
+b= 4 kv= 1024: ring1   30.5 same=True
+b= 1 kv=  256: old   13.6
+b= 1 kv=  512: old   24.9
+b= 1 kv= 1024: old   26.5
+b= 2 kv=  256: old   15.7
+b= 2 kv=  512: old   28.1
+b= 2 kv= 1024: old   33.9
+b= 4 kv=  256: old   15.9
+b= 4 kv=  512: old   28.4
+b= 4 kv= 1024: old   34.2
+GRID 32768
+b= 1 kv=  256: ring1   15.2 same=True
+b= 1 kv=  512: ring1   28.0 same=True
+b= 1 kv= 1024: ring1   29.6 same=True
+b= 2 kv=  256: ring1   15.5 same=True
+b= 2 kv=  512: ring1   27.9 same=True
+b= 2 kv= 1024: ring1   29.6 same=True
+b= 4 kv=  256: ring1   15.8 same=True
+b= 4 kv=  512: ring1   28.2 same=True
+b= 4 kv= 1024: ring1   30.6 same=True
+b= 1 kv=  256: old   13.7
+b= 1 kv=  512: old   25.0
+b= 1 kv= 1024: old   30.4
+b= 2 kv=  256: old   15.0
+b= 2 kv=  512: old   26.7
+b= 2 kv= 1024: old   32.3
+b= 4 kv=  256: old   16.8
+b= 4 kv=  512: old   29.3
+b= 4 kv= 1024: old   36.4
+EXIT=0

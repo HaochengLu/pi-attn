@@ -4,7 +4,7 @@ Hardware: A800-SXM4-80GB, 108 SMs, 1.41 GHz max SM clock; full environment in
 `results/a800/ENV.txt`. Hardware performance counters are not available in the container
 (ERR_NVGPUCTRPERM), so every attribution here comes from timing ablation builds.
 
-The engine commit that ships is 42a5beb (091612d, the planner change and the GEMM changes below). Every attempt below that is not in it was
+The engine commit that ships is 38c32da (091612d, the planner change, the GEMM changes and the decode grid order below). Every attempt below that is not in it was
 reverted because of the measurement listed with it. Unless a file says otherwise, times
 are in µs: median of CUDA-event timings, or graph-replay averages where the file says
 "graph". Kernel output bits were checked in every case: the invariance, matrix and
@@ -124,6 +124,25 @@ change bits.
   - In the engine (nsys, Qwen3-1.7B, 8 × 512-token prompts) the deep kernel saves only
     ~2.8 µs per layer. The second launch costs ~2.4 µs per layer, and step wall time
     goes from 4593 to 4646 µs. Not shipped.
+- `decode_grid_order.txt`, `probe_ring.py`, `probe_ring_old.py`: load depth and grid
+  order of the shipped kernel, all in the engine regime (28 caches per graph replay).
+  - Ring of K/V slots (`attempt_decode_ring.diff`, not shipped):
+    - Each tile is issued RING − 1 tiles ahead, against one tile today.
+    - At a capture grid for 4096 keys, 3 slots cut batch 8 / 1024 keys from 45.6 to 37.0 µs.
+    - 4 slots (67 KB, 2 CTAs/SM) lose at long kv.
+    - With the engine's capture grids (8192–32768 keys, most CTAs returning at once),
+      the gain vanishes. The deeper ring's smem allows fewer CTAs per SM, and the
+      empty CTAs then drain more slowly.
+  - Shipped (engine 38c32da): the grid order. With the group as the slowest grid
+    index, every working CTA is dispatched before the empty ones, and the kv heads of a
+    token, adjacent in the cache, are read together.
+    - Batch 8 / 1024 keys at a 32768-key grid: 42.2 → 35.0 µs. Batch 16 / 512 keys:
+      40.2 → 33.7 µs.
+    - Single-request launches measured faster with the group fastest (batch 1 / 512 keys at
+      a 32768-key grid: 25.1 vs 28.0 µs), so `decode_grid` keeps that order for them.
+    - Engine (nsys, Qwen3-1.7B c8): decode 1001 → 842 µs per step.
+    - End to end (quick_e2e, 1.7B): c8 −9.5% → −6.6%, c16 −6.6% → −3.5%, c32 → −0.7%;
+      0.6B c8 +2.7% → +6.6%.
 
 ## GEMM, M ≤ 32
 

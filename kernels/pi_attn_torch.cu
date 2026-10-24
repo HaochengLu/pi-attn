@@ -109,12 +109,13 @@ at::Tensor decode(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Tens
   TORCH_CHECK(ws_o.size(0) >= (int64_t)batch * max_groups, "decode workspace below batch * max_groups");
   auto stream = at::cuda::getCurrentCUDAStream();
   cudaFuncSetAttribute(decode_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, decode_smem_bytes());
-  decode_kernel<<<dim3(max_groups, hkv, batch), kDecodeWarps * 32, decode_smem_bytes(), stream>>>(
+  decode_kernel<<<decode_grid(max_groups, hkv, batch), kDecodeWarps * 32, decode_smem_bytes(), stream>>>(
       (const __nv_bfloat16*)q.data_ptr(), (const __nv_bfloat16*)k_cache.data_ptr(),
       (const __nv_bfloat16*)v_cache.data_ptr(), kv_page_indptr.data_ptr<int32_t>(),
       kv_page_indices.data_ptr<int32_t>(), (int64_t)0, kv_lens.data_ptr<int32_t>(), ws_o.data_ptr<float>(),
       (float2*)ws_ml.data_ptr<float>(), counters.data_ptr<int32_t>(), (__nv_bfloat16*)out.data_ptr(),
-      max_groups, hq, hkv, page_size, page_shift_of(page_size), (float)(sm_scale * 1.4426950408889634));
+      max_groups, hq, hkv, page_size, page_shift_of(page_size), (float)(sm_scale * 1.4426950408889634),
+      decode_group_fastest(batch));
   C10_CUDA_KERNEL_LAUNCH_CHECK();
   return out;
 }
