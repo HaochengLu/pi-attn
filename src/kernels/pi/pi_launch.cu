@@ -37,6 +37,7 @@ const char* check_launch(const char* what) {
 
 struct DeviceInfo {
   int sms = 0, smem_optin = 0;
+  bool prefill_qreg = false;  // prefill kernel variant (prefill_qreg in pi_attn_kernels.cu)
 };
 
 DeviceInfo device_info() {
@@ -50,6 +51,10 @@ DeviceInfo device_info() {
   DeviceInfo info;
   cudaDeviceGetAttribute(&info.sms, cudaDevAttrMultiProcessorCount, device);
   cudaDeviceGetAttribute(&info.smem_optin, cudaDevAttrMaxSharedMemoryPerBlockOptin, device);
+  int major = 0, minor = 0;
+  cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, device);
+  cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, device);
+  info.prefill_qreg = prefill_qreg(major, minor);
   cache[device] = info;
   return info;
 }
@@ -129,13 +134,17 @@ const char* pi_attn_prefill(const void* q, const void* k_cache, const void* v_ca
   if (splits > 1 && (!ws_o || !ws_ml)) return fail("PI prefill split mode needs a workspace");
   auto st = (cudaStream_t)stream;
   const int group = num_qo_heads / num_kv_heads;
-  const int tiles = (int)(((int64_t)max_q_len * group + kPrefillWarps * 16 - 1) / (kPrefillWarps * 16));
-  set_smem(prefill_kernel, prefill_smem_bytes());
-  prefill_kernel<<<dim3(tiles, num_kv_heads, batch * splits), kPrefillWarps * 32, prefill_smem_bytes(), st>>>(
-      (const __nv_bfloat16*)q, (__nv_bfloat16*)out, (const __nv_bfloat16*)k_cache,
-      (const __nv_bfloat16*)v_cache, qo_indptr, nullptr, page_table, table_stride, nullptr, prefix_lens,
-      num_qo_heads, num_kv_heads, page_size, page_shift_of(page_size),
-      (float)(sm_scale * 1.4426950408889634), splits, ws_o, (float2*)ws_ml, max_groups);
+  const int tiles = (int)(((int64_t)max_q_len * group + kPrefillRows - 1) / kPrefillRows);
+  auto launch = [&](auto kernel, int smem) {
+    set_smem(kernel, smem);
+    kernel<<<dim3(tiles, num_kv_heads, batch * splits), kPrefillWarps * 32, smem, st>>>(
+        (const __nv_bfloat16*)q, (__nv_bfloat16*)out, (const __nv_bfloat16*)k_cache,
+        (const __nv_bfloat16*)v_cache, qo_indptr, nullptr, page_table, table_stride, nullptr, prefix_lens,
+        num_qo_heads, num_kv_heads, page_size, page_shift_of(page_size),
+        (float)(sm_scale * 1.4426950408889634), splits, ws_o, (float2*)ws_ml, max_groups);
+  };
+  if (device_info().prefill_qreg) launch(prefill_kernel<true>, prefill_smem_bytes<true>());
+  else launch(prefill_kernel<false>, prefill_smem_bytes<false>());
   if (auto e = check_launch("pi prefill")) return e;
   if (splits > 1) {
     prefill_merge_kernel<<<dim3(num_qo_heads, total_q), kHeadDim, 0, st>>>(

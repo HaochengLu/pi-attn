@@ -58,6 +58,16 @@ __device__ __forceinline__ void mma_bf16(float (&d)[4], const uint32_t (&a)[4], 
 __device__ __forceinline__ uint32_t smem_u32(const void* p) {
   return static_cast<uint32_t>(__cvta_generic_to_shared(p));
 }
+__device__ __forceinline__ void ldmatrix_x4(uint32_t (&r)[4], uint32_t addr) {
+  asm volatile("ldmatrix.sync.aligned.m8n8.x4.shared.b16 {%0,%1,%2,%3}, [%4];"
+               : "=r"(r[0]), "=r"(r[1]), "=r"(r[2]), "=r"(r[3])
+               : "r"(addr));
+}
+__device__ __forceinline__ void ldmatrix_x4_trans(uint32_t (&r)[4], uint32_t addr) {
+  asm volatile("ldmatrix.sync.aligned.m8n8.x4.trans.shared.b16 {%0,%1,%2,%3}, [%4];"
+               : "=r"(r[0]), "=r"(r[1]), "=r"(r[2]), "=r"(r[3])
+               : "r"(addr));
+}
 __device__ __forceinline__ void ldmatrix_x4(uint32_t (&r)[4], const void* p) {
   asm volatile("ldmatrix.sync.aligned.m8n8.x4.shared.b16 {%0,%1,%2,%3}, [%4];"
                : "=r"(r[0]), "=r"(r[1]), "=r"(r[2]), "=r"(r[3])
@@ -129,6 +139,10 @@ __device__ __forceinline__ __nv_bfloat16 finish(float o, float L) {
 
 // Swizzled [rows][128] bf16: 16-byte chunk j of row r at r * 16 + (j ^ (r & 7)).
 __device__ __forceinline__ int swz(int row, int chunk) { return row * kHeadDim + ((chunk ^ (row & 7)) << 3); }
+// Byte offset of chunk j of row r. In a 256-byte-aligned tile, chunk j ^ x of row r
+// (x < 16) is at swz_bytes(r, j) ^ (x << 4): a per-thread address computed once
+// serves every k-step with one XOR.
+__device__ __forceinline__ uint32_t swz_bytes(int row, int chunk) { return (uint32_t)swz(row, chunk) * 2; }
 
 // Online-softmax state of the two rows (g, g + 8) of one 16-row group.
 struct OnlineState {
@@ -188,32 +202,29 @@ __device__ __forceinline__ void online_step(OnlineState& st, float (&v)[kTileNS]
     for (int i = 0; i < 4; ++i) st.o[n][i] = __fmaf_rn(st.o[n][i], scale[i >> 1], 0.f);  // -0 -> +0
 }
 
-// Cache slots of the 4 keys this thread copies for tile t (-1 = position >= kv_len),
-// computed ahead of the copies so the page-table reads are off the critical path.
-__device__ __forceinline__ void tile_slots(int (&slot)[kTile / 8], const int32_t* pages, int page_size,
-                                           int page_shift, int t, int kv_len, int tid) {
-#pragma unroll
-  for (int i = 0; i < kTile / 8; ++i) {
-    const int pos = t * kTile + (tid >> 4) + 8 * i;
-    if (pos >= kv_len) slot[i] = -1;
-    else if (page_shift >= 0) slot[i] = (pages[pos >> page_shift] << page_shift) + (pos & (page_size - 1));
-    else slot[i] = pages[pos / page_size] * page_size + pos % page_size;
-  }
+// Thread tid of 128 copies key tid / 4 of a tile, 16-byte chunks tid % 4 + 4 i
+// (i = 0..3; a warp's copy covers 64 contiguous bytes of each of its 8 keys), so
+// it reads one page-table entry and forms one address per tile.
+static_assert(kTile * 4 == 128, "one key per 4 threads of a 128-thread CTA");
+
+// Element offset of this thread's key of tile t in a cache (-1 = position >=
+// kv_len), computed ahead of the copies so the page-table read is off the critical path.
+__device__ __forceinline__ int64_t tile_row(const int32_t* pages, int page_size, int page_shift, int t, int kv_len,
+                                            int num_kv_heads, int kvh, int tid) {
+  const int pos = t * kTile + (tid >> 2);
+  if (pos >= kv_len) return -1;
+  const int slot = page_shift >= 0 ? (pages[pos >> page_shift] << page_shift) + (pos & (page_size - 1))
+                                   : pages[pos / page_size] * page_size + pos % page_size;
+  return ((int64_t)slot * num_kv_heads + kvh) * kHeadDim;
 }
 
-// Async load of one kTile x 128 K or V tile (swizzled), 128 threads; keys with
-// slot -1 are zero-filled without a global read.
-__device__ __forceinline__ void issue_tile(__nv_bfloat16* tile, const __nv_bfloat16* cache,
-                                            const int (&slot)[kTile / 8], int num_kv_heads, int kvh, int tid) {
-  const int chunk = tid & 15;
-  const int64_t row_stride = (int64_t)num_kv_heads * kHeadDim;
-  const __nv_bfloat16* head_base = cache + (int64_t)kvh * kHeadDim + chunk * 8;
+// Async load of one kTile x 128 K or V tile (swizzled), 128 threads; a key with
+// row -1 is zero-filled without a global read.
+__device__ __forceinline__ void issue_tile(__nv_bfloat16* tile, const __nv_bfloat16* cache, int64_t row, int tid) {
+  const int key = tid >> 2, c0 = tid & 3;
+  const __nv_bfloat16* src = cache + (row >= 0 ? row : 0) + c0 * 8;
 #pragma unroll
-  for (int i = 0; i < kTile / 8; ++i) {
-    const int key = (tid >> 4) + 8 * i;
-    cp_async16(tile + swz(key, chunk), slot[i] >= 0 ? head_base + (int64_t)slot[i] * row_stride : cache,
-               slot[i] >= 0 ? 16 : 0);
-  }
+  for (int i = 0; i < 4; ++i) cp_async16(tile + swz(key, c0 + 4 * i), src + 32 * i, row >= 0 ? 16 : 0);
 }
 
 }  // namespace pi_attn
