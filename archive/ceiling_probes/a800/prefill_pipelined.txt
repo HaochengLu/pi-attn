@@ -1,0 +1,18 @@
+42:constexpr int kPrefillWarps = 4, kPrefillRows = kPrefillWarps * 16;
+44:constexpr int prefill_smem_bytes() {
+45:  return (kPrefillRows + 4 * kTile) * kHeadDim * 2 + (QREG ? kPrefillRows * kHeadDim * 4 : 0);
+51:__global__ void __launch_bounds__(kPrefillWarps * 32, 2)
+59:  constexpr int kRows = kPrefillRows;
+275:  const int row_tiles = (rows + kPrefillRows - 1) / (kPrefillRows), prefix = max_kv_len - max_q_len;
+282:        const int last_pos = prefix + (std::min((x + 1) * kPrefillRows, rows) - 1) / group;
+302:  const int64_t ctas = (rows + kPrefillRows - 1) / (kPrefillRows) * num_kv_heads * batch;
+hq=32 b=1 q=8192: base/v1  4638.0 
+ base/v2  4466.6
+hq=16 b=1 q=8192: base/v1  2477.3 
+ base/v2  2381.8
+hq=32 b=8 q=1024: base/v1   725.6 
+ base/v2   727.6
+REG:255	LOCAL:0
+REG:224	LOCAL:0
+
+[exited with code 0]

@@ -1,0 +1,11 @@
+hq=32 b=1 q=8192: base/v2  4319.8 
+ nobar/v2  4071.8 
+ nowaitbar/v2  4073.2
+hq=16 b=1 q=8192: base/v2  2344.4 
+ nobar/v2  2146.3 
+ nowaitbar/v2  2160.0
+hq=32 b=8 q=1024: base/v2   723.7 
+ nobar/v2   671.3 
+ nowaitbar/v2   668.4
+
+[exited with code 0]

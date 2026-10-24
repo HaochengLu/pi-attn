@@ -1,0 +1,310 @@
+total 67
+drwxr-xr-x  2 root root  4096 Oct 23 22:00 .
+drwxr-xr-x 15 root root  4096 Oct 23 22:18 ..
+-rw-r--r--  1 root root  6843 Oct 23 22:23 attention.json
+-rw-r--r--  1 root root  4149 Oct 23 22:23 attention.txt
+-rw-r--r--  1 root root  4805 Oct 23 22:25 gemm.txt
+-rw-r--r--  1 root root 18779 Oct 23 22:39 gemm_burst.txt
+-rw-r--r--  1 root root 12937 Oct 23 22:26 gemm_cold.txt
+-rw-r--r--  1 root root   596 Oct 23 22:40 gemm_step_graph.txt
+-rw-r--r--  1 root root  2502 Oct 23 22:40 prefill_configs.txt
+##### attention.txt
+decode  hq=16 b=  1 kv= 1024: fi=46.9 fi_tc=51.0 fi_det_fixed2048=55.9 pi=35.4 | pi/fi=0.75 pi/best_fi=0.75
+decode  hq=16 b=  1 kv= 8192: fi=59.6 fi_tc=66.3 fi_det_fixed2048=184.5 pi=45.2 | pi/fi=0.76 pi/best_fi=0.76
+decode  hq=16 b=  1 kv=32768: fi=124.0 fi_tc=129.6 fi_det_fixed2048=624.4 pi=106.2 | pi/fi=0.86 pi/best_fi=0.86
+decode  hq=16 b=  8 kv= 2048: fi=82.1 fi_tc=91.9 fi_det_fixed2048=90.8 pi=58.4 | pi/fi=0.71 pi/best_fi=0.71
+decode  hq=16 b=  8 kv=16384: fi=369.8 fi_tc=366.8 fi_det_fixed2048=392.0 pi=339.1 | pi/fi=0.92 pi/best_fi=0.92
+decode  hq=16 b= 32 kv= 1024: fi=121.1 fi_tc=139.0 fi_det_fixed2048=139.5 pi=98.3 | pi/fi=0.81 pi/best_fi=0.81
+decode  hq=16 b= 32 kv= 8192: fi=674.5 fi_tc=743.8 fi_det_fixed2048=745.7 pi=640.6 | pi/fi=0.95 pi/best_fi=0.95
+decode  hq=16 b=128 kv= 1024: fi=392.1 fi_tc=351.3 fi_det_fixed2048=350.2 pi=329.5 | pi/fi=0.84 pi/best_fi=0.94
+decode  hq=16 b=128 kv= 4096: fi=1486.4 fi_tc=1245.7 fi_det_fixed2048=1244.6 pi=1263.2 | pi/fi=0.85 pi/best_fi=1.01
+decode  hq=16 b=  8 kv= 4096 shared: fi=82.2 fi_tc=86.7 fi_det_fixed2048=97.0 pi=54.7 | pi/fi=0.67 pi/best_fi=0.67
+decode  hq=16 b= 32 kv= 4096 shared: fi=222.7 fi_tc=245.3 fi_det_fixed2048=245.5 pi=163.3 | pi/fi=0.73 pi/best_fi=0.73
+prefill hq=16 b=1 q= 512 prefix=    0: fi=99.6 fi_det_fixed2048=67.6 pi=48.4 | pi/fi=0.49
+prefill hq=16 b=1 q=2048 prefix=    0: fi=210.0 fi_det_fixed2048=209.3 pi=286.6 | pi/fi=1.36
+prefill hq=16 b=1 q=8192 prefix=    0: fi=1681.5 fi_det_fixed2048=1687.6 pi=2980.9 | pi/fi=1.77
+prefill hq=16 b=8 q=1024 prefix=    0: fi=286.4 fi_det_fixed2048=285.0 pi=442.5 | pi/fi=1.55
+prefill hq=16 b=32 q= 512 prefix=    0: fi=316.7 fi_det_fixed2048=315.7 pi=492.8 | pi/fi=1.56
+prefill hq=16 b=1 q= 512 prefix= 8192: fi=293.4 fi_det_fixed2048=418.8 pi=477.5 | pi/fi=1.63
+prefill hq=16 b=1 q= 128 prefix= 4096: fi=90.5 fi_det_fixed2048=224.1 pi=91.7 | pi/fi=1.01
+prefill hq=16 b=1 q= 128 prefix=16384: fi=153.4 fi_det_fixed2048=752.7 pi=252.2 | pi/fi=1.64
+prefill hq=16 b=4 q=2048 prefix= 2048: fi=1196.6 fi_det_fixed2048=1196.4 pi=2168.9 | pi/fi=1.81
+decode  hq=32 b=  1 kv= 1024: fi=46.0 fi_tc=50.2 fi_det_fixed2048=50.7 pi=30.2 | pi/fi=0.66 pi/best_fi=0.66
+decode  hq=32 b=  1 kv= 8192: fi=59.7 fi_tc=59.7 fi_det_fixed2048=160.9 pi=39.4 | pi/fi=0.66 pi/best_fi=0.66
+decode  hq=32 b=  1 kv=32768: fi=122.6 fi_tc=125.5 fi_det_fixed2048=532.6 pi=103.1 | pi/fi=0.84 pi/best_fi=0.84
+decode  hq=32 b=  8 kv= 2048: fi=81.7 fi_tc=86.1 fi_det_fixed2048=83.4 pi=55.2 | pi/fi=0.68 pi/best_fi=0.68
+decode  hq=32 b=  8 kv=16384: fi=356.0 fi_tc=358.7 fi_det_fixed2048=372.1 pi=337.3 | pi/fi=0.95 pi/best_fi=0.95
+decode  hq=32 b= 32 kv= 1024: fi=125.8 fi_tc=131.3 fi_det_fixed2048=131.0 pi=93.4 | pi/fi=0.74 pi/best_fi=0.74
+decode  hq=32 b= 32 kv= 8192: fi=704.3 fi_tc=746.1 fi_det_fixed2048=745.7 pi=651.6 | pi/fi=0.93 pi/best_fi=0.93
+decode  hq=32 b=128 kv= 1024: fi=379.7 fi_tc=352.0 fi_det_fixed2048=351.2 pi=334.0 | pi/fi=0.88 pi/best_fi=0.95
+decode  hq=32 b=128 kv= 4096: fi=1351.3 fi_tc=1249.8 fi_det_fixed2048=1248.0 pi=1287.9 | pi/fi=0.95 pi/best_fi=1.03
+decode  hq=32 b=  8 kv= 4096 shared: fi=109.7 fi_tc=85.9 fi_det_fixed2048=97.0 pi=55.1 | pi/fi=0.50 pi/best_fi=0.64
+decode  hq=32 b= 32 kv= 4096 shared: fi=342.6 fi_tc=247.2 fi_det_fixed2048=248.4 pi=165.6 | pi/fi=0.48 pi/best_fi=0.67
+prefill hq=32 b=1 q= 512 prefix=    0: fi=77.9 fi_det_fixed2048=77.9 pi=60.2 | pi/fi=0.77
+prefill hq=32 b=1 q=2048 prefix=    0: fi=296.9 fi_det_fixed2048=292.6 pi=448.6 | pi/fi=1.51
+prefill hq=32 b=1 q=8192 prefix=    0: fi=3039.0 fi_det_fixed2048=3062.9 pi=5652.8 | pi/fi=1.86
+prefill hq=32 b=8 q=1024 prefix=    0: fi=496.1 fi_det_fixed2048=494.4 pi=829.5 | pi/fi=1.67
+prefill hq=32 b=32 q= 512 prefix=    0: fi=578.3 fi_det_fixed2048=578.5 pi=944.3 | pi/fi=1.63
+prefill hq=32 b=1 q= 512 prefix= 8192: fi=650.8 fi_det_fixed2048=650.4 pi=890.8 | pi/fi=1.37
+prefill hq=32 b=1 q= 128 prefix= 4096: fi=119.3 fi_det_fixed2048=225.8 pi=139.1 | pi/fi=1.17
+prefill hq=32 b=1 q= 128 prefix=16384: fi=263.8 fi_det_fixed2048=752.8 pi=458.5 | pi/fi=1.74
+prefill hq=32 b=4 q=2048 prefix= 2048: fi=2237.7 fi_det_fixed2048=2268.4 pi=4225.4 | pi/fi=1.89
+##### gemm.txt
+0.6B qkv      N=  4096 K= 1024: max|err| pi(fp32 out) 6.48e-06 pi(bf16) 7.79e-03 cublas(bf16) 7.79e-03 | pi/cublas M=1:0.77(k14) M=8:0.76(k14) M=32:0.81(k14) M=64:0.90(k15) M=128:1.14(k50) M=256:1.16(k13) M=1024:0.92(k11) M=4096:0.90(k11)
+0.6B o        N=  1024 K= 2048: max|err| pi(fp32 out) 5.98e-06 pi(bf16) 9.86e-03 cublas(bf16) 9.86e-03 | pi/cublas M=1:0.75(k55) M=8:0.62(k55) M=32:0.63(k48) M=64:0.64(k48) M=128:0.99(k49) M=256:1.13(k15) M=1024:1.16(k13) M=4096:1.02(k13)
+0.6B gateup   N=  6144 K= 1024: max|err| pi(fp32 out) 6.81e-06 pi(bf16) 7.81e-03 cublas(bf16) 7.81e-03 | pi/cublas M=1:0.65(k14) M=8:0.67(k14) M=32:0.69(k14) M=64:0.81(k13) M=128:1.08(k50) M=256:1.14(k11) M=1024:1.03(k10) M=4096:0.99(k11)
+0.6B down     N=  1024 K= 3072: max|err| pi(fp32 out) 1.20e-05 pi(bf16) 1.55e-02 cublas(bf16) 1.55e-02 | pi/cublas M=1:0.90(k48) M=8:0.77(k48) M=32:0.75(k48) M=64:0.80(k48) M=128:0.98(k49) M=256:1.19(k15) M=1024:1.22(k13) M=4096:1.01(k11)
+0.6B lm_head  N=151936 K= 1024: max|err| pi(fp32 out) 6.79e-06 pi(bf16) 7.82e-03 cublas(bf16) 7.82e-03 | pi/cublas M=1:0.98(k13) M=8:0.99(k14) M=32:0.97(k14) M=64:1.01(k13) M=128:0.97(k11) M=256:1.13(k10) M=1024:1.06(k10) M=4096:1.04(k10)
+1.7B qkv      N=  4096 K= 2048: max|err| pi(fp32 out) 1.44e-05 pi(bf16) 1.17e-02 cublas(bf16) 1.17e-02 | pi/cublas M=1:0.92(k14) M=8:0.93(k14) M=32:0.95(k14) M=64:1.05(k15) M=128:1.14(k50) M=256:1.07(k50) M=1024:0.88(k12) M=4096:1.03(k10)
+1.7B o        N=  2048 K= 2048: max|err| pi(fp32 out) 1.53e-05 pi(bf16) 1.37e-02 cublas(bf16) 1.37e-02 | pi/cublas M=1:0.77(k41) M=8:0.73(k14) M=32:0.94(k14) M=64:0.96(k14) M=128:1.05(k15) M=256:1.14(k50) M=1024:0.96(k50) M=4096:0.93(k11)
+1.7B gateup   N= 12288 K= 2048: max|err| pi(fp32 out) 1.68e-05 pi(bf16) 1.47e-02 cublas(bf16) 1.47e-02 | pi/cublas M=1:0.98(k1) M=8:0.98(k15) M=32:1.02(k14) M=64:1.02(k15) M=128:1.09(k11) M=256:1.08(k10) M=1024:1.01(k10) M=4096:1.06(k10)
+1.7B down     N=  2048 K= 6144: max|err| pi(fp32 out) 7.90e-05 pi(bf16) 1.56e-02 cublas(bf16) 2.98e-02 | pi/cublas M=1:0.80(k51) M=8:1.62(k14) M=32:1.45(k14) M=64:0.59(k14) M=128:1.35(k15) M=256:1.14(k46) M=1024:1.25(k10) M=4096:0.92(k11)
+1.7B lm_head  N=151936 K= 2048: max|err| pi(fp32 out) 1.88e-05 pi(bf16) 1.56e-02 cublas(bf16) 1.56e-02 | pi/cublas M=1:0.99(k14) M=8:0.99(k14) M=32:0.96(k14) M=64:0.98(k15) M=128:0.99(k10) M=256:1.12(k10) M=1024:1.03(k10) M=4096:1.03(k10)
+4B qkv        N=  6144 K= 2560: max|err| pi(fp32 out) 2.35e-05 pi(bf16) 1.51e-02 cublas(bf16) 1.51e-02 | pi/cublas M=1:0.90(k14) M=8:0.96(k14) M=32:0.96(k14) M=64:0.97(k15) M=128:1.13(k50) M=256:1.11(k11) M=1024:1.02(k10) M=4096:1.01(k10)
+4B o          N=  2560 K= 4096: max|err| pi(fp32 out) 4.59e-05 pi(bf16) 1.57e-02 cublas(bf16) 1.57e-02 | pi/cublas M=1:1.00(k41) M=8:1.23(k14) M=32:1.03(k14) M=64:1.21(k14) M=128:1.13(k15) M=256:1.10(k50) M=1024:1.02(k10) M=4096:1.02(k10)
+4B gateup     N= 19456 K= 2560: max|err| pi(fp32 out) 2.40e-05 pi(bf16) 1.56e-02 cublas(bf16) 1.56e-02 | pi/cublas M=1:0.96(k13) M=8:0.98(k13) M=32:0.98(k14) M=64:1.02(k15) M=128:1.09(k10) M=256:0.91(k11) M=1024:1.04(k10) M=4096:1.05(k10)
+4B down       N=  2560 K= 9728: max|err| pi(fp32 out) 1.51e-04 pi(bf16) 3.05e-02 cublas(bf16) 3.98e-02 | pi/cublas M=1:0.99(k41) M=8:1.19(k14) M=32:1.17(k14) M=64:1.16(k14) M=128:1.22(k15) M=256:1.28(k50) M=1024:1.18(k10) M=4096:1.03(k10)
+4B lm_head    N=151936 K= 2560: max|err| pi(fp32 out) 2.65e-05 pi(bf16) 1.56e-02 cublas(bf16) 1.56e-02 | pi/cublas M=1:1.00(k14) M=8:0.99(k14) M=32:0.99(k14) M=64:1.05(k15) M=128:1.05(k10) M=256:1.14(k10) M=1024:1.03(k10) M=4096:1.04(k10)
+8B qkv        N=  6144 K= 4096: max|err| pi(fp32 out) 4.68e-05 pi(bf16) 1.56e-02 cublas(bf16) 1.56e-02 | pi/cublas M=1:0.95(k14) M=8:0.97(k14) M=32:0.96(k14) M=64:1.05(k15) M=128:1.08(k50) M=256:1.19(k11) M=1024:1.01(k10) M=4096:1.01(k10)
+8B o          N=  4096 K= 4096: max|err| pi(fp32 out) 4.76e-05 pi(bf16) 1.56e-02 cublas(bf16) 1.56e-02 | pi/cublas M=1:1.01(k14) M=8:1.01(k14) M=32:1.04(k14) M=64:1.19(k15) M=128:1.12(k46) M=256:1.08(k50) M=1024:0.86(k11) M=4096:1.03(k10)
+8B gateup     N= 24576 K= 4096: max|err| pi(fp32 out) 4.96e-05 pi(bf16) 1.56e-02 cublas(bf16) 1.56e-02 | pi/cublas M=1:0.96(k14) M=8:0.99(k14) M=32:0.99(k14) M=64:1.04(k15) M=128:1.04(k10) M=256:1.04(k10) M=1024:1.04(k10) M=4096:1.03(k10)
+8B down       N=  4096 K=12288: max|err| pi(fp32 out) 2.23e-04 pi(bf16) 3.10e-02 cublas(bf16) 5.77e-02 | pi/cublas M=1:1.04(k42) M=8:1.05(k14) M=32:0.94(k14) M=64:1.14(k15) M=128:1.27(k46) M=256:1.26(k50) M=1024:1.27(k11) M=4096:1.03(k10)
+8B lm_head    N=151936 K= 4096: max|err| pi(fp32 out) 5.08e-05 pi(bf16) 1.57e-02 cublas(bf16) 1.57e-02 | pi/cublas M=1:1.01(k14) M=8:1.00(k14) M=32:0.97(k14) M=64:1.03(k15) M=128:1.04(k10) M=256:1.07(k10) M=1024:1.05(k10) M=4096:1.03(k10)
+INVARIANCE FAILURES: 0 []
+##### gemm_burst.txt
+M=1 0.6B qkv     cublas   9.84us | k14   8.74 k44   9.64 k15   9.77 k45  10.17 | ratio 0.89
+M=1 0.6B o       cublas   6.09us | k55   8.39 k30   9.58 k48   9.66 k31   9.85 | ratio 1.38
+M=1 0.6B gateup  cublas  11.44us | k14  10.94 k21  11.14 k20  11.32 k30  11.46 | ratio 0.96
+M=1 0.6B down    cublas   8.06us | k55  11.67 k48  11.80 k30  12.66 k31  13.02 | ratio 1.45
+M=1 0.6B lm_head cublas 187.91us | k13 185.19 k14 185.89 k1 186.54 k30 188.08 | ratio 0.99
+M=1 1.7B qkv     cublas  15.26us | k14  13.81 k44  14.74 k30  15.01 k31  15.23 | ratio 0.91
+M=1 1.7B o       cublas  10.12us | k41   9.71 k42  10.17 k43  11.18 k51  11.27 | ratio 0.96
+M=1 1.7B gateup  cublas  34.78us | k13  33.84 k1  33.90 k15  34.33 k45  34.35 | ratio 0.97
+M=1 1.7B down    cublas  25.86us | k51  22.09 k41  22.45 k42  23.66 k43  26.52 | ratio 0.85
+M=1 1.7B lm_head cublas 357.43us | k14 355.40 k13 360.61 k15 365.22 k1 365.42 | ratio 0.99
+M=1 4B qkv       cublas  25.29us | k14  22.29 k44  22.97 k15  23.21 k21  23.26 | ratio 0.88
+M=1 4B o         cublas  18.10us | k41  17.16 k42  17.54 k43  19.36 k51  19.82 | ratio 0.95
+M=1 4B gateup    cublas  68.88us | k14  63.04 k13  63.29 k21  65.83 k42  65.86 | ratio 0.92
+M=1 4B down      cublas  37.14us | k41  36.00 k42  36.88 k51  38.17 k43  40.56 | ratio 0.97
+M=1 4B lm_head   cublas 444.85us | k14 443.66 k30 451.55 k21 454.26 k15 454.69 | ratio 1.00
+M=1 8B qkv       cublas  37.72us | k14  33.60 k15  33.98 k45  34.14 k44  34.37 | ratio 0.89
+M=1 8B o         cublas  24.01us | k14  23.98 k44  24.93 k42  25.38 k30  27.20 | ratio 1.00
+M=1 8B gateup    cublas 126.02us | k14 119.65 k15 121.80 k12 123.59 k30 124.12 | ratio 0.95
+M=1 8B down      cublas  71.42us | k42  65.98 k14  66.33 k44  67.18 k51  68.87 | ratio 0.92
+M=1 8B lm_head   cublas 692.49us | k14 694.77 k15 711.36 k13 712.12 k1 719.62 | ratio 1.00
+M=8 0.6B qkv     cublas   9.98us | k14   8.71 k31   9.29 k30   9.39 k44   9.63 | ratio 0.87
+M=8 0.6B o       cublas  19.81us | k55   8.44 k48   9.64 k30   9.64 k31   9.90 | ratio 0.43
+M=8 0.6B gateup  cublas  11.81us | k14  11.04 k15  11.47 k30  11.71 k44  11.78 | ratio 0.93
+M=8 0.6B down    cublas  12.62us | k48  11.80 k30  12.74 k55  12.79 k31  13.06 | ratio 0.93
+M=8 0.6B lm_head cublas 195.23us | k14 193.12 k13 194.40 k30 198.59 k12 199.07 | ratio 0.99
+M=8 1.7B qkv     cublas  15.24us | k14  13.84 k44  14.71 k31  15.53 k30  15.80 | ratio 0.91
+M=8 1.7B o       cublas  10.75us | k14  11.30 k44  12.25 k15  13.81 k45  13.87 | ratio 1.05
+M=8 1.7B gateup  cublas  35.57us | k13  34.62 k14  34.84 k15  34.94 k45  34.98 | ratio 0.97
+M=8 1.7B down    cublas  21.29us | k14  27.98 k44  28.87 k51  29.59 k42  30.59 | ratio 1.31
+M=8 1.7B lm_head cublas 368.62us | k14 366.40 k13 374.44 k15 375.70 k21 377.57 | ratio 0.99
+M=8 4B qkv       cublas  25.40us | k14  22.74 k44  23.45 k15  23.62 k45  23.95 | ratio 0.90
+M=8 4B o         cublas  18.39us | k14  20.03 k44  20.93 k45  24.44 k15  24.82 | ratio 1.09
+M=8 4B gateup    cublas  67.82us | k14  63.93 k13  64.51 k15  66.94 k44  68.76 | ratio 0.94
+M=8 4B down      cublas  37.66us | k14  45.42 k44  46.31 k45  54.23 k15  55.92 | ratio 1.21
+M=8 4B lm_head   cublas 456.31us | k14 454.42 k15 465.93 k30 470.95 k21 471.96 | ratio 1.00
+M=8 8B qkv       cublas  37.81us | k14  34.05 k15  34.53 k45  34.60 k44  34.69 | ratio 0.90
+M=8 8B o         cublas  24.31us | k14  24.35 k44  25.22 k45  28.03 k15  28.24 | ratio 1.00
+M=8 8B gateup    cublas 123.13us | k14 121.48 k15 123.20 k13 126.43 k12 126.62 | ratio 0.99
+M=8 8B down      cublas  71.52us | k14  66.90 k44  67.76 k30  76.63 k45  76.88 | ratio 0.94
+M=8 8B lm_head   cublas 706.91us | k14 709.09 k15 726.38 k13 730.99 k21 739.43 | ratio 1.00
+M=16 0.6B qkv     cublas   9.98us | k14   8.74 k44   9.63 k15   9.81 k31   9.82 | ratio 0.88
+M=16 0.6B o       cublas  19.79us | k48   9.65 k30   9.78 k31  10.03 k54  10.88 | ratio 0.49
+M=16 0.6B gateup  cublas  11.78us | k14  11.02 k15  11.49 k44  11.81 k45  11.95 | ratio 0.94
+M=16 0.6B down    cublas  12.88us | k48  11.82 k30  12.88 k31  13.19 k55  14.24 | ratio 0.92
+M=16 0.6B lm_head cublas 199.95us | k14 197.58 k13 200.93 k12 205.02 k15 205.49 | ratio 0.99
+M=16 1.7B qkv     cublas  15.27us | k14  13.83 k44  14.72 k15  15.89 k45  16.13 | ratio 0.91
+M=16 1.7B o       cublas  11.08us | k14  11.36 k44  12.23 k15  13.83 k45  13.89 | ratio 1.02
+M=16 1.7B gateup  cublas  36.02us | k13  35.06 k14  35.20 k45  35.26 k15  35.31 | ratio 0.97
+M=16 1.7B down    cublas  21.80us | k14  28.13 k44  28.95 k45  34.28 k15  35.21 | ratio 1.29
+M=16 1.7B lm_head cublas 376.37us | k14 373.97 k15 383.89 k13 385.25 k45 391.66 | ratio 0.99
+M=16 4B qkv       cublas  25.56us | k14  22.92 k44  23.67 k15  23.84 k45  24.19 | ratio 0.90
+M=16 4B o         cublas  18.87us | k14  20.11 k44  20.94 k45  24.53 k15  24.88 | ratio 1.07
+M=16 4B gateup    cublas  68.76us | k14  64.89 k13  65.61 k15  67.77 k32  69.67 | ratio 0.94
+M=16 4B down      cublas  38.13us | k14  45.76 k44  46.54 k45  54.56 k15  56.20 | ratio 1.20
+M=16 4B lm_head   cublas 465.50us | k14 464.06 k15 475.11 k30 483.38 k13 487.55 | ratio 1.00
+M=16 8B qkv       cublas  37.98us | k14  34.45 k15  35.02 k44  35.09 k45  35.17 | ratio 0.91
+M=16 8B o         cublas  24.35us | k14  24.61 k44  25.44 k45  28.30 k15  28.49 | ratio 1.01
+M=16 8B gateup    cublas 124.12us | k14 122.63 k15 124.69 k13 127.72 k12 128.44 | ratio 0.99
+M=16 8B down      cublas  71.69us | k14  67.23 k44  68.07 k30  76.80 k45  77.22 | ratio 0.94
+M=16 8B lm_head   cublas 718.86us | k14 719.59 k15 738.04 k13 746.49 k45 757.38 | ratio 1.00
+M=32 0.6B qkv     cublas  10.01us | k14   8.71 k44   9.63 k15   9.85 k45  10.20 | ratio 0.87
+M=32 0.6B o       cublas   8.44us | k48   9.62 k14  12.36 k49  13.48 k32  13.83 | ratio 1.14
+M=32 0.6B gateup  cublas  11.73us | k14  11.03 k15  11.53 k44  11.76 k45  11.96 | ratio 0.94
+M=32 0.6B down    cublas   9.60us | k48  11.80 k14  16.52 k49  17.48 k32  18.71 | ratio 1.23
+M=32 0.6B lm_head cublas 210.47us | k14 203.65 k13 210.46 k15 211.80 k12 215.12 | ratio 0.97
+M=32 1.7B qkv     cublas  15.30us | k14  13.87 k44  14.73 k15  16.00 k45  16.14 | ratio 0.91
+M=32 1.7B o       cublas  11.25us | k14  11.37 k44  12.30 k45  13.91 k15  13.95 | ratio 1.01
+M=32 1.7B gateup  cublas  35.60us | k14  35.67 k13  35.81 k45  35.97 k15  36.02 | ratio 1.00
+M=32 1.7B down    cublas  22.57us | k14  28.31 k44  29.24 k45  34.39 k15  35.61 | ratio 1.25
+M=32 1.7B lm_head cublas 402.75us | k14 384.81 k15 395.49 k13 401.36 k12 407.55 | ratio 0.96
+M=32 4B qkv       cublas  25.75us | k14  23.24 k44  23.96 k15  24.28 k45  24.56 | ratio 0.90
+M=32 4B o         cublas  18.63us | k14  20.15 k44  21.04 k45  24.57 k15  25.05 | ratio 1.08
+M=32 4B gateup    cublas  71.05us | k14  67.70 k13  68.30 k15  69.20 k44  71.55 | ratio 0.95
+M=32 4B down      cublas  39.36us | k14  46.18 k44  47.11 k45  54.94 k15  56.93 | ratio 1.17
+M=32 4B lm_head   cublas 482.71us | k14 482.56 k15 489.71 k12 505.27 k13 506.75 | ratio 1.00
+M=32 8B qkv       cublas  38.68us | k14  34.83 k15  35.49 k45  35.52 k44  35.56 | ratio 0.90
+M=32 8B o         cublas  24.88us | k14  24.88 k44  25.75 k45  28.62 k15  28.91 | ratio 1.00
+M=32 8B gateup    cublas 126.85us | k14 124.87 k15 126.84 k13 130.18 k12 131.25 | ratio 0.98
+M=32 8B down      cublas  78.09us | k14  67.95 k44  68.87 k45  78.02 k15  80.02 | ratio 0.87
+M=32 8B lm_head   cublas 758.37us | k14 735.63 k15 757.22 k13 770.97 k12 782.34 | ratio 0.97
+M=64 0.6B qkv     cublas  10.21us | k15   9.96 k46  10.80 k14  10.94 k13  11.09 | ratio 0.98
+M=64 0.6B o       cublas   8.69us | k48   9.62 k14  12.36 k49  13.56 k15  14.80 | ratio 1.11
+M=64 0.6B gateup  cublas  12.09us | k15  11.59 k46  12.38 k13  12.54 k14  12.68 | ratio 0.96
+M=64 0.6B down    cublas  10.66us | k48  11.78 k14  16.52 k49  17.60 k15  20.13 | ratio 1.11
+M=64 0.6B lm_head cublas 219.10us | k15 223.80 k13 224.35 k12 225.13 k11 229.26 | ratio 1.02
+M=64 1.7B qkv     cublas  15.81us | k15  16.18 k46  17.02 k14  17.40 k13  18.78 | ratio 1.02
+M=64 1.7B o       cublas  11.33us | k14  11.47 k44  12.36 k45  13.95 k15  14.15 | ratio 1.01
+M=64 1.7B gateup  cublas  36.60us | k13  37.15 k15  37.53 k12  39.77 k14  40.35 | ratio 1.02
+M=64 1.7B down    cublas  23.34us | k14  28.90 k44  29.78 k45  34.89 k15  36.27 | ratio 1.24
+M=64 1.7B lm_head cublas 424.36us | k15 419.51 k12 424.24 k13 425.79 k11 433.71 | ratio 0.99
+M=64 4B qkv       cublas  27.58us | k15  24.95 k46  25.74 k14  27.87 k13  28.14 | ratio 0.90
+M=64 4B o         cublas  19.65us | k14  20.92 k44  21.80 k45  25.02 k15  25.52 | ratio 1.06
+M=64 4B gateup    cublas  72.53us | k15  70.03 k13  73.07 k14  77.40 k46  78.95 | ratio 0.97
+M=64 4B down      cublas  39.97us | k14  46.88 k44  47.75 k45  55.51 k15  58.20 | ratio 1.17
+M=64 4B lm_head   cublas 495.98us | k15 519.56 k12 524.02 k11 539.47 k13 541.62 | ratio 1.05
+M=64 8B qkv       cublas  39.10us | k15  36.81 k46  37.61 k14  40.84 k13  41.33 | ratio 0.94
+M=64 8B o         cublas  25.36us | k15  29.75 k46  30.57 k14  32.25 k44  33.55 | ratio 1.17
+M=64 8B gateup    cublas 128.15us | k15 133.25 k13 135.44 k12 135.90 k10 138.62 | ratio 1.04
+M=64 8B down      cublas  77.21us | k15  82.06 k46  82.95 k44  84.49 k14  84.49 | ratio 1.06
+M=64 8B lm_head   cublas 775.68us | k15 797.79 k12 807.00 k13 810.48 k11 817.58 | ratio 1.03
+M=128 0.6B qkv     cublas  11.65us | k50  14.09 k15  14.83 k13  15.15 k46  17.43 | ratio 1.21
+M=128 0.6B o       cublas  11.31us | k14  12.59 k48  12.95 k49  13.50 k15  14.73 | ratio 1.11
+M=128 0.6B gateup  cublas  13.74us | k50  15.36 k15  15.85 k12  15.94 k13  16.26 | ratio 1.12
+M=128 0.6B down    cublas  12.07us | k48  16.23 k14  16.76 k49  17.51 k15  19.98 | ratio 1.34
+M=128 0.6B lm_head cublas 253.48us | k11 248.09 k10 260.37 k12 289.96 k50 317.64 | ratio 0.98
+M=128 1.7B qkv     cublas  18.72us | k50  23.25 k13  23.44 k15  23.79 k46  23.98 | ratio 1.24
+M=128 1.7B o       cublas  12.30us | k15  14.24 k46  15.09 k14  17.24 k13  17.27 | ratio 1.16
+M=128 1.7B gateup  cublas  42.28us | k11  44.84 k12  51.14 k15  51.28 k50  54.00 | ratio 1.06
+M=128 1.7B down    cublas  29.76us | k15  37.08 k46  37.95 k44  40.43 k14  43.24 | ratio 1.25
+M=128 1.7B lm_head cublas 450.09us | k10 456.31 k11 469.06 k12 552.38 k50 581.53 | ratio 1.01
+M=128 4B qkv       cublas  29.17us | k50  33.17 k15  34.34 k12  35.47 k47  36.11 | ratio 1.14
+M=128 4B o         cublas  24.17us | k15  26.37 k46  27.13 k14  31.90 k13  32.53 | ratio 1.09
+M=128 4B gateup    cublas  77.06us | k10  82.82 k12  91.60 k11  97.84 k15  99.13 | ratio 1.07
+M=128 4B down      cublas  47.28us | k15  59.60 k46  61.28 k14  68.60 k45  72.47 | ratio 1.26
+M=128 4B lm_head   cublas 544.11us | k10 567.10 k11 579.86 k12 699.30 k50 728.37 | ratio 1.04
+M=128 8B qkv       cublas  51.79us | k50  49.72 k15  52.22 k12  53.14 k47  54.69 | ratio 0.96
+M=128 8B o         cublas  35.69us | k46  41.31 k50  43.29 k13  44.10 k15  45.64 | ratio 1.16
+M=128 8B gateup    cublas 135.29us | k10 140.84 k11 161.04 k50 186.42 k15 199.99 | ratio 1.04
+M=128 8B down      cublas  82.74us | k46 106.60 k50 118.69 k13 123.84 k15 124.03 | ratio 1.29
+M=128 8B lm_head   cublas 821.92us | k10 854.60 k11 887.37 k12 1077.07 k50 1098.56 | ratio 1.04
+M=256 0.6B qkv     cublas  18.42us | k13  22.20 k11  22.35 k50  22.82 k15  23.61 | ratio 1.21
+M=256 0.6B o       cublas  12.09us | k15  14.70 k49  16.13 k13  17.24 k14  18.77 | ratio 1.22
+M=256 0.6B gateup  cublas  18.36us | k11  21.27 k12  25.12 k15  27.96 k13  28.42 | ratio 1.16
+M=256 0.6B down    cublas  15.65us | k15  19.78 k49  20.60 k13  24.00 k14  25.37 | ratio 1.26
+M=256 0.6B lm_head cublas 381.31us | k10 404.04 k11 414.98 k12 513.37 k50 555.73 | ratio 1.06
+M=256 1.7B qkv     cublas  30.57us | k50  34.80 k15  36.65 k47  37.79 k46  38.88 | ratio 1.14
+M=256 1.7B o       cublas  17.29us | k50  22.15 k13  22.46 k15  22.65 k46  22.76 | ratio 1.28
+M=256 1.7B gateup  cublas  56.17us | k10  61.57 k11  75.59 k12  90.53 k15  91.51 | ratio 1.10
+M=256 1.7B down    cublas  45.35us | k46  52.72 k15  59.61 k50  59.90 k13  61.93 | ratio 1.16
+M=256 1.7B lm_head cublas 698.36us | k10 730.99 k11 780.39 k12 963.53 k15 1092.21 | ratio 1.05
+M=256 4B qkv       cublas  40.11us | k11  43.46 k12  56.02 k50  58.67 k15  61.10 | ratio 1.08
+M=256 4B o         cublas  35.23us | k50  41.42 k13  42.07 k15  43.26 k46  43.64 | ratio 1.18
+M=256 4B gateup    cublas 134.15us | k11 124.92 k10 143.80 k12 154.86 k15 179.11 | ratio 0.93
+M=256 4B down      cublas  74.41us | k50  93.40 k15  96.74 k13  97.89 k46 105.32 | ratio 1.26
+M=256 4B lm_head   cublas 859.73us | k10 922.18 k11 956.43 k12 1191.39 k15 1367.20 | ratio 1.07
+M=256 8B qkv       cublas  58.79us | k11  67.40 k12  87.01 k50  92.11 k15  93.01 | ratio 1.15
+M=256 8B o         cublas  56.22us | k50  60.95 k11  65.51 k47  67.43 k15  68.78 | ratio 1.08
+M=256 8B gateup    cublas 232.09us | k10 240.51 k11 274.54 k12 331.77 k15 356.58 | ratio 1.04
+M=256 8B down      cublas 128.56us | k50 163.04 k11 182.10 k47 196.74 k15 200.11 | ratio 1.27
+M=256 8B lm_head   cublas 1367.42us | k10 1389.14 k11 1481.89 k12 1865.18 k15 2138.65 | ratio 1.02
+M=512 0.6B qkv     cublas  31.20us | k10  32.12 k13  33.61 k50  35.71 k15  37.00 | ratio 1.03
+M=512 0.6B o       cublas  17.20us | k49  22.10 k15  23.56 k13  24.64 k12  25.24 | ratio 1.28
+M=512 0.6B gateup  cublas  31.36us | k10  31.84 k11  38.46 k12  44.91 k13  48.08 | ratio 1.02
+M=512 0.6B down    cublas  23.65us | k49  29.62 k15  32.97 k12  35.55 k13  35.69 | ratio 1.25
+M=512 0.6B lm_head cublas 728.05us | k10 755.03 k11 783.08 k12 962.31 k50 1055.62 | ratio 1.04
+M=512 1.7B qkv     cublas  56.03us | k10  56.35 k50  57.57 k13  60.55 k15  60.87 | ratio 1.01
+M=512 1.7B o       cublas  30.16us | k50  32.88 k47  34.79 k11  34.84 k15  35.70 | ratio 1.09
+M=512 1.7B gateup  cublas 110.38us | k10 120.51 k11 135.68 k12 163.07 k13 173.75 | ratio 1.09
+M=512 1.7B down    cublas  74.24us | k50  81.65 k47  94.03 k11  94.92 k15  97.65 | ratio 1.10
+M=512 1.7B lm_head cublas 1347.38us | k10 1391.38 k11 1442.55 k12 1801.46 k15 2078.87 | ratio 1.03
+M=512 4B qkv       cublas  71.14us | k10  75.65 k11  85.62 k12 104.98 k50 111.94 | ratio 1.06
+M=512 4B o         cublas  56.15us | k50  66.76 k11  72.10 k15  73.07 k13  73.94 | ratio 1.19
+M=512 4B gateup    cublas 219.46us | k10 225.25 k11 243.23 k12 303.53 k13 347.73 | ratio 1.03
+M=512 4B down      cublas 134.85us | k11 151.70 k50 160.08 k13 172.60 k15 179.20 | ratio 1.12
+M=512 4B lm_head   cublas 1664.84us | k10 1706.57 k11 1764.03 k12 2236.81 k15 2633.73 | ratio 1.03
+M=512 8B qkv       cublas 107.98us | k10 114.14 k11 139.47 k12 163.67 k15 176.34 | ratio 1.06
+M=512 8B o         cublas  93.85us | k10 105.18 k50 112.44 k12 113.47 k15 115.27 | ratio 1.12
+M=512 8B gateup    cublas 455.10us | k10 467.73 k11 509.34 k12 592.68 k15 678.78 | ratio 1.03
+M=512 8B down      cublas 238.57us | k10 305.56 k12 350.00 k15 360.22 k11 365.75 | ratio 1.28
+M=512 8B lm_head   cublas 2586.19us | k10 2660.05 k11 2777.70 k12 3512.74 k15 4156.84 | ratio 1.03
+M=1024 0.6B qkv     cublas  60.79us | k11  54.64 k12  57.16 k13  57.91 k50  59.45 | ratio 0.90
+M=1024 0.6B o       cublas  29.78us | k13  36.00 k49  40.26 k11  40.59 k15  40.74 | ratio 1.21
+M=1024 0.6B gateup  cublas  59.54us | k10  61.79 k11  71.20 k12  83.90 k50  86.19 | ratio 1.04
+M=1024 0.6B down    cublas  42.40us | k13  51.92 k49  55.19 k11  56.81 k15  58.50 | ratio 1.22
+M=1024 0.6B lm_head cublas 1426.17us | k10 1473.79 k11 1505.46 k12 1853.02 k50 2084.35 | ratio 1.03
+M=1024 1.7B qkv     cublas 108.96us | k11  97.55 k12  98.99 k50 106.93 k10 110.14 | ratio 0.90
+M=1024 1.7B o       cublas  55.73us | k50  54.47 k10  55.75 k13  57.43 k12  58.44 | ratio 0.98
+M=1024 1.7B gateup  cublas 228.20us | k10 237.16 k11 253.25 k12 295.47 k13 339.35 | ratio 1.04
+M=1024 1.7B down    cublas 126.26us | k10 157.13 k12 165.94 k50 170.05 k15 173.45 | ratio 1.24
+M=1024 1.7B lm_head cublas 2642.34us | k10 2730.65 k11 2803.70 k12 3474.84 k15 4072.90 | ratio 1.03
+M=1024 4B qkv       cublas 137.89us | k10 145.43 k11 159.23 k12 194.01 k15 220.50 | ratio 1.05
+M=1024 4B o         cublas 105.27us | k10 106.55 k12 120.06 k50 130.45 k11 131.76 | ratio 1.01
+M=1024 4B gateup    cublas 438.45us | k10 443.18 k11 468.64 k12 566.55 k15 676.28 | ratio 1.01
+M=1024 4B down      cublas 221.42us | k10 257.11 k12 289.23 k11 307.23 k50 321.68 | ratio 1.16
+M=1024 4B lm_head   cublas 3245.80us | k10 3350.56 k11 3447.51 k12 4331.95 k15 5189.47 | ratio 1.03
+M=1024 8B qkv       cublas 221.14us | k10 224.18 k11 253.95 k12 306.17 k13 343.78 | ratio 1.01
+M=1024 8B o         cublas 210.54us | k11 180.51 k12 193.74 k10 208.91 k50 225.30 | ratio 0.86
+M=1024 8B gateup    cublas 896.80us | k10 907.34 k11 929.15 k12 1119.07 k13 1347.54 | ratio 1.01
+M=1024 8B down      cublas 451.69us | k11 536.95 k12 591.95 k10 606.44 k15 697.69 | ratio 1.19
+M=1024 8B lm_head   cublas 5074.02us | k10 5196.44 k11 5379.81 k12 6768.17 k15 8219.73 | ratio 1.02
+M=2048 0.6B qkv     cublas  91.52us | k11  85.20 k10  92.36 k12 103.67 k50 110.58 | ratio 0.93
+M=2048 0.6B o       cublas  55.10us | k13  60.72 k10  63.92 k15  64.10 k11  69.12 | ratio 1.10
+M=2048 0.6B gateup  cublas 119.58us | k10 128.21 k11 133.30 k12 153.67 k50 165.40 | ratio 1.07
+M=2048 0.6B down    cublas  73.15us | k13  87.80 k10  88.28 k15  89.79 k11  97.16 | ratio 1.20
+M=2048 0.6B lm_head cublas 2799.85us | k10 2892.55 k11 2990.13 k12 3627.46 k13 4212.71 | ratio 1.03
+M=2048 1.7B qkv     cublas 163.32us | k11 163.50 k10 169.96 k12 195.92 k50 215.07 | ratio 1.00
+M=2048 1.7B o       cublas 110.70us | k11  94.26 k12  95.36 k50 102.89 k10 110.48 | ratio 0.85
+M=2048 1.7B gateup  cublas 458.47us | k11 467.04 k10 470.52 k12 570.66 k15 662.00 | ratio 1.02
+M=2048 1.7B down    cublas 253.48us | k11 271.18 k12 297.75 k10 306.56 k13 355.77 | ratio 1.07
+M=2048 1.7B lm_head cublas 5200.26us | k10 5386.43 k11 5503.33 k12 6785.27 k15 8001.07 | ratio 1.04
+M=2048 4B qkv       cublas 283.40us | k10 289.36 k11 303.74 k12 362.20 k13 430.74 | ratio 1.02
+M=2048 4B o         cublas 209.45us | k11 202.17 k10 214.03 k12 242.61 k50 283.39 | ratio 0.97
+M=2048 4B gateup    cublas 865.10us | k10 882.75 k11 895.17 k12 1107.24 k15 1340.99 | ratio 1.02
+M=2048 4B down      cublas 418.55us | k11 469.05 k10 498.61 k12 587.00 k50 677.89 | ratio 1.12
+M=2048 4B lm_head   cublas 6432.75us | k10 6649.99 k11 6795.83 k12 8556.80 k15 10374.87 | ratio 1.03
+M=2048 8B qkv       cublas 443.49us | k10 450.13 k11 483.75 k12 587.67 k15 683.77 | ratio 1.01
+M=2048 8B o         cublas 319.34us | k11 311.17 k10 326.45 k12 390.28 k15 462.49 | ratio 0.97
+M=2048 8B gateup    cublas 1694.75us | k10 1732.71 k11 1787.24 k12 2257.49 k15 2696.94 | ratio 1.02
+M=2048 8B down      cublas 858.04us | k11 944.86 k10 956.47 k12 1205.27 k15 1554.01 | ratio 1.10
+M=2048 8B lm_head   cublas 10132.27us | k10 10387.23 k11 10817.26 k12 13868.27 k15 16525.02 | ratio 1.03
+##### gemm_cold.txt
+M= 1 0.6B qkv         8.4MB cublas    18.1us (  463 GB/s) | best pi k31    17.5us (  479 GB/s) ratio 0.97 | bal 31:17.5 k13 21.0
+M= 1 0.6B o           4.2MB cublas    13.9us (  301 GB/s) | best pi k55    15.9us (  264 GB/s) ratio 1.14 | bal 31:17.5 k13 27.2
+M= 1 0.6B gateup     12.6MB cublas    21.7us (  579 GB/s) | best pi k14    19.3us (  651 GB/s) ratio 0.89 | bal 30:19.6 k13 21.4
+M= 1 0.6B down        6.3MB cublas    14.3us (  439 GB/s) | best pi k55    16.6us (  380 GB/s) ratio 1.16 | bal 30:17.7 k13 30.8
+M= 1 0.6B lm_head   311.2MB cublas   206.9us ( 1504 GB/s) | best pi k14   203.6us ( 1528 GB/s) ratio 0.98 | bal 30:207.9 k13 204.1
+M= 1 1.7B qkv        16.8MB cublas    25.3us (  664 GB/s) | best pi k14    23.1us (  727 GB/s) ratio 0.91 | bal 31:23.9 k13 28.5
+M= 1 1.7B o           8.4MB cublas    17.0us (  494 GB/s) | best pi k41    16.9us (  497 GB/s) ratio 0.99 | bal 31:20.6 k13 24.7
+M= 1 1.7B gateup     50.3MB cublas    52.2us (  965 GB/s) | best pi k14    51.3us (  981 GB/s) ratio 0.98 | bal 30:54.7 k13 53.8
+M= 1 1.7B down       25.2MB cublas    33.0us (  763 GB/s) | best pi k42    35.7us (  704 GB/s) ratio 1.08 | bal 30:45.0 k13 58.1
+M= 1 1.7B lm_head   622.3MB cublas   376.5us ( 1653 GB/s) | best pi k14   372.2us ( 1672 GB/s) ratio 0.99 | bal 30:386.4 k13 380.1
+M= 1 4B qkv          31.5MB cublas    38.4us (  819 GB/s) | best pi k14    38.7us (  813 GB/s) ratio 1.01 | bal 30:39.6 k13 42.9
+M= 1 4B o            21.0MB cublas    32.2us (  652 GB/s) | best pi k42    30.0us (  700 GB/s) ratio 0.93 | bal 30:33.1 k13 43.4
+M= 1 4B gateup       99.6MB cublas    84.6us ( 1177 GB/s) | best pi k14    80.4us ( 1239 GB/s) ratio 0.95 | bal 32:87.1 k13 83.0
+M= 1 4B down         49.8MB cublas    57.8us (  862 GB/s) | best pi k42    55.7us (  894 GB/s) ratio 0.96 | bal 30:66.0 k13 86.0
+M= 1 4B lm_head     777.9MB cublas   464.6us ( 1674 GB/s) | best pi k14   462.4us ( 1682 GB/s) ratio 1.00 | bal 30:474.4 k13 477.4
+M= 1 8B qkv          50.3MB cublas    53.6us (  938 GB/s) | best pi k14    53.1us (  948 GB/s) ratio 0.99 | bal 30:54.7 k13 58.4
+M= 1 8B o            33.6MB cublas    41.4us (  810 GB/s) | best pi k14    41.2us (  815 GB/s) ratio 0.99 | bal 30:42.4 k13 48.7
+M= 1 8B gateup      201.3MB cublas   144.7us ( 1391 GB/s) | best pi k14   137.6us ( 1463 GB/s) ratio 0.95 | bal 30:142.4 k13 144.5
+M= 1 8B down        100.7MB cublas    87.1us ( 1156 GB/s) | best pi k42    87.4us ( 1152 GB/s) ratio 1.00 | bal 30:92.3 k13 112.2
+M= 1 8B lm_head    1244.7MB cublas   710.9us ( 1751 GB/s) | best pi k14   713.3us ( 1745 GB/s) ratio 1.00 | bal 30:742.1 k13 730.2
+M= 8 0.6B qkv         8.4MB cublas    16.0us (  523 GB/s) | best pi k14    15.6us (  539 GB/s) ratio 0.97 | bal 31:15.7 k13 18.0
+M= 8 0.6B o           4.2MB cublas    27.4us (  153 GB/s) | best pi k55    15.5us (  271 GB/s) ratio 0.56 | bal 31:15.5 k13 24.3
+M= 8 0.6B gateup     12.6MB cublas    21.1us (  596 GB/s) | best pi k14    18.8us (  671 GB/s) ratio 0.89 | bal 30:20.0 k13 21.1
+M= 8 0.6B down        6.3MB cublas    19.7us (  319 GB/s) | best pi k31    17.7us (  356 GB/s) ratio 0.89 | bal 31:17.7 k13 30.9
+M= 8 0.6B lm_head   311.2MB cublas   212.9us ( 1462 GB/s) | best pi k14   209.6us ( 1485 GB/s) ratio 0.98 | bal 30:216.5 k13 212.7
+M= 8 1.7B qkv        16.8MB cublas    25.4us (  661 GB/s) | best pi k14    23.1us (  726 GB/s) ratio 0.91 | bal 30:24.3 k13 28.8
+M= 8 1.7B o           8.4MB cublas    19.2us (  437 GB/s) | best pi k14    18.0us (  467 GB/s) ratio 0.93 | bal 31:19.5 k13 23.9
+M= 8 1.7B gateup     50.3MB cublas    52.9us (  951 GB/s) | best pi k14    52.0us (  969 GB/s) ratio 0.98 | bal 32:54.9 k13 54.4
+M= 8 1.7B down       25.2MB cublas    35.9us (  700 GB/s) | best pi k51    38.4us (  655 GB/s) ratio 1.07 | bal 30:45.1 k13 58.1
+M= 8 1.7B lm_head   622.3MB cublas   385.9us ( 1613 GB/s) | best pi k14   382.7us ( 1626 GB/s) ratio 0.99 | bal 30:399.9 k13 393.2
+M= 8 4B qkv          31.5MB cublas    38.1us (  825 GB/s) | best pi k14    37.5us (  839 GB/s) ratio 0.98 | bal 30:40.3 k13 42.8
+M= 8 4B o            21.0MB cublas    32.2us (  652 GB/s) | best pi k14    31.5us (  667 GB/s) ratio 0.98 | bal 30:33.5 k13 43.1
+M= 8 4B gateup       99.6MB cublas    83.1us ( 1199 GB/s) | best pi k14    81.4us ( 1224 GB/s) ratio 0.98 | bal 32:86.5 k13 83.6
+M= 8 4B down         49.8MB cublas    57.5us (  867 GB/s) | best pi k14    61.1us (  815 GB/s) ratio 1.06 | bal 30:66.3 k13 86.5
+M= 8 4B lm_head     777.9MB cublas   474.6us ( 1639 GB/s) | best pi k14   471.5us ( 1650 GB/s) ratio 0.99 | bal 30:491.4 k13 493.2

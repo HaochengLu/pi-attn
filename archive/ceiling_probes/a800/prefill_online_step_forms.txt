@@ -1,0 +1,14 @@
+158:#ifndef EXP_ORIG_STEP
+166:__device__ __forceinline__ void online_step(OnlineState& st, float (&v)[kTileNS][4],
+215:__device__ __forceinline__ void online_step(OnlineState& st, float (&v)[kTileNS][4],
+hq=32 b=1 q=8192: new/v2  4324.6 
+ orig/v2  4298.7 
+ new2/v2  4366.2
+hq=16 b=1 q=8192: new/v2  2324.4 
+ orig/v2  2264.7 
+ new2/v2  2306.4
+hq=32 b=8 q=1024: new/v2   711.8 
+ orig/v2   698.6 
+ new2/v2   710.4
+
+[exited with code 0]

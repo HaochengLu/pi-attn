@@ -1,0 +1,11 @@
+b=16 kv=640: pi old 41.6 new 42.1 | fi_tc 37.5 us
+b=16 kv=1024: pi old 53.8 new 62.7 | fi_tc 56.1 us
+b=16 kv=2048: pi old 89.2 new 100.2 | fi_tc 102.7 us
+b=32 kv=640: pi old 69.5 new 69.4 | fi_tc 72.4 us
+b=32 kv=1024: pi old 89.0 new 100.4 | fi_tc 104.8 us
+b=32 kv=2048: pi old 172.4 new 182.5 | fi_tc 186.7 us
+b=64 kv=640: pi old 129.1 new 125.0 | fi_tc 119.0 us
+b=64 kv=1024: pi old 173.1 new 183.2 | fi_tc 169.8 us
+b=64 kv=2048: pi old 335.0 new 351.9 | fi_tc 323.4 us
+
+[exited with code 0]

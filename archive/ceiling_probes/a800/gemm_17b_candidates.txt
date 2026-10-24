@@ -1,0 +1,30 @@
+N=4096 K=2048 M=8: 14:14.4 cublas:14.8 44:15.3 31:16.1 15:16.5 30:16.5 45:16.7 46:17.3
+N=4096 K=2048 M=32: 14:14.4 cublas:14.7 44:15.3 15:16.5 45:16.8 46:17.4 13:19.0 32:22.1
+N=2048 K=2048 M=8: 14:11.8 cublas:12.2 44:12.7 15:14.3 45:14.4 30:14.8 31:15.0 21:15.0
+N=2048 K=2048 M=32: cublas:11.7 14:11.9 44:12.8 15:14.5 45:14.5 46:15.3 13:17.5 21:18.8
+N=12288 K=2048 M=8: 13:35.3 14:35.3 15:35.6 45:35.6 cublas:36.7 12:36.7 47:37.5 31:37.7
+N=12288 K=2048 M=32: cublas:36.2 14:36.3 45:36.5 13:36.6 15:36.7 12:38.3 44:38.8 47:39.1
+N=2048 K=6144 M=8: cublas:23.6 14:28.5 44:29.4 51:34.6 45:34.7 15:35.6 42:35.7 40:35.9
+N=2048 K=6144 M=32: cublas:23.1 14:28.9 44:29.8 45:35.0 15:36.2 46:36.9 13:45.9 21:53.0
+4:// the planners and the GEMM tuner only affect speed. Errors are returned as a
+164:// M buckets are the sizes CUDA graphs are captured at, so each graph runs the tile tuned
+165:// for its own M (a tile tuned at 256 can be 1.5x slower at 192): powers of two to 128,
+177:std::mutex tune_mutex;
+178:std::map<std::tuple<int, int, int>, int> tuned;  // (N, K, M bucket) -> kernel
+180:// Fixed choice when a bucket was never tuned (e.g. first seen inside capture),
+195:__global__ void fill_tune_input(__nv_bfloat16* x, size_t n) {
+210:const char* tune_bucket(const void* w, int N, int K, int m, void* x, void* y, void* flush,
+212:  fill_tune_input<<<256, 256, 0, st>>>((__nv_bfloat16*)x, (size_t)m * K);
+260:    std::lock_guard<std::mutex> lock(tune_mutex);
+261:    tuned[{N, K, m}] = best_k;
+263:  return check_launch("pi linear tune");
+272:// Uses the tuned tile for (N, K, M bucket) when present, a fixed heuristic otherwise;
+281:    std::lock_guard<std::mutex> lock(tune_mutex);
+282:    auto it = tuned.find({N, K, bucket_of(M)});
+283:    if (it != tuned.end()) k = it->second;
+292:// M bucket used for tuning (bucket_of), and the kernel id tuned for it (0 = not tuned).
+294:int pi_linear_tuned_kernel(int N, int K, int bucket) {
+295:  std::lock_guard<std::mutex> lock(tune_mutex);
+296:  auto it = tuned.find({N, K, bucket});
+
+[exited with code 0]

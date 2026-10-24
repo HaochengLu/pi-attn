@@ -1,0 +1,8 @@
+b=1 kv=32: pi base 4.6 nowait 4.5 nobar 4.5 noqk 4.2 all 4.2 | fi_tc 7.4 us
+b=1 kv=512: pi base 17.8 nowait 17.7 nobar 16.7 noqk 14.3 all 13.6 | fi_tc 11.3 us
+b=1 kv=1024: pi base 19.1 nowait 19.1 nobar 18.2 noqk 15.8 all 15.1 | fi_tc 11.6 us
+b=8 kv=32: pi base 5.8 nowait 5.8 nobar 5.8 noqk 5.3 all 5.3 | fi_tc 7.8 us
+b=8 kv=512: pi base 24.7 nowait 24.7 nobar 22.9 noqk 19.3 all 17.8 | fi_tc 18.5 us
+b=8 kv=1024: pi base 30.1 nowait 29.2 nobar 26.8 noqk 24.1 all 22.6 | fi_tc 29.2 us
+
+[exited with code 0]

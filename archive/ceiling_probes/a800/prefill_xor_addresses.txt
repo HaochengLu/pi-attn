@@ -1,0 +1,11 @@
+hq=32 b=1 q=8192: base/v1  5234.4 
+ base/v2  5143.5 
+ base/v6  4866.4
+hq=16 b=1 q=8192: base/v1  2772.2 
+ base/v2  2743.3 
+ base/v6  2589.5
+hq=32 b=8 q=1024: base/v1   782.6 
+ base/v2   771.5 
+ base/v6   768.8
+
+[exited with code 0]

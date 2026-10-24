@@ -1,0 +1,34 @@
+31746 kernels, 74 steps: GPU busy 3923.6 us/step, wall 4023.1 us/step
+ 1352.16 us/step  29.00/step  ampere_bf16_s16816gemm_bf16_64x64_sliced1x2_ldg8_f2f_stages_64x5_tn
+  780.04 us/step  56.00/step  void cutlass::Kernel2<cutlass_80_tensorop_s16816gemm_bf16_64x64_64x6_tn_align8>(T1::Params)
+  564.02 us/step  28.00/step  void flashinfer::BatchDecodeWithPagedKVCacheKernel<(flashinfer::PosEncodingMode)0, (unsigned int)2, (unsigned 
+  416.18 us/step  28.00/step  ampere_bf16_s16816gemm_bf16_64x64_sliced1x2_ldg8_f2f_stages_64x6_tn
+  177.65 us/step  56.00/step  void flashinfer::norm::FusedAddRMSNormKernel<(unsigned int)8, __nv_bfloat16>(T2 *, T2 *, T2 *, unsigned int, u
+  136.48 us/step  56.00/step  void cublasLt::splitKreduce_kernel<(int)32, (int)16, int, float, __nv_bfloat16, float, (bool)0, __nv_bfloat16,
+  105.62 us/step  28.00/step  void flashinfer::PersistentVariableLengthMergeStatesKernel<(unsigned int)8, (unsigned int)16, (unsigned int)8,
+22381 kernels, 65 steps: GPU busy 4291.2 us/step, wall 4567.0 us/step
+ 2847.18 us/step 111.28/step  void cutlass::Kernel<cutlass::gemm::kernel::Gemm<cutlass::gemm::threadblock::MmaMultistage<cutlass::gemm::Gemm
+  809.34 us/step  27.14/step  pi_attn::decode_kernel(const __nv_bfloat16 *, const __nv_bfloat16 *, const __nv_bfloat16 *, const int *, const
+  176.04 us/step  56.00/step  void flashinfer::norm::FusedAddRMSNormKernel<(unsigned int)8, __nv_bfloat16>(T2 *, T2 *, T2 *, unsigned int, u
+   82.37 us/step  27.57/step  void at::native::elementwise_kernel<(int)128, (int)4, void at::native::gpu_kernel_impl_nocast<at::native::dire
+   79.14 us/step  28.00/step  void <unnamed>::rope_kernel<__nv_bfloat16>(T1 *, T1 *, const long *, const float *, const float *, long, long,
+   70.69 us/step  28.00/step  void <unnamed>::silu_mul_vector_kernel<__nv_bfloat16, (long)0>(const T1 *, T1 *, long, long)
+   61.73 us/step  28.00/step  void sglang::store_kvcache<(long)2048, (long)2048, (int)4, (bool)0, int>(sglang::StoreKVCacheParams)
+22871 kernels, 57 steps: GPU busy 4954.3 us/step, wall 5094.8 us/step
+ 1539.91 us/step  56.00/step  ampere_bf16_s16816gemm_bf16_128x64_ldg8_f2f_stages_64x4_tn
+ 1419.42 us/step  28.00/step  void flashinfer::BatchDecodeWithPagedKVCacheKernel<(flashinfer::PosEncodingMode)0, (unsigned int)2, (unsigned 
+  754.24 us/step  56.00/step  ampere_bf16_s16816gemm_bf16_64x64_sliced1x2_ldg8_f2f_stages_64x6_tn
+  402.57 us/step   1.00/step  void cutlass::Kernel2<cutlass_80_tensorop_bf16_s16816gemm_relu_bf16_256x64_32x4_tn_align8>(T1::Params)
+  181.26 us/step  56.00/step  void flashinfer::norm::FusedAddRMSNormKernel<(unsigned int)8, __nv_bfloat16>(T2 *, T2 *, T2 *, unsigned int, u
+  138.47 us/step  28.00/step  void flashinfer::PersistentVariableLengthMergeStatesKernel<(unsigned int)8, (unsigned int)16, (unsigned int)8,
+   93.03 us/step  28.00/step  void <unnamed>::rope_kernel<__nv_bfloat16>(T1 *, T1 *, const long *, const float *, const float *, long, long,
+18576 kernels, 54 steps: GPU busy 5353.9 us/step, wall 5420.4 us/step
+ 2967.88 us/step 113.00/step  void cutlass::Kernel<cutlass::gemm::kernel::Gemm<cutlass::gemm::threadblock::MmaMultistage<cutlass::gemm::Gemm
+ 1766.85 us/step  28.00/step  pi_attn::decode_kernel(const __nv_bfloat16 *, const __nv_bfloat16 *, const __nv_bfloat16 *, const int *, const
+  182.17 us/step  56.00/step  void flashinfer::norm::FusedAddRMSNormKernel<(unsigned int)8, __nv_bfloat16>(T2 *, T2 *, T2 *, unsigned int, u
+   92.86 us/step  28.00/step  void at::native::elementwise_kernel<(int)128, (int)4, void at::native::gpu_kernel_impl_nocast<at::native::dire
+   92.45 us/step  28.00/step  void <unnamed>::rope_kernel<__nv_bfloat16>(T1 *, T1 *, const long *, const float *, const float *, long, long,
+   78.63 us/step  28.00/step  void <unnamed>::silu_mul_vector_kernel<__nv_bfloat16, (long)0>(const T1 *, T1 *, long, long)
+   67.35 us/step  28.00/step  void sglang::fused_qknorm_warp<(long)128, (bool)0, __nv_bfloat16>(sglang::QKNormParams)
+
+[exited with code 0]

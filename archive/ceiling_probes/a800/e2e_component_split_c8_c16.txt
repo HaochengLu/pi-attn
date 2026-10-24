@@ -1,0 +1,5 @@
+    Finished `release` profile [optimized] target(s) in 3m 20s
+c8: FI 1910 | pi_attn -6.5% | pi_gemm -4.6% | deterministic -11.4%
+c16: FI 3220 | pi_attn -1.8% | pi_gemm -2.6% | deterministic -5.3%
+
+[exited with code 0]

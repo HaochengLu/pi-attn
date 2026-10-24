@@ -1,0 +1,10 @@
+hq=32 b=1 q=8192: base/v1  5144.1 
+ base/v2  4352.1
+hq=16 b=1 q=8192: base/v1  2770.0 
+ base/v2  2286.9
+hq=32 b=8 q=1024: base/v1   791.5 
+ base/v2   710.4
+REG:255	LOCAL:0
+REG:255	LOCAL:0
+
+[exited with code 0]

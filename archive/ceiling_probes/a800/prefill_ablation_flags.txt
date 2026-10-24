@@ -1,0 +1,7 @@
+pi_attn_kernels.cu:6
+pi_attn.cuh:1
+hq=32 b=1 q=8192: base/v1  6896.3 | base/v2  5462.0 | old/v1  5571.5 | old/v2  5407.1 | oldstep/v1  5417.5 | oldstep/v2  5357.5 | nosm/v1  3943.1 | nosm/v2  4115.5 | nopv/v1  4811.5 | nopv/v2  4711.2 | noqk/v1  4029.3 | noqk/v2  3953.2 | noissue/v1  4036.2 | noissue/v2  4067.6 | mmaonly/v1  2967.3 | mmaonly/v2  3127.7
+hq=16 b=1 q=8192: base/v1  2972.7 | base/v2  2889.4 | old/v1  2975.8 | old/v2  2886.1 | oldstep/v1  2888.3 | oldstep/v2  2860.4 | nosm/v1  2075.3 | nosm/v2  2161.3 | nopv/v1  2566.0 | nopv/v2  2516.7 | noqk/v1  2145.6 | noqk/v2  2109.1 | noissue/v1  2155.1 | noissue/v2  2161.1 | mmaonly/v1  1578.0 | mmaonly/v2  1647.0
+hq=32 b=8 q=1024: base/v1   833.5 | base/v2   817.6 | old/v1   828.8 | old/v2   811.8 | oldstep/v1   813.2 | oldstep/v2   802.6 | nosm/v1   560.9 | nosm/v2   613.0 | nopv/v1   893.0 | nopv/v2   884.4 | noqk/v1   635.6 | noqk/v2   627.1 | noissue/v1   639.4 | noissue/v2   649.1 | mmaonly/v1   443.6 | mmaonly/v2   486.6
+
+[exited with code 0]

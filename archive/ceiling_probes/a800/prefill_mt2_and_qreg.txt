@@ -1,0 +1,24 @@
+hq=32 b=1 q=8192: base/v2  5488.6 
+ base/v6  5507.8 
+ base/v7  7691.5 
+ mmaonly/v2  3101.7 
+ mmaonly/v6  3091.9 
+ mmaonly/v7  4153.2
+hq=16 b=1 q=8192: base/v2  2907.8 
+ base/v6  2933.2 
+ base/v7  3967.1 
+ mmaonly/v2  1647.3 
+ mmaonly/v6  1641.1 
+ mmaonly/v7  2137.4
+hq=32 b=8 q=1024: base/v2   819.1 
+ base/v6   840.6 
+ base/v7  1225.7 
+ mmaonly/v2   485.8 
+ mmaonly/v6   646.4 
+ mmaonly/v7  1014.8
+REG:210
+LOCAL:0
+REG:202
+LOCAL:0
+
+[exited with code 0]

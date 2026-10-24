@@ -1,0 +1,30 @@
+621:constexpr int kDecodeDeepRing = 16, kDecodeDeepMaxBatch = 256;
+625:         (kDecodeDeepMaxBatch + kDecodeWarps) * 4;
+631:  return cc_major == 8 && cc_minor == 0 && batch * num_kv_heads <= sms && batch <= kDecodeDeepMaxBatch;
+664:  if ((threadIdx.x & 31) == 0) sLen[kDecodeDeepMaxBatch + (threadIdx.x >> 5)] = len;
+667:  for (int w = 0; w < kDecodeWarps; ++w) len = max(len, sLen[kDecodeDeepMaxBatch + w]);
+MAXKV=4096
+b=1 kv=256: pi old 13.0 deep 10.4 | fi_tc 11.2 us
+b=1 kv=640: pi old 24.0 deep 16.7 | fi_tc 12.3 us
+b=1 kv=2048: pi old 24.3 deep 17.2 | fi_tc 15.7 us
+b=8 kv=256: pi old 16.8 deep 10.8 | fi_tc 15.8 us
+b=8 kv=640: pi old 35.4 deep 24.3 | fi_tc 18.9 us
+b=8 kv=2048: pi old 53.6 deep 63.9 | fi_tc 59.0 us
+b=16 kv=256: pi old 19.9 deep 20.0 | fi_tc 14.9 us
+b=16 kv=640: pi old 41.0 deep 49.7 | fi_tc 40.4 us
+b=16 kv=2048: pi old 88.8 deep 105.4 | fi_tc 102.8 us
+MAXKV=32768
+b=1 kv=256: pi old 13.1 deep 10.5 | fi_tc 11.1 us
+b=1 kv=640: pi old 25.2 deep 16.8 | fi_tc 11.4 us
+b=1 kv=2048: pi old 31.7 deep 17.2 | fi_tc 15.7 us
+b=8 kv=256: pi old 18.2 deep 10.8 | fi_tc 15.7 us
+b=8 kv=640: pi old 34.3 deep 24.2 | fi_tc 19.0 us
+b=8 kv=2048: pi old 54.1 deep 64.8 | fi_tc 59.2 us
+b=16 kv=256: pi old 22.4 deep 20.0 | fi_tc 15.0 us
+b=16 kv=640: pi old 44.6 deep 49.6 | fi_tc 39.5 us
+b=16 kv=2048: pi old 92.3 deep 105.0 | fi_tc 103.2 us
+checks failed: 0 []
+TOTAL FAILURES: 0
+DIRECTED FAILURES: 0
+
+[exited with code 0]

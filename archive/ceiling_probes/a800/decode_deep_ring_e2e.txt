@@ -1,0 +1,11 @@
+5fa27e6 PI decode: three-phase deep-ring kernel for small grids (sm_80)
+091612d PI prefill: software-pipelined kernel; Q-in-registers variant for sm_80
+    Finished `release` profile [optimized] target(s) in 3m 22s
+64/256/c1: out tok/s FI 282.4 PI 290.7 (+2.9%) | TTFT FI 5.6 PI 6.2 (+11.2%)
+512/256/c8: out tok/s FI 1911.0 PI 1724.6 (-9.8%) | TTFT FI 67.4 PI 68.5 (+1.7%)
+512/256/c16: out tok/s FI 3217.5 PI 3002.1 (-6.7%) | TTFT FI 103.0 PI 104.8 (+1.7%)
+4096/128/c4: out tok/s FI 544.7 PI 497.8 (-8.6%) | TTFT FI 167.0 PI 177.4 (+6.2%)
+16384/256/c2: out tok/s FI 209.7 PI 185.5 (-11.5%) | TTFT FI 726.6 PI 843.5 (+16.1%)
+30000/128/c1: out tok/s FI 68.0 PI 58.4 (-14.1%) | TTFT FI 1169.0 PI 1389.2 (+18.8%)
+
+[exited with code 0]

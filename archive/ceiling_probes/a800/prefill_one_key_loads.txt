@@ -1,0 +1,26 @@
+  }
+  // Stage of tile t: (t - t_begin) % STAGES. Tiles t_begin .. t_begin + STAGES - 2 load
+  // now (one commit group each, Q with the first); row holds the cache row
+  // of the next tile to issue, read one issue ahead.
+  auto stage_k = [&](int t) { return sKV + (2 * ((t - t_begin) % STAGES)) * kTile * kHeadDim; };
+  auto stage_v = [&](int t) { return sKV + (2 * ((t - t_begin) % STAGES) + 1) * kTile * kHeadDim; };
+  int64_t row;
+  const int tid = threadIdx.x, warp = tid >> 5, lane = tid & 31;
+  const int g = lane >> 2, t4 = lane & 3, mat = lane >> 3, r8 = lane & 7;
+  const int group = num_qo_heads / num_kv_heads;
+  const int32_t* pages = request_pages(kv_page_indices, kv_page_indptr, table_stride, b);
+  int64_t row;
+  row = tile_row(pages, page_size, page_shift, t_begin, kv_len, num_kv_heads, kvh, tid);
+  issue_tile(sK, k_cache, row, tid);
+  cp_async_commit();
+  issue_tile(sV, v_cache, row, tid);
+  cp_async_commit();
+  QFrag qf;
+hq=32 b=1 q=8192: base/v2  5281.9 
+ base/v6  5215.1
+hq=16 b=1 q=8192: base/v2  2825.5 
+ base/v6  2782.5
+hq=32 b=8 q=1024: base/v2   795.3 
+ base/v6   810.7
+
+[exited with code 0]

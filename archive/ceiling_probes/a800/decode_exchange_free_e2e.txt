@@ -1,0 +1,14 @@
+    Finished `release` profile [optimized] target(s) in 3m 19s
+== 091612d
+64/256/c1: out tok/s FI 282.9 PI 291.8 (+3.1%) | TTFT FI 5.6 PI 6.2 (+9.8%)
+512/256/c8: out tok/s FI 1910.7 PI 1692.0 (-11.4%) | TTFT FI 67.1 PI 68.8 (+2.6%)
+512/256/c16: out tok/s FI 3215.3 PI 2999.7 (-6.7%) | TTFT FI 102.8 PI 105.8 (+3.0%)
+512/256/c32: out tok/s FI 5065.8 PI 4864.5 (-4.0%) | TTFT FI 174.7 PI 181.2 (+3.7%)
+    Finished `release` profile [optimized] target(s) in 3m 21s
+== 3caf6b0
+64/256/c1: out tok/s FI 282.8 PI 294.9 (+4.2%) | TTFT FI 5.7 PI 6.1 (+8.2%)
+512/256/c8: out tok/s FI 1909.0 PI 1708.4 (-10.5%) | TTFT FI 67.7 PI 68.8 (+1.7%)
+512/256/c16: out tok/s FI 3211.4 PI 2915.9 (-9.2%) | TTFT FI 104.4 PI 104.9 (+0.5%)
+512/256/c32: out tok/s FI 5058.5 PI 4591.2 (-9.2%) | TTFT FI 173.8 PI 180.1 (+3.6%)
+
+[exited with code 0]

@@ -55,7 +55,8 @@ at::Tensor prefill(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Ten
   const int tiles = (int)((max_q_len * group + kRows - 1) / kRows);
   const int max_groups = (int)((max_kv_len - 1) / kGroupKeys + 1);
   int splits = (int)kv_splits, plan_groups = 0;
-  if (splits == 0) prefill_plan(batch, hq, hkv, (int)max_q_len, (int)max_kv_len, sm_count(q), &splits, &plan_groups);
+  if (splits == 0) prefill_plan(batch, hq, hkv, (int)max_q_len, (int)max_kv_len, sm_count(q),
+                               prefill_tail_splits(major, minor), &splits, &plan_groups);
   splits = std::max(1, std::min(splits, max_groups));
   at::Tensor ws_o, ws_ml;
   if (splits > 1) {

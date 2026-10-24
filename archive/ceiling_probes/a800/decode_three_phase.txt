@@ -1,0 +1,25 @@
+b=1 kv=256: pi old 12.9 new 10.7 | fi_tc 11.1 us
+b=1 kv=640: pi old 23.8 new 18.9 | fi_tc 11.4 us
+b=1 kv=2048: pi old 24.0 new 19.0 | fi_tc 15.7 us
+b=8 kv=256: pi old 16.9 new 12.2 | fi_tc 15.8 us
+b=8 kv=640: pi old 35.3 new 25.0 | fi_tc 19.2 us
+b=8 kv=2048: pi old 53.0 new 61.4 | fi_tc 59.1 us
+b=16 kv=256: pi old 19.7 new 21.0 | fi_tc 14.8 us
+b=16 kv=640: pi old 41.1 new 45.5 | fi_tc 39.5 us
+b=16 kv=2048: pi old 87.9 new 103.4 | fi_tc 103.4 us
+b=32 kv=256: pi old 25.8 new 36.0 | fi_tc 31.5 us
+b=32 kv=640: pi old 65.2 new 77.2 | fi_tc 72.5 us
+b=32 kv=2048: pi old 171.9 new 189.1 | fi_tc 184.4 us
+b=64 kv=256: pi old 52.2 new 67.5 | fi_tc 60.0 us
+b=64 kv=640: pi old 120.4 new 141.6 | fi_tc 119.1 us
+b=64 kv=2048: pi old 331.3 new 366.8 | fi_tc 323.1 us
+b=128 kv=256: pi old 97.2 new 126.6 | fi_tc 101.6 us
+b=128 kv=640: pi old 221.5 new 268.6 | fi_tc 207.6 us
+b=128 kv=2048: pi old 658.6 new 720.2 | fi_tc 619.0 us
+REG:127
+LOCAL:0
+checks failed: 0 []
+TOTAL FAILURES: 0
+DIRECTED FAILURES: 0
+
+[exited with code 0]
