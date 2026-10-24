@@ -1,0 +1,349 @@
+diff --git a/src/kernels/pi/pi_attn_kernels.cu b/src/kernels/pi/pi_attn_kernels.cu
+index 0cc56ec..b72acf9 100644
+--- a/src/kernels/pi/pi_attn_kernels.cu
++++ b/src/kernels/pi/pi_attn_kernels.cu
+@@ -248,6 +248,285 @@ __global__ void __launch_bounds__(kPrefillWarps * 32, 2)
+   cp_async_wait<0>();
+ }
+ 
++// Prefill with 32-row warps (sm_80): prefill_kernel's grid, 64-row tiles and per-row
++// sequence, run by 2 warps of two 16-row blocks each. Block j of warp w runs exactly
++// prefill_kernel's per-warp sequence for rows 32 w + 16 j .. + 15; the two blocks of a
++// warp share each V fragment it loads, so ldmatrix per MMA falls from 1/2 to 3/8 (Q is
++// read from smem, as there are no registers left for 32 rows of it). Q and the folded
++// totals (touched once per fold group) sit in smem: 80 KB, two CTAs per SM on sm_80.
++// The 64 threads copy tiles as tile_row64 / issue_tile64.
++constexpr int kWideWarps = 2;
++constexpr int prefill_wide_smem_bytes() {
++  return (kPrefillRows + 4 * kTile) * kHeadDim * 2 + kPrefillRows * kHeadDim * 4;
++}
++
++// Thread tid of 64 copies key tid / 2 of a tile, 16-byte chunks tid % 2 + 2 i (i = 0..7).
++__device__ __forceinline__ int64_t tile_row64(const int32_t* pages, int page_size, int page_shift, int t,
++                                              int kv_len, int num_kv_heads, int kvh, int tid) {
++  return tile_row(pages, page_size, page_shift, t, kv_len, num_kv_heads, kvh, (tid >> 1) << 2);
++}
++__device__ __forceinline__ void issue_tile64(__nv_bfloat16* tile, const __nv_bfloat16* cache, int64_t row, int tid) {
++  const int key = tid >> 1, c0 = tid & 1;
++  const __nv_bfloat16* src = cache + (row >= 0 ? row : 0) + c0 * 8;
++#pragma unroll
++  for (int i = 0; i < 8; ++i) cp_async16(tile + swz(key, c0 + 2 * i), src + 16 * i, row >= 0 ? 16 : 0);
++}
++
++template <bool PIPE>
++__global__ void __launch_bounds__(kWideWarps * 32, 2)
++    prefill_wide_kernel(const __nv_bfloat16* __restrict__ q, __nv_bfloat16* __restrict__ out,
++                         const __nv_bfloat16* __restrict__ k_cache, const __nv_bfloat16* __restrict__ v_cache,
++                         const int32_t* __restrict__ qo_indptr, const int32_t* __restrict__ kv_page_indptr,
++                         const int32_t* __restrict__ kv_page_indices, int64_t table_stride,
++                         const int32_t* __restrict__ kv_lens, const int32_t* __restrict__ prefix_lens,
++                         int num_qo_heads, int num_kv_heads, int page_size, int page_shift, float scale_log2,
++                         int kv_splits, float* __restrict__ ws_o, float2* __restrict__ ws_ml, int max_groups) {
++  constexpr int kRows = kPrefillRows;
++  extern __shared__ __align__(16) __nv_bfloat16 smem[];
++  __nv_bfloat16* sQ = smem;
++  __nv_bfloat16* sK = sQ + kRows * kHeadDim;      // slots 0, 1
++  __nv_bfloat16* sV = sK + 2 * kTile * kHeadDim;  // slots 0, 1
++  float* sTot = reinterpret_cast<float*>(sV + 2 * kTile * kHeadDim);  // [warp][block][n][i][lane]
++  const int b = blockIdx.z / kv_splits, split = blockIdx.z % kv_splits;
++  const int kvh = blockIdx.y, tile = blockIdx.x;
++  const int group = num_qo_heads / num_kv_heads;
++  const int q0 = qo_indptr[b], q_len = qo_indptr[b + 1] - q0;
++  const int rows_total = q_len * group;
++  if (tile * kRows >= rows_total) return;
++  const int kv_len = kv_lens ? kv_lens[b] : prefix_lens[b] + q_len, prefix = kv_len - q_len;
++  const int tid = threadIdx.x, warp = tid >> 5, lane = tid & 31;
++  const int g = lane >> 2, t4 = lane & 3, mat = lane >> 3, r8 = lane & 7;
++  const int32_t* pages = request_pages(kv_page_indices, kv_page_indptr, table_stride, b);
++  const int row0 = tile * kRows;
++  const int last_pos = prefix + (min(row0 + kRows, rows_total) - 1) / group;
++  // First row of block j of this warp; position of its rows g, g + 8 (-1 = padding).
++  auto block_first = [&](int j) { return row0 + warp * 32 + j * 16; };
++  int rpos[2][2];
++#pragma unroll
++  for (int j = 0; j < 2; ++j)
++#pragma unroll
++    for (int r = 0; r < 2; ++r) {
++      const int i = block_first(j) + g + r * 8;
++      rpos[j][r] = i < rows_total ? prefix + i / group : -1;
++    }
++  const int tile_groups = last_pos / kGroupKeys + 1;
++  const int per_split = (tile_groups + kv_splits - 1) / kv_splits;
++  const int g_begin = split * per_split, g_end = min(tile_groups, g_begin + per_split);
++  if (g_begin >= g_end) return;
++  const int t_begin = g_begin * kGroupTiles;
++  const int t_last = min(g_end * kGroupTiles, last_pos / kTile + 1) - 1;
++
++  uint32_t q_addr[2];
++#pragma unroll
++  for (int j = 0; j < 2; ++j) q_addr[j] = smem_u32(sQ) + swz_bytes(warp * 32 + j * 16 + (mat & 1) * 8 + r8, mat >> 1);
++  const uint32_t k_addr = smem_u32(sK) + swz_bytes((mat >> 1) * 8 + r8, mat & 1);
++  const uint32_t v_addr = smem_u32(sV) + swz_bytes((mat & 1) * 8 + r8, mat >> 1);
++  constexpr uint32_t kSlotBytes = kTile * kHeadDim * 2;
++  // S = Q K^T of both blocks, each element's k-steps in ascending order.
++  auto qk = [&](float (&s)[2][kTileNS][4], int slot) {
++#pragma unroll
++    for (int j = 0; j < 2; ++j)
++#pragma unroll
++      for (int n = 0; n < kTileNS; ++n) s[j][n][0] = s[j][n][1] = s[j][n][2] = s[j][n][3] = 0.f;
++#pragma unroll
++    for (int ks = 0; ks < kKStepsQK; ++ks) {
++      uint32_t a[2][4];
++#pragma unroll
++      for (int j = 0; j < 2; ++j) ldmatrix_x4(a[j], q_addr[j] ^ (ks << 5));
++#pragma unroll
++      for (int n = 0; n < kTileNS; n += 2) {
++        uint32_t bk[4];
++        ldmatrix_x4(bk, ((k_addr + slot * kSlotBytes) ^ (ks << 5)) + n * 8 * kHeadDim * 2);
++#pragma unroll
++        for (int j = 0; j < 2; ++j) {
++          mma_bf16(s[j][n], a[j], bk[0], bk[1]);
++          mma_bf16(s[j][n + 1], a[j], bk[2], bk[3]);
++        }
++      }
++    }
++  };
++
++#pragma unroll
++  for (int i = 0; i < kRows * 16 / 64; ++i) {
++    const int idx = tid + i * 64, r = idx >> 4, chunk = idx & 15, qi = row0 + r;
++    const __nv_bfloat16* src = q;
++    int bytes = 0;
++    if (qi < rows_total) {
++      src = q + (int64_t)(q0 + qi / group) * num_qo_heads * kHeadDim + (kvh * group + qi % group) * kHeadDim + chunk * 8;
++      bytes = 16;
++    }
++    cp_async16(sQ + swz(r, chunk), src, bytes);
++  }
++  auto row_of = [&](int t) { return tile_row64(pages, page_size, page_shift, t, kv_len, num_kv_heads, kvh, tid); };
++  int64_t row1 = row_of(t_begin), row2 = 0;
++  issue_tile64(sK, k_cache, row1, tid);
++  if constexpr (PIPE) {
++    cp_async_commit();  // Q + K(t_begin)
++    issue_tile64(sV, v_cache, row1, tid);
++    row1 = row_of(t_begin + 1);
++    row2 = row_of(t_begin + 2);
++    if (t_begin + 1 <= t_last) issue_tile64(sK + kTile * kHeadDim, k_cache, row1, tid);
++    cp_async_commit();  // V(t_begin) + K(t_begin + 1)
++  } else {
++    issue_tile64(sV, v_cache, row1, tid);
++    cp_async_commit();  // Q + K(t_begin) + V(t_begin)
++    row1 = row_of(t_begin + 1);
++  }
++
++  OnlineState st[2];
++  float tot_m[2][2], tot_d[2][2];
++#pragma unroll
++  for (int j = 0; j < 2; ++j) {
++    st[j].reset();
++    tot_m[j][0] = tot_m[j][1] = -INFINITY;
++    tot_d[j][0] = tot_d[j][1] = 0.f;
++  }
++  auto tot_o = [&](int j, int n, int i) -> float& {
++    return sTot[(((warp * 2 + j) * kNTilesO + n) * 4 + i) * 32 + lane];
++  };
++#pragma unroll
++  for (int j = 0; j < 2; ++j)
++#pragma unroll
++    for (int n = 0; n < kNTilesO; ++n)
++#pragma unroll
++      for (int i = 0; i < 4; ++i) tot_o(j, n, i) = 0.f;
++
++  // prefill_kernel's finish_group, for both blocks.
++  auto finish_group = [&](int fg, bool last) {
++#pragma unroll
++    for (int j = 0; j < 2; ++j) {
++#pragma unroll
++      for (int r = 0; r < 2; ++r) {
++        const int i = block_first(j) + g + r * 8;
++        if (kv_splits > 1) {
++          if (i >= rows_total || fg * kGroupKeys > rpos[j][r]) continue;
++          const int64_t slot = ((int64_t)(q0 + i / group) * num_qo_heads + kvh * group + i % group) * max_groups + fg;
++          if (t4 == 0) ws_ml[slot] = make_float2(st[j].m[r], st[j].d[r]);
++#pragma unroll
++          for (int n = 0; n < kNTilesO; ++n)
++            *reinterpret_cast<float2*>(ws_o + slot * kHeadDim + n * 8 + t4 * 2) =
++                make_float2(st[j].o[n][2 * r], st[j].o[n][2 * r + 1]);
++          continue;
++        }
++        const FoldScalars f = fold_scalars(tot_m[j][r], tot_d[j][r], st[j].m[r], st[j].d[r]);
++#pragma unroll
++        for (int n = 0; n < kNTilesO; ++n)
++#pragma unroll
++          for (int e = 0; e < 2; ++e) {
++            float& o = tot_o(j, n, 2 * r + e);
++            o = fold_elem(o, st[j].o[n][2 * r + e], f);
++          }
++        if (last && i < rows_total) {
++          __nv_bfloat16* dst = out + ((int64_t)(q0 + i / group) * num_qo_heads + kvh * group + i % group) * kHeadDim;
++#pragma unroll
++          for (int n = 0; n < kNTilesO; ++n) {
++            __nv_bfloat162 ob;
++            ob.x = finish(tot_o(j, n, 2 * r), tot_d[j][r]);
++            ob.y = finish(tot_o(j, n, 2 * r + 1), tot_d[j][r]);
++            *reinterpret_cast<__nv_bfloat162*>(dst + n * 8 + t4 * 2) = ob;
++          }
++        }
++      }
++      st[j].reset();
++    }
++  };
++
++  // prefill_kernel's pipelined iteration, for both blocks.
++  auto step = [&](int t, float (&s)[2][kTileNS][4], float (&sn)[2][kTileNS][4]) {
++    const int slot = t & 1;
++    cp_async_wait<0>();
++    __syncthreads();
++    if (t + 1 <= t_last) issue_tile64(sV + (slot ^ 1) * kTile * kHeadDim, v_cache, row1, tid);
++    if (t + 2 <= t_last) issue_tile64(sK + slot * kTile * kHeadDim, k_cache, row2, tid);
++    cp_async_commit();
++    row1 = row2;
++    row2 = row_of(t + 3);
++    qk(sn, slot ^ 1);
++    const int key0 = t * kTile;
++    uint32_t pa[2][kTileKS][4];
++#pragma unroll
++    for (int j = 0; j < 2; ++j) {
++#pragma unroll
++      for (int n = 0; n < kTileNS; ++n)
++#pragma unroll
++        for (int i = 0; i < 4; ++i) {
++          const int key = key0 + n * 8 + t4 * 2 + (i & 1);
++          s[j][n][i] = key <= rpos[j][i >> 1] ? mul(s[j][n][i], scale_log2) : -INFINITY;
++        }
++      online_step(st[j], s[j], pa[j]);
++    }
++#pragma unroll
++    for (int kk = 0; kk < kTileKS; ++kk)
++#pragma unroll
++      for (int n = 0; n < kNTilesO; n += 2) {
++        uint32_t bv[4];
++        ldmatrix_x4_trans(bv, ((v_addr + slot * kSlotBytes) ^ (n << 4)) + kk * 16 * kHeadDim * 2);
++#pragma unroll
++        for (int j = 0; j < 2; ++j) {
++          mma_bf16(st[j].o[n], pa[j][kk], bv[0], bv[1]);
++          mma_bf16(st[j].o[n + 1], pa[j][kk], bv[2], bv[3]);
++        }
++      }
++    if (t % kGroupTiles == kGroupTiles - 1 || t == t_last) finish_group(t / kGroupTiles, t == t_last);
++  };
++
++  // Not pipelined: tile t's K and V land a full iteration after they are issued, and
++  // the two blocks' independent chains interleave instead.
++  auto step_flat = [&](int t) {
++    const int slot = t & 1;
++    cp_async_wait<0>();  // K(t), V(t)
++    __syncthreads();     // ... for all threads; everyone is done with tile t - 1
++    if (t + 1 <= t_last) {
++      issue_tile64(sK + (slot ^ 1) * kTile * kHeadDim, k_cache, row1, tid);
++      issue_tile64(sV + (slot ^ 1) * kTile * kHeadDim, v_cache, row1, tid);
++    }
++    cp_async_commit();
++    row1 = row_of(t + 2);
++    float s[2][kTileNS][4];
++    qk(s, slot);
++    const int key0 = t * kTile;
++    uint32_t pa[2][kTileKS][4];
++#pragma unroll
++    for (int j = 0; j < 2; ++j) {
++#pragma unroll
++      for (int n = 0; n < kTileNS; ++n)
++#pragma unroll
++        for (int i = 0; i < 4; ++i) {
++          const int key = key0 + n * 8 + t4 * 2 + (i & 1);
++          s[j][n][i] = key <= rpos[j][i >> 1] ? mul(s[j][n][i], scale_log2) : -INFINITY;
++        }
++      online_step(st[j], s[j], pa[j]);
++    }
++#pragma unroll
++    for (int kk = 0; kk < kTileKS; ++kk)
++#pragma unroll
++      for (int n = 0; n < kNTilesO; n += 2) {
++        uint32_t bv[4];
++        ldmatrix_x4_trans(bv, ((v_addr + slot * kSlotBytes) ^ (n << 4)) + kk * 16 * kHeadDim * 2);
++#pragma unroll
++        for (int j = 0; j < 2; ++j) {
++          mma_bf16(st[j].o[n], pa[j][kk], bv[0], bv[1]);
++          mma_bf16(st[j].o[n + 1], pa[j][kk], bv[2], bv[3]);
++        }
++      }
++    if (t % kGroupTiles == kGroupTiles - 1 || t == t_last) finish_group(t / kGroupTiles, t == t_last);
++  };
++
++  if constexpr (PIPE) {
++    float sa[2][kTileNS][4], sb[2][kTileNS][4];
++    cp_async_wait<1>();
++    __syncthreads();
++    qk(sa, 0);
++    for (int t = t_begin; t <= t_last; t += 2) {
++      step(t, sa, sb);
++      if (t + 1 <= t_last) step(t + 1, sb, sa);
++    }
++  } else {
++    for (int t = t_begin; t <= t_last; ++t) step_flat(t);
++  }
++  cp_async_wait<0>();
++}
++
+ // Prefill merge (split mode). grid = (num_qo_heads, total q rows), 128 threads.
+ // Folds the row's group partials in ascending order (the tree's second level).
+ __global__ void __launch_bounds__(kHeadDim)
+diff --git a/kernels/pi_attn_torch.cu b/kernels/pi_attn_torch.cu
+index 2904227..27cd0a5 100644
+--- a/kernels/pi_attn_torch.cu
++++ b/kernels/pi_attn_torch.cu
+@@ -34,7 +34,8 @@ static int sm_count(const at::Tensor& t) {
+ // q: [total_q, Hq, 128]; k/v_cache: [pages, page_size, Hkv, 128]. kv_lens[b] >= q_len[b] >= 1.
+ // kv_splits: 0 = the engine planner's choice (prefill_plan), n >= 1 forces n
+ // splits over fold groups. variant: 0 = the engine's choice for this device
+-// (prefill_qreg), 1 = Q in smem, 2 = Q in registers (QREG); all give the same bits.
++// (prefill_qreg), 1 = Q in smem, 2 = Q in registers (QREG), 3 = 32-row warps
++// (prefill_wide_kernel); all give the same bits.
+ at::Tensor prefill(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Tensor qo_indptr,
+                    at::Tensor kv_page_indptr, at::Tensor kv_page_indices, at::Tensor kv_lens,
+                    int64_t max_q_len, int64_t max_kv_len, double sm_scale, int64_t kv_splits,
+@@ -46,7 +47,7 @@ at::Tensor prefill(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Ten
+   TORCH_CHECK(qo_indptr.size(0) == batch + 1 && kv_page_indptr.size(0) == batch + 1);
+   TORCH_CHECK(max_q_len >= 1 && max_kv_len >= max_q_len);
+   const int page_size = k_cache.size(1), group = hq / hkv;
+-  TORCH_CHECK(variant >= 0 && variant <= 2, "variant: 0, 1 or 2");
++  TORCH_CHECK(variant >= 0 && variant <= 4, "variant: 0 .. 4");
+   int major = 0, minor = 0;
+   cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, q.get_device());
+   cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, q.get_device());
+@@ -64,9 +65,9 @@ at::Tensor prefill(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Ten
+     ws_ml = at::empty({q.size(0), hq, max_groups, 2}, q.options().dtype(at::kFloat));
+   }
+   auto stream = at::cuda::getCurrentCUDAStream();
+-  auto launch = [&](auto kernel, int smem) {
++  auto launch = [&](auto kernel, int smem, int warps = kPrefillWarps) {
+     cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem);
+-    kernel<<<dim3(tiles, hkv, batch * splits), kPrefillWarps * 32, smem, stream>>>(
++    kernel<<<dim3(tiles, hkv, batch * splits), warps * 32, smem, stream>>>(
+         (const __nv_bfloat16*)q.data_ptr(), (__nv_bfloat16*)out.data_ptr(),
+         (const __nv_bfloat16*)k_cache.data_ptr(), (const __nv_bfloat16*)v_cache.data_ptr(),
+         qo_indptr.data_ptr<int32_t>(), kv_page_indptr.data_ptr<int32_t>(), kv_page_indices.data_ptr<int32_t>(),
+@@ -74,7 +75,9 @@ at::Tensor prefill(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Ten
+         (float)(sm_scale * 1.4426950408889634), splits, splits > 1 ? ws_o.data_ptr<float>() : nullptr,
+         splits > 1 ? (float2*)ws_ml.data_ptr<float>() : nullptr, max_groups);
+   };
+-  if (qreg) launch(prefill_kernel<true>, prefill_smem_bytes<true>());
++  if (variant == 3) launch(prefill_wide_kernel<true>, prefill_wide_smem_bytes(), kWideWarps);
++  else if (variant == 4) launch(prefill_wide_kernel<false>, prefill_wide_smem_bytes(), kWideWarps);
++  else if (qreg) launch(prefill_kernel<true>, prefill_smem_bytes<true>());
+   else launch(prefill_kernel<false>, prefill_smem_bytes<false>());
+   C10_CUDA_KERNEL_LAUNCH_CHECK();
+   if (splits > 1) {
+diff --git a/kernels/test_invariance.py b/kernels/test_invariance.py
+index b34b4c6..4e92278 100644
+--- a/kernels/test_invariance.py
++++ b/kernels/test_invariance.py
+@@ -150,7 +150,7 @@ def main():
+ 
+     # split / variant: prefill forced over 1..7 split CTAs per row tile, with either
+     # prefill kernel variant, vs the planner's run.
+-    for VARIANT in (1, 2):
++    for VARIANT in (1, 2, 3, 4):
+         for KVSPLITS in (1, 2, 3, 7):
+             for L in lens:
+                 if not same(prefill(pool, [(seqs[L][0], pages[L], L)])[0], alone[L]):

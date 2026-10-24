@@ -1,0 +1,21 @@
+# kernels/probe_wide.py: prefill with 32-row warps (attempt_prefill_wide_warps.diff, not shipped), us, planner splits.
+# v2 = shipped sm_80 kernel (QREG, 4 warps x 16 rows, 2 CTAs/SM = 8 warps/SM); v3 = 2 warps x 32 rows, S(t + 1) pipelined
+# (255 registers, 840 B spills); v4 = same, not pipelined (64 B spills). Q and fold totals in smem: 80 KB, 2 CTAs/SM
+# (cudaOccupancyMaxActiveBlocksPerMultiprocessor = 2 for both), so 4 warps per SM. same = bitwise equal to v2.
+hq=16 b=1 q=512 prefix=0: fi    99.6 | v2    41.0 (0.41) | v3    81.0 (0.81) | v4    63.6 (0.64) | same=True
+hq=16 b=1 q=2048 prefix=0: fi   209.0 | v2   208.8 (1.00) | v3   487.8 (2.33) | v4   372.8 (1.78) | same=True
+hq=16 b=1 q=8192 prefix=0: fi  1662.8 | v2  2222.2 (1.34) | v3  5217.9 (3.14) | v4  3840.2 (2.31) | same=True
+hq=16 b=8 q=1024 prefix=0: fi   283.7 | v2   367.5 (1.30) | v3   849.3 (2.99) | v4   614.4 (2.17) | same=True
+hq=16 b=32 q=512 prefix=0: fi   314.1 | v2   442.8 (1.41) | v3  1090.8 (3.47) | v4   733.2 (2.33) | same=True
+hq=16 b=1 q=512 prefix=8192: fi   291.7 | v2   395.9 (1.36) | v3   784.4 (2.69) | v4   584.9 (2.01) | same=True
+hq=16 b=1 q=128 prefix=16384: fi   152.9 | v2   215.6 (1.41) | v3   417.8 (2.73) | v4   311.1 (2.03) | same=True
+hq=16 b=4 q=2048 prefix=2048: fi  1194.0 | v2  1649.1 (1.38) | v3  3834.1 (3.21) | v4  2786.4 (2.33) | same=True
+hq=32 b=1 q=512 prefix=0: fi    76.8 | v2    58.0 (0.76) | v3   129.0 (1.68) | v4   104.5 (1.36) | same=True
+hq=32 b=1 q=2048 prefix=0: fi   292.6 | v2   354.0 (1.21) | v3   803.8 (2.75) | v4   596.1 (2.04) | same=True
+hq=32 b=1 q=8192 prefix=0: fi  3030.4 | v2  4250.7 (1.40) | v3  9794.4 (3.23) | v4  7190.6 (2.37) | same=True
+hq=32 b=8 q=1024 prefix=0: fi   495.9 | v2   689.2 (1.39) | v3  1610.0 (3.25) | v4  1169.4 (2.36) | same=True
+hq=32 b=32 q=512 prefix=0: fi   579.0 | v2   848.8 (1.47) | v3  2082.0 (3.60) | v4  1419.4 (2.45) | same=True
+hq=32 b=1 q=512 prefix=8192: fi   649.5 | v2   732.8 (1.13) | v3  1943.2 (2.99) | v4  1331.9 (2.05) | same=True
+hq=32 b=1 q=128 prefix=16384: fi   261.3 | v2   383.9 (1.47) | v3   764.8 (2.93) | v4   574.9 (2.20) | same=True
+hq=32 b=4 q=2048 prefix=2048: fi  2237.0 | v2  3217.9 (1.44) | v3  7339.4 (3.28) | v4  5315.1 (2.38) | same=True
+# test_invariance with variants 1..4 (split / batch / chunk / prefix / path): 0 failures.

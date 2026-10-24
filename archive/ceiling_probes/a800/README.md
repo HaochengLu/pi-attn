@@ -4,7 +4,7 @@ Hardware: A800-SXM4-80GB, 108 SMs, 1.41 GHz max SM clock; full environment in
 `results/a800/ENV.txt`. Hardware performance counters are not available in the container
 (ERR_NVGPUCTRPERM), so every attribution here comes from timing ablation builds.
 
-The engine commit that ships is 489c9dc (091612d plus a planner change below). Every attempt below that is not in it was
+The engine commit that ships is 42a5beb (091612d, the planner change and the GEMM changes below). Every attempt below that is not in it was
 reverted because of the measurement listed with it. Unless a file says otherwise, times
 are in µs: median of CUDA-event timings, or graph-replay averages where the file says
 "graph". Kernel output bits were checked in every case: the invariance, matrix and
@@ -59,6 +59,18 @@ Not shipped:
     per tile and is the critical path.
   - Two split-group bit failures were left undebugged, since speed rules the design out.
 
+- `prefill_wide_warps.txt`, `attempt_prefill_wide_warps.diff`, `probe_wide.py`: 32-row
+  warps on the same 64-row tiles, as FlashInfer's long-prefill kernel. Each V fragment
+  then feeds two MMAs, so ldmatrix per MMA falls from 1/2 to 3/8.
+  - Q and the fold totals sit in smem (80 KB). Two CTAs per SM, as occupancy confirms,
+    give 4 warps per SM.
+  - Bits are identical (0 invariance failures), but it runs 1.7–2.4× the shipped
+    kernel's time. Likely cause (no counters on this machine): each 32-key online step
+    is a serial chain of shuffles and exp2 between the QK and PV MMAs, and with one warp
+    per scheduler and two independent row blocks per warp, nothing hides it.
+  - 8 warps per SM would need the fold totals in per-CTA global scratch; even linear
+    scaling from 4 to 8 warps would leave it at ~1.15× the shipped kernel.
+
 Conclusion: at 16 rows per warp every ldmatrix'd K/V fragment feeds one MMA. The fp32
 group totals of the canonical fold keep 32-row warps from two CTAs per SM. sm_89's
 half-rate fp32-accumulate MMA hid this; sm_80 does not.
@@ -101,8 +113,33 @@ change bits.
     need several waves at 1 CTA/SM, while the original kernel overlaps ~8 CTAs per SM.
   - The right gate is the actual kv length per step, which a single CUDA graph per batch
     bucket cannot see, so this was reverted.
+- `decode_device_gate_engine.txt`, `attempt_decode_device_gate.diff`: the gate moved to
+  the device. Both kernels are captured in each graph; each counts the step's key tiles
+  from `kv_lens`, and only one does the work: the deep kernel when the tiles fit one wave
+  of full fold groups (SMs × 16), otherwise `decode_kernel`. Bits pass the invariance
+  tests with either kernel and with the gate.
+  - `decode_deep_gate.txt` (`probe_gate.py`) repeats one cache that fits in L2. There the
+    deep kernel looks 20–40% faster. `probe_gate_dram.txt` (`probe_gate_dram.py`) uses 28
+    caches per replay, as a 28-layer step does. Batch 8 with 640 keys: 38.5 → 31.9 µs.
+  - In the engine (nsys, Qwen3-1.7B, 8 × 512-token prompts) the deep kernel saves only
+    ~2.8 µs per layer. The second launch costs ~2.4 µs per layer, and step wall time
+    goes from 4593 to 4646 µs. Not shipped.
 
 ## GEMM, M ≤ 32
+
+Shipped (engine 42a5beb):
+- `gemm_streamk_segments.txt`: the warp stream-K kernel (ids 40–43, 51, 53) now also
+  runs S = 2 shapes. Each (n8 tile, segment) chain is cut between workers as before. A
+  finished chain's partial is folded as in `gemm_balanced_kernel`: an arrival count per
+  tile, and the last to arrive folds in ascending segment order.
+  - 0.6B o at M = 1: 8.41 → 7.77 µs; 0.6B down: 11.67 → 9.07 µs (cuBLAS 6.22 / 8.06).
+- `gemm_streamk_pairs.txt`, `probe_tn.py`: ids 60–62, chains of two adjacent n8 tiles
+  that share each X fragment. At M = 8 each worker otherwise re-reads as many X bytes
+  from L2 as weight bytes.
+  - 1.7B down at M = 8: 27.97 → 24.59 µs (cuBLAS 21.2); 0.6B down: 11.68 → 11.01 µs.
+  - One-warp workers and 16-row X variants lose, so they are not shipped.
+
+Earlier probes:
 
 - `gemm_17b_candidates.txt`: the 1.7B down projection (N = 2048, K = 6144).
   - M = 8–32: the best canonical kernel takes 28.5 µs against cuBLAS 22–24 µs, which uses

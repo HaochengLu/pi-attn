@@ -187,12 +187,15 @@ streams a different copy from a >= 600 MB pool).
     `plan_prefill` is host arithmetic plus a workspace allocation, with no device sync.
     The c128 loss is therefore not in any attention kernel at that run's shapes and stays
     unattributed. `out.txt`.
-22. `a800/`: the A800 (sm_80) probes behind engine 091612d. These cover what was shipped
-    and what was tried and measured but reverted, for prefill, small-batch decode and
-    M <= 32 GEMMs, plus the end-to-end component split. They show that the remaining A800
-    gaps are three costs of the canonical structure that sm_80's full-rate fp32-accumulate
-    MMAs expose:
-    - 16-row prefill warps, forced by the fp32 fold totals;
-    - one SM per 512-key fold group in decode;
-    - no reduction split for narrow long-K GEMMs.
+22. `a800/`: the A800 (sm_80) probes behind engines 091612d to 42a5beb. These cover what
+    was shipped and what was tried and measured but reverted, for prefill, small-batch
+    decode and M <= 32 GEMMs, plus the end-to-end component split. They show that the
+    remaining A800 gaps are three costs of the canonical structure that sm_80's full-rate
+    fp32-accumulate MMAs expose:
+    - 16-row prefill warps, forced by the fp32 fold totals (32-row warps measured: 4 warps
+      per SM, 1.7-2.4x slower);
+    - one SM per 512-key fold group in decode (a device-gated small-grid kernel measured:
+      no end-to-end gain);
+    - no reduction split for narrow long-K GEMMs (stream-K over segments and tile pairs
+      narrows it; 1.7B down at M = 8 is 1.16x cuBLAS).
     `a800/README.md`.

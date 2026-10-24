@@ -1,0 +1,26 @@
+# kernels/probe_gate_dram.py 4096: 28 caches per graph replay (engine memory regime), us per decode call
+b= 1 kv=  512 tiles=  128 KV/layer   2.1 MB: old   25.1 deep   18.6 rule   18.7
+b= 1 kv=  640 tiles=  160 KV/layer   2.6 MB: old   26.4 deep   19.7 rule   19.7
+b= 1 kv= 1024 tiles=  256 KV/layer   4.2 MB: old   26.6 deep   20.0 rule   19.8
+b= 1 kv= 2048 tiles=  512 KV/layer   8.4 MB: old   26.9 deep   20.7 rule   20.8
+b= 1 kv= 4096 tiles= 1024 KV/layer  16.8 MB: old   28.7 deep   24.0 rule   24.0
+b= 2 kv=  512 tiles=  256 KV/layer   4.2 MB: old   25.1 deep   18.9 rule   18.9
+b= 2 kv=  640 tiles=  320 KV/layer   5.2 MB: old   26.7 deep   20.3 rule   20.3
+b= 2 kv= 1024 tiles=  512 KV/layer   8.4 MB: old   26.9 deep   20.7 rule   20.7
+b= 2 kv= 2048 tiles= 1024 KV/layer  16.8 MB: old   28.2 deep   23.6 rule   23.6
+b= 2 kv= 4096 tiles= 2048 KV/layer  33.6 MB: old   35.2 deep   43.9 rule   35.4
+b= 4 kv=  512 tiles=  512 KV/layer   8.4 MB: old   28.7 deep   20.2 rule   19.7
+b= 4 kv=  640 tiles=  640 KV/layer  10.5 MB: old   31.7 deep   21.7 rule   21.7
+b= 4 kv= 1024 tiles= 1024 KV/layer  16.8 MB: old   34.5 deep   23.5 rule   23.4
+b= 4 kv= 2048 tiles= 2048 KV/layer  33.6 MB: old   36.7 deep   44.4 rule   37.6
+b= 4 kv= 4096 tiles= 4096 KV/layer  67.1 MB: old   54.0 deep   67.9 rule   52.4
+b= 8 kv=  512 tiles= 1024 KV/layer  16.8 MB: old   33.1 deep   23.9 rule   23.9
+b= 8 kv=  640 tiles= 1280 KV/layer  21.0 MB: old   38.5 deep   31.9 rule   31.9
+b= 8 kv= 1024 tiles= 2048 KV/layer  33.6 MB: old   45.6 deep   44.7 rule   47.4
+b= 8 kv= 2048 tiles= 4096 KV/layer  67.1 MB: old   57.9 deep   68.4 rule   55.7
+b= 8 kv= 4096 tiles= 8192 KV/layer 134.2 MB: old   96.3 deep  111.1 rule   90.9
+b=12 kv=  512 tiles= 1536 KV/layer  25.2 MB: old   36.4 deep   29.5 rule   29.5
+b=12 kv=  640 tiles= 1920 KV/layer  31.5 MB: old   39.8 deep   36.1 rule   41.1
+b=12 kv= 1024 tiles= 3072 KV/layer  50.3 MB: old   49.7 deep   51.1 rule   49.8
+b=12 kv= 2048 tiles= 6144 KV/layer 100.7 MB: old   77.1 deep   90.6 rule   73.9
+b=12 kv= 4096 tiles=12288 KV/layer 201.3 MB: old  144.4 deep  162.2 rule  135.6

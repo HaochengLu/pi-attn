@@ -45,9 +45,10 @@ def segpar_fits(k, M, N, K):  # mirrors CutlassGemm::run_segpar: S > 1, fragment
 
 
 BK = {20: 128, 21: 256, 22: 256, 24: 128, 25: 128, 30: 256, 31: 128, 32: 128, 33: 128,
-      40: 128, 41: 128, 42: 128, 43: 256, 51: 512, 53: 1024, 54: 128}  # K granularity (default 64)
-MAX_M = {30: 16, 31: 16, 32: 32, 33: 64, 40: 8, 41: 8, 42: 8, 43: 8, 51: 8, 53: 8, 54: 16, 55: 16}
-STREAMK = {40, 41, 42, 43, 44, 45, 46, 47, 50, 51, 53}  # S = 1 shapes only
+      40: 128, 41: 128, 42: 128, 43: 256, 51: 512, 53: 1024, 54: 128, 60: 256, 61: 512, 62: 256}  # K granularity (default 64)
+MAX_M = {30: 16, 31: 16, 32: 32, 33: 64, 40: 8, 41: 8, 42: 8, 43: 8, 51: 8, 53: 8, 54: 16, 55: 16, 60: 8, 61: 8, 62: 8}
+PAIRS = {60, 61, 62}  # stream-K over pairs of n8 tiles: N % 16 == 0
+STREAMK = {44, 45, 46, 47, 50}  # CUTLASS stream-K: S = 1 shapes only
 SEGSPLIT = {54, 55}  # S > 1 shapes only
 
 
@@ -56,8 +57,11 @@ def usable(k, M, N, K):
     if k in SEGPAR_TILE:
         return segpar_fits(k, M, N, K)
     segmented = gemm_segments(N, K) > 1
-    return (K % BK.get(k, 64) == 0 and M <= MAX_M.get(k, 1 << 30)
-            and not (k in STREAMK and segmented) and not (k in SEGSPLIT and not segmented))
+    # K tiles may not straddle a segment (the warp stream-K ids 51 / 53 stream 512 / 1024
+    # columns per stage; 0.6B down has 1536-column segments).
+    return ((K // gemm_segments(N, K)) % BK.get(k, 64) == 0 and M <= MAX_M.get(k, 1 << 30)
+            and not (k in STREAMK and segmented) and not (k in SEGSPLIT and not segmented)
+            and not (k in PAIRS and N % 16))
 
 
 def candidates(M, N, K):
