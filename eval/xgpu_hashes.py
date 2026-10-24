@@ -3,7 +3,7 @@ seeds, so every GPU computes on identical bits; the script prints one SHA-256 pe
 Run it on two GPUs and diff the outputs (eval/xgpu_compare.py).
 PI: the row-invariant GEMM (reference id 1 and CUTLASS id 13, which every engine kernel
 must match bitwise on one GPU, test_gemm.py) on every Qwen3 projection at M = 1, 8, 128,
-1024, and PI-Attn prefill, extend and decode. For contrast the same products through
+1024, and PI-Attn prefill (both kernel variants, asserted equal), extend and decode. For contrast the same products through
 torch/cuBLAS and FlashInfer's decode, whose kernel choice depends on the GPU.
 Usage (from kernels/): python ../eval/xgpu_hashes.py > out.json"""
 import hashlib
@@ -67,6 +67,9 @@ for name, batch, q_len, prefix in (("prefill b1 q512", 1, 512, 0), ("prefill b4 
     else:
         qo = torch.arange(0, batch + 1, device=dev, dtype=torch.int32) * q_len
         pi = b.ext.prefill(q, k, v, qo, indptr, indices, lens, q_len, kv, scale, 0)
+        for variant in (1, 2):  # both prefill kernels give the device's bits (test_invariance.py)
+            pv = b.ext.prefill(q, k, v, qo, indptr, indices, lens, q_len, kv, scale, 0, variant)
+            assert torch.equal(pv.view(torch.int16), pi.view(torch.int16)), (name, variant)
         last = torch.full((batch,), (kv - 1) % PAGE + 1, dtype=torch.int32)
         w = b.flashinfer.BatchPrefillWithPagedKVCacheWrapper(torch.empty(256 << 20, device=dev, dtype=torch.uint8), "NHD")
         w.plan(qo.cpu(), indptr.cpu(), indices, last, HQ, HKV, D, PAGE, causal=True, q_data_type=torch.bfloat16)
