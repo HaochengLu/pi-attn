@@ -4,8 +4,9 @@
 //
 // Ids: 1/2/4 small (4 warps, G = 1/2/4 row groups of 16), 7 small with 2 warps, 20..25
 // small with deep weight-streaming pipelines, 30..33 balanced (one CTA per SM; 30/31
-// M <= 16, 32 M <= 32, 33 M <= 64), 40..43, 51 and 53 stream-K (M <= 8, S = 1
-// shapes; 51 and 53 stream 512- and 1024-column stages, for long K), 10..15
+// M <= 16, 32 M <= 32, 33 M <= 64), 40..43, 51 and 53 stream-K (M <= 8; 51 and 53
+// stream 512- and 1024-column stages, for long K), 60..62 stream-K over pairs of n8
+// tiles (M <= 8; the pair shares each X fragment, for M = 8 of long-K projections), 10..15
 // CUTLASS tiles, 44..47 and 50 stream-K over CUTLASS tiles (S = 1 shapes), 48/49
 // segment-parallel CUTLASS tiles (S > 1 shapes), 54/55 segment-split (M <= 16, S > 1
 // shapes: one CTA per n8 tile, one warp per segment). All realise the same k order; an id that
@@ -25,7 +26,8 @@ namespace pi_gemm {
 
 // Candidates for M buckets <= 64 (tried in addition to large_kernels()).
 inline const std::vector<int>& small_kernels() {
-  static const std::vector<int> v{1, 2, 4, 7, 20, 21, 22, 24, 25, 30, 31, 32, 33, 40, 41, 42, 43, 51, 53, 54, 55};
+  static const std::vector<int> v{1, 2, 4, 7, 20, 21, 22, 24, 25, 30, 31, 32, 33, 40, 41, 42, 43, 51, 53, 54, 55,
+                                  60, 61, 62};
   return v;
 }
 // Candidates for every M bucket.
@@ -33,15 +35,15 @@ inline const std::vector<int>& large_kernels() {
   static const std::vector<int> v{10, 11, 12, 13, 14, 15, 44, 45, 46, 47, 48, 49, 50};
   return v;
 }
-inline bool is_small_kernel(int k) { return k < 10 || (k >= 20 && k <= 43) || k == 51 || (k >= 53 && k <= 55); }
+inline bool is_small_kernel(int k) { return k < 10 || (k >= 20 && k <= 43) || k == 51 || (k >= 53 && k <= 55) || (k >= 60 && k <= 62); }
 
 // Largest M a kernel id supports (balanced and stream-K kernels hold all rows in one pass).
 inline int kernel_max_m(int k) {
-  return k == 30 || k == 31 || k == 54 || k == 55 ? 16 : k == 32 ? 32 : k == 33 ? 64 : (k >= 40 && k <= 43) || k == 51 || k == 53 ? 8 : 1 << 30;
+  return k == 30 || k == 31 || k == 54 || k == 55 ? 16 : k == 32 ? 32 : k == 33 ? 64 : (k >= 40 && k <= 43) || k == 51 || k == 53 || (k >= 60 && k <= 62) ? 8 : 1 << 30;
 }
 // K granularity a kernel id requires.
 inline int kernel_bk(int k) {
-  return k == 51 ? 512 : k == 53 ? 1024 : k == 21 || k == 22 || k == 30 || k == 43 ? 256 : k >= 20 && k <= 42 || k == 54 ? 128 : 64;
+  return k == 51 || k == 61 ? 512 : k == 53 ? 1024 : k == 21 || k == 22 || k == 30 || k == 43 || k == 60 || k == 62 ? 256 : k >= 20 && k <= 42 || k == 54 || k == 64 ? 128 : 64;
 }
 
 // Function attributes are per-kernel host state: set once (outside capture).
@@ -107,6 +109,9 @@ cudaError_t run_gemm(int k, const void* x, int64_t ldx, const void* w, OutT* y, 
     case 43: return run_streamk<OutT, 256, 3>(x, ldx, w, y, ldy, M, N, K, 3, dev.sms, st);
     case 51: return run_streamk<OutT, 512, 3>(x, ldx, w, y, ldy, M, N, K, 2, dev.sms, st);
     case 53: return run_streamk<OutT, 1024, 2>(x, ldx, w, y, ldy, M, N, K, 1, dev.sms, st);
+    case 60: return run_streamk<OutT, 256, 3, 2>(x, ldx, w, y, ldy, M, N, K, 2, dev.sms, st);
+    case 61: return run_streamk<OutT, 512, 3, 2>(x, ldx, w, y, ldy, M, N, K, 2, dev.sms, st);
+    case 62: return run_streamk<OutT, 256, 4, 2>(x, ldx, w, y, ldy, M, N, K, 2, dev.sms, st);
     case 54: return run_segsplit<OutT, 128, 3>(x, ldx, w, y, ldy, M, N, K, st);
     case 55: return run_segsplit<OutT, 64, 6>(x, ldx, w, y, ldy, M, N, K, st);
     case 10: return CutlassGemm<OutT, 128, 256, 32, 64, 64, 3>::run(x, ldx, w, y, ldy, M, N, K, st);
