@@ -115,6 +115,17 @@ change bits.
   memory instead of staging them is slower on every shape.
 - `gemm_segsplit_deeper.txt`: deeper segment-split pipelines (BK 128 × 6, BK 64 × 12) are
   no better on the 0.6B S = 2 shapes.
+- `gemm_segment_chain.txt`, `attempt_gemm_segment_chain.diff`, `probe_chain.py`: 0.6B o
+  and down at M = 1 run 1.3–1.5× cuBLAS's GEMV on this GPU. That accounts for the whole
+  0.6B batch-1 loss (GEMM-only ablation −8.4%).
+  - The attempt splits each segment's chain into 256- or 128-column pieces, one warp per
+    piece. Each warp loads its fragments straight into registers, so the whole tile is in
+    flight at once, and the accumulator passes from warp to warp in k order.
+  - Bit-identical, but no faster: 0.6B o 10.38 µs against 9.56 for the best shipped
+    kernel, and down 14.32 against 11.69. One warp's instruction stream is therefore not
+    what bounds these kernels.
+  - The segment rule itself is fixed across GPUs. Changing it for the A800 would give up
+    the cross-GPU identity in `results/a800/xgpu/`.
 
 ## End-to-end attribution
 

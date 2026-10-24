@@ -1,0 +1,7 @@
+# Segment-chain GEMM (ids 58/59, attempt_gemm_segment_chain.diff), engine 489c9dc + diff, A800.
+# CUDA-graph bursts as gemm_burst.py (us per launch); same= bitwise equal to id 13. Script: probe_chain.py.
+# The run stopped at 1.7B down: 24 warps x the fragment registers exceed the register file.
+M=1 0.6B o     cublas   7.09 | k48   9.56 k55  10.35 k30  11.76 | k58  10.38 same=True k59  11.10 same=True
+M=1 0.6B down  cublas   8.07 | k55  11.69 k48  11.71 k30  12.60 | k58  14.32 same=True k59  14.89 same=True
+M=1 0.6B qkv   cublas   8.74 | k14   8.73 k31   8.85 k30   8.92 | k58   9.84 same=True k59  10.43 same=True
+M=1 1.7B o     cublas  10.30 | k41   9.76 k42  10.19 k43  11.19 | k58  13.63 same=True k59  15.05 same=True

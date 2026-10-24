@@ -1,0 +1,146 @@
+diff --git a/src/kernels/pi/gemm_dispatch.cuh b/src/kernels/pi/gemm_dispatch.cuh
+index 49aee68..0266349 100644
+--- a/src/kernels/pi/gemm_dispatch.cuh
++++ b/src/kernels/pi/gemm_dispatch.cuh
+@@ -8,7 +8,8 @@
+ // shapes; 51 and 53 stream 512- and 1024-column stages, for long K), 10..15
+ // CUTLASS tiles, 44..47 and 50 stream-K over CUTLASS tiles (S = 1 shapes), 48/49
+ // segment-parallel CUTLASS tiles (S > 1 shapes), 54/55 segment-split (M <= 16, S > 1
+-// shapes: one CTA per n8 tile, one warp per segment). All realise the same k order; an id that
++// shapes: one CTA per n8 tile, one warp per segment), 58/59 segment chain (M <= 8: one CTA
++// per n8 tile, one warp per 256- / 128-column piece of each chain). All realise the same k order; an id that
+ // cannot run a shape returns an error before launching and is then not tuned.
+ #pragma once
+ 
+@@ -25,7 +26,7 @@ namespace pi_gemm {
+ 
+ // Candidates for M buckets <= 64 (tried in addition to large_kernels()).
+ inline const std::vector<int>& small_kernels() {
+-  static const std::vector<int> v{1, 2, 4, 7, 20, 21, 22, 24, 25, 30, 31, 32, 33, 40, 41, 42, 43, 51, 53, 54, 55};
++  static const std::vector<int> v{1, 2, 4, 7, 20, 21, 22, 24, 25, 30, 31, 32, 33, 40, 41, 42, 43, 51, 53, 54, 55, 58, 59};
+   return v;
+ }
+ // Candidates for every M bucket.
+@@ -33,15 +34,15 @@ inline const std::vector<int>& large_kernels() {
+   static const std::vector<int> v{10, 11, 12, 13, 14, 15, 44, 45, 46, 47, 48, 49, 50};
+   return v;
+ }
+-inline bool is_small_kernel(int k) { return k < 10 || (k >= 20 && k <= 43) || k == 51 || (k >= 53 && k <= 55); }
++inline bool is_small_kernel(int k) { return k < 10 || (k >= 20 && k <= 43) || k == 51 || (k >= 53 && k <= 55) || k == 58 || k == 59; }
+ 
+ // Largest M a kernel id supports (balanced and stream-K kernels hold all rows in one pass).
+ inline int kernel_max_m(int k) {
+-  return k == 30 || k == 31 || k == 54 || k == 55 ? 16 : k == 32 ? 32 : k == 33 ? 64 : (k >= 40 && k <= 43) || k == 51 || k == 53 ? 8 : 1 << 30;
++  return k == 30 || k == 31 || k == 54 || k == 55 ? 16 : k == 32 ? 32 : k == 33 ? 64 : (k >= 40 && k <= 43) || k == 51 || k == 53 || k == 58 || k == 59 ? 8 : 1 << 30;
+ }
+ // K granularity a kernel id requires.
+ inline int kernel_bk(int k) {
+-  return k == 51 ? 512 : k == 53 ? 1024 : k == 21 || k == 22 || k == 30 || k == 43 ? 256 : k >= 20 && k <= 42 || k == 54 ? 128 : 64;
++  return k == 51 ? 512 : k == 53 ? 1024 : k == 21 || k == 22 || k == 30 || k == 43 || k == 58 ? 256 : k >= 20 && k <= 42 || k == 54 || k == 59 ? 128 : 64;
+ }
+ 
+ // Function attributes are per-kernel host state: set once (outside capture).
+@@ -70,6 +71,17 @@ cudaError_t run_segsplit(const void* x, int64_t ldx, const void* w, OutT* y, int
+   return cudaGetLastError();
+ }
+ 
++// Segment-chain launch (ids 58/59): one warp per PIECE columns of K, at most 32.
++template <typename OutT, int PIECE>
++cudaError_t run_segchain(const void* x, int64_t ldx, const void* w, OutT* y, int64_t ldy, int M, int N, int K,
++                         cudaStream_t st) {
++  const int warps = K / PIECE;
++  if (warps > 32) return cudaErrorInvalidValue;
++  gemm_segchain_kernel<OutT, PIECE><<<N / 8, warps * 32, 0, st>>>(
++      (const __nv_bfloat16*)x, ldx, (const __nv_bfloat16*)w, y, ldy, M, N, K);
++  return cudaGetLastError();
++}
++
+ struct GemmDevice {
+   int sms = 0, smem_optin = 0;
+ };
+@@ -109,6 +121,8 @@ cudaError_t run_gemm(int k, const void* x, int64_t ldx, const void* w, OutT* y,
+     case 53: return run_streamk<OutT, 1024, 2>(x, ldx, w, y, ldy, M, N, K, 1, dev.sms, st);
+     case 54: return run_segsplit<OutT, 128, 3>(x, ldx, w, y, ldy, M, N, K, st);
+     case 55: return run_segsplit<OutT, 64, 6>(x, ldx, w, y, ldy, M, N, K, st);
++    case 58: return run_segchain<OutT, 256>(x, ldx, w, y, ldy, M, N, K, st);
++    case 59: return run_segchain<OutT, 128>(x, ldx, w, y, ldy, M, N, K, st);
+     case 10: return CutlassGemm<OutT, 128, 256, 32, 64, 64, 3>::run(x, ldx, w, y, ldy, M, N, K, st);
+     case 11: return CutlassGemm<OutT, 128, 128, 32, 64, 64, 4>::run(x, ldx, w, y, ldy, M, N, K, st);
+     case 12: return CutlassGemm<OutT, 64, 128, 32, 32, 64, 4>::run(x, ldx, w, y, ldy, M, N, K, st);
+diff --git a/src/kernels/pi/gemm_inv.cuh b/src/kernels/pi/gemm_inv.cuh
+index d9a828e..49d64b5 100644
+--- a/src/kernels/pi/gemm_inv.cuh
++++ b/src/kernels/pi/gemm_inv.cuh
+@@ -373,6 +373,72 @@ __global__ void gemm_segsplit_kernel(const __nv_bfloat16* __restrict__ x, int64_
+   }
+ }
+ 
++// ---------------------------------------------------- segment chain, M <= 8 ----
++// The same decode GEMMs, for GPUs where one warp walking a whole segment is slow: a
++// warp's instruction stream, not the DRAM stream, bounds the segment-split kernel on
++// the A800 (1.41 GHz; 0.6B o at M = 1: 8.4 us, cuBLAS 6.1). A CTA still owns one n8
++// tile; each segment's chain is cut into PIECE-column pieces, one warp per piece. Every
++// warp loads all of its A and B fragments straight from global memory into registers
++// (the mma.m16n8k16 layouts that ldmatrix gives the other kernels: row lane / 4,
++// columns 2 (lane % 4) and + 8), so the whole tile is in flight at once. The chain then
++// runs piece by piece in ascending k: warp j continues from the accumulator warp j - 1
++// left in shared memory, exactly as stream-K hands on a chain. Warp 0 folds the
++// segment partials as gemm_segsplit_kernel does. Rows >= M (and the fragment's rows
++// 8..15) are zero. S = 1 shapes run too: one chain per tile, written unfolded.
++template <typename OutT, int PIECE>
++__global__ void gemm_segchain_kernel(const __nv_bfloat16* __restrict__ x, int64_t ldx,
++                                     const __nv_bfloat16* __restrict__ w, OutT* __restrict__ y,
++                                     int64_t ldy, int M, int N, int K) {
++  constexpr int kSteps = PIECE / 16;
++  __shared__ float hand[kSegMax][32 * 4];
++  const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, g = lane >> 2, t = lane & 3;
++  const int segs = gemm_segments(N, K), pieces = K / segs / PIECE, sg = warp / pieces, j = warp % pieces;
++  const int n0 = blockIdx.x * 8, k0 = sg * (K / segs) + j * PIECE + 2 * t;
++  const uint32_t* wr = reinterpret_cast<const uint32_t*>(w + (int64_t)(n0 + g) * K + k0);
++  const uint32_t* xr = reinterpret_cast<const uint32_t*>(x + (int64_t)g * ldx + k0);
++  uint32_t a[kSteps][2], b[kSteps][2];
++#pragma unroll
++  for (int s = 0; s < kSteps; ++s) {
++    b[s][0] = __ldg(wr + s * 8);
++    b[s][1] = __ldg(wr + s * 8 + 4);
++    a[s][0] = g < M ? __ldg(xr + s * 8) : 0u;
++    a[s][1] = g < M ? __ldg(xr + s * 8 + 4) : 0u;
++  }
++  float acc[4] = {0.f, 0.f, 0.f, 0.f};
++  for (int p = 0; p < pieces; ++p) {
++    if (j == p) {
++      if (p) {
++#pragma unroll
++        for (int i = 0; i < 4; ++i) acc[i] = hand[sg][lane * 4 + i];
++      }
++#pragma unroll
++      for (int s = 0; s < kSteps; ++s) {
++        const uint32_t af[4] = {a[s][0], 0u, a[s][1], 0u};
++        mma_bf16(acc, af, b[s][0], b[s][1]);
++      }
++#pragma unroll
++      for (int i = 0; i < 4; ++i) hand[sg][lane * 4 + i] = acc[i];
++    }
++    __syncthreads();
++  }
++  if (warp) return;
++  float tot[2] = {hand[0][lane * 4], hand[0][lane * 4 + 1]};
++  if (segs > 1) {  // ((+0 + p_0) + p_1) + ...; with S = 1 the chain's value itself
++    tot[0] = tot[1] = 0.f;
++    for (int s = 0; s < segs; ++s) {
++      tot[0] = add(tot[0], hand[s][lane * 4]);
++      tot[1] = add(tot[1], hand[s][lane * 4 + 1]);
++    }
++  }
++  if (g >= M) return;
++  const int n = n0 + 2 * t;
++  if constexpr (sizeof(OutT) == 2) {
++    *reinterpret_cast<__nv_bfloat162*>(y + (int64_t)g * ldy + n) = __floats2bfloat162_rn(tot[0], tot[1]);
++  } else {
++    *reinterpret_cast<float2*>(y + (int64_t)g * ldy + n) = make_float2(tot[0], tot[1]);
++  }
++}
++
+ // ------------------------------------------------------------- stream-K, M <= 8 ----
+ // Decode GEMMs whose n8 tiles divide unevenly over the SMs (8B down: 512 tiles on 114
+ // SMs) leave the busiest SMs streaming one tile more than the average. Here the work
