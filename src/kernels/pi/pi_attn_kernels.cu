@@ -48,6 +48,10 @@ constexpr int prefill_smem_bytes() {
 // (results/a800/kernels/prefill_configs.txt); elsewhere the 48 KB one, the only one
 // of which two CTAs fit in sm_89's 100 KB.
 inline bool prefill_qreg(int cc_major, int cc_minor) { return cc_major == 8 && cc_minor == 0; }
+// Whether the planner may split a few-wave prefill against its causal tail. The
+// dispatch simulation below was fitted on sm_89; on sm_80 every split it picks measured
+// slower than one (archive/ceiling_probes/a800/prefill_split_planner.txt).
+inline bool prefill_tail_splits(int cc_major, int cc_minor) { return !(cc_major == 8 && cc_minor == 0); }
 
 template <bool QREG>
 __global__ void __launch_bounds__(kPrefillWarps * 32, 2)
@@ -300,7 +304,7 @@ inline double prefill_makespan(int batch, int num_qo_heads, int num_kv_heads, in
 // Prefill planner: split count over fold groups and max_groups for the split
 // workspace. Splits never change bits, only speed.
 inline void prefill_plan(int batch, int num_qo_heads, int num_kv_heads, int max_q_len, int max_kv_len,
-                         int sms, int* splits, int* max_groups) {
+                         int sms, bool tail_splits, int* splits, int* max_groups) {
   const int group = num_qo_heads / std::max(num_kv_heads, 1);
   const int64_t rows = (int64_t)max_q_len * group;
   const int64_t ctas = (rows + kPrefillRows - 1) / (kPrefillRows) * num_kv_heads * batch;
@@ -326,7 +330,7 @@ inline void prefill_plan(int batch, int num_qo_heads, int num_kv_heads, int max_
         *splits = sp;
       }
     }
-  } else if (ctas <= 4 * slots) {
+  } else if (tail_splits && ctas <= 4 * slots) {
     // A few waves: the causal tail (late row tiles run the most key tiles) can
     // still leave SMs idle; simulate the dispatch for 1, 2, 4, 8 splits. The
     // simulation costs more host time than a short kernel, so decisions are

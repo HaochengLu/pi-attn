@@ -38,6 +38,7 @@ const char* check_launch(const char* what) {
 struct DeviceInfo {
   int sms = 0, smem_optin = 0;
   bool prefill_qreg = false;  // prefill kernel variant (prefill_qreg in pi_attn_kernels.cu)
+  bool prefill_tail_splits = false;  // prefill planner (prefill_tail_splits)
 };
 
 DeviceInfo device_info() {
@@ -55,6 +56,7 @@ DeviceInfo device_info() {
   cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, device);
   cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, device);
   info.prefill_qreg = prefill_qreg(major, minor);
+  info.prefill_tail_splits = prefill_tail_splits(major, minor);
   cache[device] = info;
   return info;
 }
@@ -115,7 +117,9 @@ const char* pi_attn_decode(const void* q, const void* k_cache, const void* v_cac
 // workspace (prefill_plan in pi_attn_kernels.cu).
 void pi_attn_prefill_plan(int batch, int num_qo_heads, int num_kv_heads, int max_q_len,
                           int max_kv_len, int* splits, int* max_groups) {
-  prefill_plan(batch, num_qo_heads, num_kv_heads, max_q_len, max_kv_len, device_info().sms, splits, max_groups);
+  const DeviceInfo info = device_info();
+  prefill_plan(batch, num_qo_heads, num_kv_heads, max_q_len, max_kv_len, info.sms, info.prefill_tail_splits, splits,
+               max_groups);
 }
 
 // q/out: [total_q, Hq, 128] bf16 contiguous; qo_indptr: [batch + 1] int32;
