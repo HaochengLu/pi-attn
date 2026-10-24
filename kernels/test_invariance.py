@@ -2,7 +2,7 @@
 
 Five partition changes must leave every output bit unchanged:
   batch    : a request computed alone vs inside a mixed batch
-  split    : prefill split over fold groups (1..many CTAs per row tile)
+  split    : prefill split over fold groups (1..many CTAs per row tile), either kernel variant
   chunk    : prefill in one call vs chunked prefill with arbitrary cut points
   prefix   : prefix KV already cached (different physical pages) vs computed now
   path     : prefill row at position p vs decode of the token at position p
@@ -24,6 +24,8 @@ PAGE = 16
 HQ, HKV, D = 16, 8, 128
 SCALE = 1 / math.sqrt(D)
 KVSPLITS = int(__import__('os').environ.get('PI_KVSPLITS', '1'))
+# Prefill kernel variant: 0 = the device's choice, 1 = Q in smem, 2 = Q in registers.
+VARIANT = 0
 # Decode arrival counters, shared by every call as in the engine: each call must
 # leave them zero for the next.
 COUNTERS = torch.zeros(1 << 20, dtype=torch.int32, device=dev)
@@ -78,7 +80,7 @@ def prefill(pool, reqs):
     m = meta([r[1] for r in reqs], [r[2] for r in reqs], [r[0].shape[0] for r in reqs])
     out = ext.prefill(q, pool.k, pool.v, m["qo_indptr"], m["kv_page_indptr"], m["kv_page_indices"],
                       m["kv_lens"], max(r[0].shape[0] for r in reqs), max(r[2] for r in reqs), SCALE,
-                      KVSPLITS)
+                      KVSPLITS, VARIANT)
     return list(out.split([r[0].shape[0] for r in reqs]))
 
 
@@ -110,7 +112,7 @@ def exact(q, k, v):
 
 
 def main():
-    global KVSPLITS
+    global KVSPLITS, VARIANT
     pool = Pool()
     fails = []
     lens = [1, 15, 63, 64, 65, 200, 517, 1300, 2049]
@@ -146,12 +148,14 @@ def main():
         if not same(torch.cat(outs), alone[L]):
             fails.append(("chunk+prefix", L))
 
-    # split: prefill forced over 2..7 split CTAs per row tile vs the planner's run.
-    for KVSPLITS in (2, 3, 7):
-        for L in lens:
-            if not same(prefill(pool, [(seqs[L][0], pages[L], L)])[0], alone[L]):
-                fails.append(("split", L, KVSPLITS))
-    KVSPLITS = 0
+    # split / variant: prefill forced over 1..7 split CTAs per row tile, with either
+    # prefill kernel variant, vs the planner's run.
+    for VARIANT in (1, 2):
+        for KVSPLITS in (1, 2, 3, 7):
+            for L in lens:
+                if not same(prefill(pool, [(seqs[L][0], pages[L], L)])[0], alone[L]):
+                    fails.append(("split", VARIANT, L, KVSPLITS))
+    KVSPLITS, VARIANT = 0, 0
 
     # path + batch: decode token p (cache holds 0..p) vs prefill row p, at tile
     # (32) and fold-group (512) boundaries, in two random batchings.

@@ -44,6 +44,8 @@ for eng in $engines; do
   else
     echo "$model $eng server failed to start (see $out/$eng.server.log)"
   fi
-  kill $pid 2>/dev/null; wait $pid 2>/dev/null; bash $ROOT/scripts/stop_all.sh >/dev/null 2>&1; sleep 8
+  # A stalled server can ignore SIGTERM (SGLang's Triton deterministic mode on both GPUs): escalate after 60 s.
+  kill $pid 2>/dev/null; for i in $(seq 1 30); do kill -0 $pid 2>/dev/null || break; sleep 2; done; kill -9 $pid 2>/dev/null
+  wait $pid 2>/dev/null; bash $ROOT/scripts/stop_all.sh >/dev/null 2>&1; sleep 8
 done
 echo BASELINES_DONE

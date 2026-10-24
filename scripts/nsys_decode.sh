@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Trace one batch-1 generation (64 prompt / 256 output tokens) under nsys with
-# CUDA-graph node tracing; prints GPU time per decode step by kernel (scripts/nsys_step.py).
-# Usage: [MODEL=Qwen3-1.7B] scripts/nsys_decode.sh <name> [server args...]  (default Qwen3-0.6B)
+# Trace a greedy generation (CONC concurrent requests of PROMPT prompt / 256 output tokens,
+# default 1 x 64) under nsys with CUDA-graph node tracing; prints GPU time per decode step
+# by kernel (scripts/nsys_step.py).
+# Usage: [MODEL=Qwen3-1.7B] [CONC=8] [PROMPT=512] scripts/nsys_decode.sh <name> [server args...]  (default Qwen3-0.6B)
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../env.sh"
 name=$1; shift
@@ -15,9 +16,13 @@ nsys profile -t cuda --cuda-graph-trace=node -o $out -f true \
 pid=$!
 for i in $(seq 1 120); do curl -s -m 2 localhost:$port/health >/dev/null && break; sleep 2; done
 python - <<PY
-import requests
-for _ in range(2):
-    requests.post("http://127.0.0.1:$port/v1/completions", json={"prompt": list(range(1000, 1064)), "max_tokens": 256, "temperature": 0, "ignore_eos": True})
+import concurrent.futures, requests
+def gen(i):
+    prompt = [1000 + (i * 7919 + j) % 30000 for j in range(${PROMPT:-64})]
+    requests.post("http://127.0.0.1:$port/v1/completions", json={"prompt": prompt, "max_tokens": 256, "temperature": 0, "ignore_eos": True})
+with concurrent.futures.ThreadPoolExecutor(${CONC:-1}) as ex:
+    for _ in range(2):
+        list(ex.map(gen, range(${CONC:-1})))
 PY
 kill $pid; wait $pid || true
 nsys export -t sqlite -f true -o $out.sqlite $out.nsys-rep > /dev/null

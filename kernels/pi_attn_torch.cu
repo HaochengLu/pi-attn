@@ -33,10 +33,12 @@ static int sm_count(const at::Tensor& t) {
 
 // q: [total_q, Hq, 128]; k/v_cache: [pages, page_size, Hkv, 128]. kv_lens[b] >= q_len[b] >= 1.
 // kv_splits: 0 = the engine planner's choice (prefill_plan), n >= 1 forces n
-// splits over fold groups.
+// splits over fold groups. variant: 0 = the engine's choice for this device
+// (prefill_qreg), 1 = Q in smem, 2 = Q in registers (QREG); all give the same bits.
 at::Tensor prefill(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Tensor qo_indptr,
                    at::Tensor kv_page_indptr, at::Tensor kv_page_indices, at::Tensor kv_lens,
-                   int64_t max_q_len, int64_t max_kv_len, double sm_scale, int64_t kv_splits) {
+                   int64_t max_q_len, int64_t max_kv_len, double sm_scale, int64_t kv_splits,
+                   int64_t variant) {
   check_inputs(q, k_cache, v_cache, {qo_indptr, kv_page_indptr, kv_page_indices, kv_lens});
   const c10::cuda::CUDAGuard guard(q.device());
   auto out = at::empty_like(q);
@@ -44,7 +46,12 @@ at::Tensor prefill(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Ten
   TORCH_CHECK(qo_indptr.size(0) == batch + 1 && kv_page_indptr.size(0) == batch + 1);
   TORCH_CHECK(max_q_len >= 1 && max_kv_len >= max_q_len);
   const int page_size = k_cache.size(1), group = hq / hkv;
-  constexpr int kRows = kPrefillWarps * 16;
+  TORCH_CHECK(variant >= 0 && variant <= 2, "variant: 0, 1 or 2");
+  int major = 0, minor = 0;
+  cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, q.get_device());
+  cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, q.get_device());
+  const bool qreg = variant ? variant == 2 : prefill_qreg(major, minor);
+  constexpr int kRows = kPrefillRows;
   const int tiles = (int)((max_q_len * group + kRows - 1) / kRows);
   const int max_groups = (int)((max_kv_len - 1) / kGroupKeys + 1);
   int splits = (int)kv_splits, plan_groups = 0;
@@ -56,14 +63,18 @@ at::Tensor prefill(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Ten
     ws_ml = at::empty({q.size(0), hq, max_groups, 2}, q.options().dtype(at::kFloat));
   }
   auto stream = at::cuda::getCurrentCUDAStream();
-  cudaFuncSetAttribute(prefill_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, prefill_smem_bytes());
-  prefill_kernel<<<dim3(tiles, hkv, batch * splits), kPrefillWarps * 32, prefill_smem_bytes(), stream>>>(
-      (const __nv_bfloat16*)q.data_ptr(), (__nv_bfloat16*)out.data_ptr(),
-      (const __nv_bfloat16*)k_cache.data_ptr(), (const __nv_bfloat16*)v_cache.data_ptr(),
-      qo_indptr.data_ptr<int32_t>(), kv_page_indptr.data_ptr<int32_t>(), kv_page_indices.data_ptr<int32_t>(),
-      (int64_t)0, kv_lens.data_ptr<int32_t>(), nullptr, hq, hkv, page_size, page_shift_of(page_size),
-      (float)(sm_scale * 1.4426950408889634), splits, splits > 1 ? ws_o.data_ptr<float>() : nullptr,
-      splits > 1 ? (float2*)ws_ml.data_ptr<float>() : nullptr, max_groups);
+  auto launch = [&](auto kernel, int smem) {
+    cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem);
+    kernel<<<dim3(tiles, hkv, batch * splits), kPrefillWarps * 32, smem, stream>>>(
+        (const __nv_bfloat16*)q.data_ptr(), (__nv_bfloat16*)out.data_ptr(),
+        (const __nv_bfloat16*)k_cache.data_ptr(), (const __nv_bfloat16*)v_cache.data_ptr(),
+        qo_indptr.data_ptr<int32_t>(), kv_page_indptr.data_ptr<int32_t>(), kv_page_indices.data_ptr<int32_t>(),
+        (int64_t)0, kv_lens.data_ptr<int32_t>(), nullptr, hq, hkv, page_size, page_shift_of(page_size),
+        (float)(sm_scale * 1.4426950408889634), splits, splits > 1 ? ws_o.data_ptr<float>() : nullptr,
+        splits > 1 ? (float2*)ws_ml.data_ptr<float>() : nullptr, max_groups);
+  };
+  if (qreg) launch(prefill_kernel<true>, prefill_smem_bytes<true>());
+  else launch(prefill_kernel<false>, prefill_smem_bytes<false>());
   C10_CUDA_KERNEL_LAUNCH_CHECK();
   if (splits > 1) {
     prefill_merge_kernel<<<dim3(hq, q.size(0)), kHeadDim, 0, stream>>>(
@@ -108,7 +119,9 @@ at::Tensor decode(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Tens
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-  m.def("prefill", &prefill);
+  m.def("prefill", &prefill, py::arg("q"), py::arg("k_cache"), py::arg("v_cache"), py::arg("qo_indptr"),
+        py::arg("kv_page_indptr"), py::arg("kv_page_indices"), py::arg("kv_lens"), py::arg("max_q_len"),
+        py::arg("max_kv_len"), py::arg("sm_scale"), py::arg("kv_splits"), py::arg("variant") = 0);
   m.def("decode", &decode);
   m.attr("TILE") = kTile;
   m.attr("DECODE_WARPS") = kDecodeWarps;

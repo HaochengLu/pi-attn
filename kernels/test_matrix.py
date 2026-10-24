@@ -2,8 +2,9 @@
 
 For each GQA geometry (Qwen3 0.6B/1.7B: 16/8, 4B/8B: 32/8, plus 8/8 and 32/4)
 and query scale (normal and peaked), every way of computing a token's attention
-output must give the same bits: prefill with 1, 2, 5 or the planner's split count
-over fold groups (inside random batches), chunked prefill at random cuts over a
+output must give the same bits: prefill with either kernel variant (Q in smem or in
+registers) and 1, 2, 5 or the planner's split count over fold groups (inside random
+batches), chunked prefill at random cuts over a
 cached prefix stored in other pages, and decode inside random batches. Also
 checks run-to-run determinism and accuracy vs float64.
 """
@@ -34,8 +35,8 @@ def run_geometry(hq, hkv, qscale, lens, seed):
     fails = []
     T.KVSPLITS = 1
     ref = {L: T.prefill(pool, [(seqs[L][0], pages[L], L)])[0] for L in lens}
-    for kvs in (1, 2, 5, 0):  # forced fold-group splits and the planner
-        T.KVSPLITS = kvs
+    for var, kvs in [(v, k) for v in (1, 2) for k in (1, 2, 5, 0)]:  # both variants; forced splits and the planner
+        T.VARIANT, T.KVSPLITS = var, kvs
         # Split mode stores one f32 partial per (row, head, fold group): batch only the
         # requests whose workspace fits; longer ones get the extend case split mode is
         # for (their last 128 tokens over the cached prefix).
@@ -45,11 +46,11 @@ def run_geometry(hq, hkv, qscale, lens, seed):
         outs = T.prefill(pool, [(seqs[L][0], pages[L], L) for L in order]) if order else []
         for L, out in zip(order, outs):
             if not T.same(out, ref[L]):
-                fails.append(("prefill-split", kvs, L))
+                fails.append(("prefill-split", var, kvs, L))
         for L in [L for L in lens if not fits(L)]:
             out = T.prefill(pool, [(seqs[L][0][L - 128:].contiguous(), pages[L], L)])[0]
             if not T.same(out, ref[L][L - 128:]):
-                fails.append(("extend-split", kvs, L))
+                fails.append(("extend-split", var, kvs, L))
         for L in lens:  # chunked prefill over a cached prefix in other pages
             if L < 2 or not fits(L):
                 continue
@@ -62,8 +63,8 @@ def run_geometry(hq, hkv, qscale, lens, seed):
                 start = end
             pool.free.extend(p2)
             if not T.same(torch.cat(outs), ref[L]):
-                fails.append(("chunked", kvs, L))
-    T.KVSPLITS = 0
+                fails.append(("chunked", var, kvs, L))
+    T.VARIANT, T.KVSPLITS = 0, 0
     for _ in range(2):  # decode in random batches vs prefill rows
         probes = [(L, p) for L in lens for p in {0, L - 1, random.randrange(L)}]
         random.shuffle(probes)

@@ -1,10 +1,13 @@
-"""Prefill latency of PI-Attn at forced split counts and the planner (0) vs FlashInfer."""
+"""Prefill latency of PI-Attn vs FlashInfer: both prefill kernel variants (v1: Q in smem, v2: Q in
+registers) at forced split counts and the planner (s0); `auto` is the device's variant and plan."""
 import math
 
 import flashinfer
 import torch
 
-from bench_attention import PAGE, D, dev, ext, make_cache, timeit
+from bench_attention import PAGE, D, dev, ext, make_cache, timeit, warm_gpu
+
+warm_gpu()
 
 SPLITS = (0, 1, 2, 4, 8)
 for hq, hkv in [(16, 8), (32, 8)]:
@@ -16,7 +19,8 @@ for hq, hkv in [(16, 8), (32, 8)]:
         w = flashinfer.BatchPrefillWithPagedKVCacheWrapper(torch.empty(256 << 20, device=dev, dtype=torch.uint8), "NHD")
         w.plan(qo.cpu(), indptr.cpu(), indices, last.cpu(), hq, hkv, D, PAGE, causal=True, q_data_type=torch.bfloat16)
         fi = timeit(lambda: w.run(q, (k, v)), iters=20)
-        r = {}
-        for sp in SPLITS:
-            r[sp] = timeit(lambda: ext.prefill(q, k, v, qo, indptr, indices, lens, q_len, kv_len, 1 / math.sqrt(D), sp), iters=20)
-        print(f"hq={hq} b={batch} q={q_len} prefix={prefix}: fi {fi:7.1f} | " + " | ".join(f"s{c} {t:7.1f} ({t/fi:.2f})" for c, t in r.items()), flush=True)
+        r = {"auto": timeit(lambda: ext.prefill(q, k, v, qo, indptr, indices, lens, q_len, kv_len, 1 / math.sqrt(D), 0), iters=20)}
+        for var in (1, 2):
+            for sp in SPLITS:
+                r[f"v{var} s{sp}"] = timeit(lambda: ext.prefill(q, k, v, qo, indptr, indices, lens, q_len, kv_len, 1 / math.sqrt(D), sp, var), iters=20)
+        print(f"hq={hq} b={batch} q={q_len} prefix={prefix}: fi {fi:7.1f} | " + " | ".join(f"{c} {t:7.1f} ({t/fi:.2f})" for c, t in r.items()), flush=True)

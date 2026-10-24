@@ -33,6 +33,20 @@ def timeit(fn, iters=40, warmup=8):
     return round(ts[len(ts) // 2] * 1000, 1)
 
 
+def warm_gpu(seconds=2.0):
+    """Run matmuls so the first timed case does not start at idle clocks (an idle A800 sits at 210 MHz)."""
+    a = torch.randn(4096, 4096, device=dev, dtype=torch.bfloat16)
+    s, e = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
+    s.record()
+    while True:
+        for _ in range(50):
+            a @ a
+        e.record()
+        torch.cuda.synchronize()
+        if s.elapsed_time(e) > seconds * 1000:
+            return
+
+
 def make_cache(batch, kv_len, hkv, shared=False):
     """Paged K/V in shuffled pages; shared: every request reads the same pages (prefix cache)."""
     pages_per = (kv_len + PAGE - 1) // PAGE
@@ -106,6 +120,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out")
     a = ap.parse_args()
+    warm_gpu()
     rows = []
     for hq, hkv in [(16, 8), (32, 8)]:
         for batch, kv in DECODE:
