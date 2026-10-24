@@ -25,7 +25,7 @@ stage crossconfig
 bash $ROOT/eval/crossconfig.sh --deterministic > $log/crossconfig_det.log 2>&1
 bash $ROOT/eval/crossconfig.sh --attention-backend flashinfer > $log/crossconfig_fi.log 2>&1
 stage detcheck
-port=18097
+port=18097; mkdir -p $ROOT/results/detcheck
 for M in Qwen3-0.6B Qwen3-1.7B Qwen3-4B Qwen3-8B; do
   $ROOT/scripts/serve.sh $port $ROOT/models/$M --deterministic --max-running-req 32 --max-seq-len 8192 \
     --max-total-tokens 32768 --chunked-prefill-size 2048 --log-dir $ROOT/logs > $ROOT/results/detcheck/final_$M.server.log 2>&1 &
