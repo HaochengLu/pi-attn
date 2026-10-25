@@ -1,0 +1,59 @@
+# scripts/nsys_decode.sh, MODEL=Qwen3-1.7B CONC=8 PROMPT=512, A800. order_c8 = engine 38c32da (PI);
+# fi_c8_1/2 = same engine with --attention-backend flashinfer; pi_c8_1/2 = engine 42a5beb (before the grid order).
+## order_c8
+23069 kernels, 67 steps: GPU busy 4218.5 us/step, wall 4442.9 us/step
+ 2088.47 us/step  84.58/step  void cutlass::Kernel<cutlass::gemm::kernel::Gemm<cutlass::gemm::threadblock::MmaMultistage<cutlass::gemm::Gemm
+  841.53 us/step  27.16/step  pi_attn::decode_kernel(const __nv_bfloat16 *, const __nv_bfloat16 *, const __nv_bfloat16 *, const int *, const
+  654.34 us/step  26.75/step  void pi_gemm::gemm_streamk_kernel<__nv_bfloat16, (int)512, (int)3, (int)2>(const __nv_bfloat16 *, long, const 
+  177.88 us/step  56.00/step  void flashinfer::norm::FusedAddRMSNormKernel<(unsigned int)8, __nv_bfloat16>(T2 *, T2 *, T2 *, unsigned int, u
+   82.48 us/step  27.58/step  void at::native::elementwise_kernel<(int)128, (int)4, void at::native::gpu_kernel_impl_nocast<at::native::dire
+   79.46 us/step  28.00/step  void <unnamed>::rope_kernel<__nv_bfloat16>(T1 *, T1 *, const long *, const float *, const float *, long, long,
+   70.76 us/step  28.00/step  void <unnamed>::silu_mul_vector_kernel<__nv_bfloat16, (long)0>(const T1 *, T1 *, long, long)
+   61.61 us/step  28.00/step  void sglang::store_kvcache<(long)2048, (long)2048, (int)4, (bool)0, int>(sglang::StoreKVCacheParams)
+   59.47 us/step  28.00/step  void sglang::fused_qknorm_warp<(long)128, (bool)0, __nv_bfloat16>(sglang::QKNormParams)
+   26.31 us/step   0.84/step  void pi_attn::prefill_kernel<(bool)1>(const __nv_bfloat16 *, __nv_bfloat16 *, const __nv_bfloat16 *, const __n
+   14.20 us/step   0.42/step  void pi_gemm::gemm_small_kernel<(int)1, (int)4, __nv_bfloat16, (int)64, (int)4>(const __nv_bfloat16 *, long, c
+67 steps, idle 224.7 us/step over 344.2 gaps/step
+  gaps     0-    2 us:  338.1/step,    17.9 us/step
+  gaps     2-    5 us:    2.7/step,     6.9 us/step
+  gaps     5-   20 us:    2.7/step,    40.1 us/step
+  gaps    20-1000000 us:    0.6/step,   159.8 us/step
+    84.1 us/step  0.01/step  void at::native::index_elementwise_kernel<(int)128, (int)4,   ->  void at::native::vectorized_elementwise_kernel<(int)2, at::n
+## fi_c8_1
+29947 kernels, 70 steps: GPU busy 3886.3 us/step, wall 4229.7 us/step
+ 1318.27 us/step  28.60/step  ampere_bf16_s16816gemm_bf16_64x64_sliced1x2_ldg8_f2f_stages_64x5_tn
+  744.12 us/step  53.60/step  void cutlass::Kernel2<cutlass_80_tensorop_s16816gemm_bf16_64x64_64x6_tn_align8>(T1::Params)
+  511.57 us/step  27.20/step  void flashinfer::BatchDecodeWithPagedKVCacheKernel<(flashinfer::PosEncodingMode)0, (unsigned int)2, (unsigned 
+  409.94 us/step  27.60/step  ampere_bf16_s16816gemm_bf16_64x64_sliced1x2_ldg8_f2f_stages_64x6_tn
+  177.50 us/step  56.00/step  void flashinfer::norm::FusedAddRMSNormKernel<(unsigned int)8, __nv_bfloat16>(T2 *, T2 *, T2 *, unsigned int, u
+  129.18 us/step  54.00/step  void cublasLt::splitKreduce_kernel<(int)32, (int)16, int, float, __nv_bfloat16, float, (bool)0, __nv_bfloat16,
+  107.54 us/step  28.00/step  void flashinfer::PersistentVariableLengthMergeStatesKernel<(unsigned int)8, (unsigned int)16, (unsigned int)8,
+   80.03 us/step  28.00/step  void <unnamed>::rope_kernel<__nv_bfloat16>(T1 *, T1 *, const long *, const float *, const float *, long, long,
+   79.96 us/step  26.80/step  void at::native::elementwise_kernel<(int)128, (int)4, void at::native::gpu_kernel_impl_nocast<at::native::dire
+   71.25 us/step  28.00/step  void <unnamed>::silu_mul_vector_kernel<__nv_bfloat16, (long)0>(const T1 *, T1 *, long, long)
+   61.40 us/step  28.00/step  void sglang::store_kvcache<(long)2048, (long)2048, (int)4, (bool)0, int>(sglang::StoreKVCacheParams)
+70 steps, idle 343.8 us/step over 427.7 gaps/step
+  gaps     0-    2 us:  421.0/step,    24.4 us/step
+  gaps     2-    5 us:    1.8/step,     4.7 us/step
+  gaps     5-   20 us:    3.2/step,    49.8 us/step
+  gaps    20-1000000 us:    1.7/step,   264.9 us/step
+   105.6 us/step  0.01/step  void at::native::index_elementwise_kernel<(int)128, (int)4,   ->  void at::native::unrolled_elementwise_kernel<at::native::CUD
+## pi_c8_1
+21658 kernels, 63 steps: GPU busy 4445.7 us/step, wall 4673.7 us/step
+ 2086.13 us/step  85.00/step  void cutlass::Kernel<cutlass::gemm::kernel::Gemm<cutlass::gemm::threadblock::MmaMultistage<cutlass::gemm::Gemm
+ 1104.33 us/step  27.56/step  pi_attn::decode_kernel(const __nv_bfloat16 *, const __nv_bfloat16 *, const __nv_bfloat16 *, const int *, const
+  663.34 us/step  27.11/step  void pi_gemm::gemm_streamk_kernel<__nv_bfloat16, (int)512, (int)3, (int)2>(const __nv_bfloat16 *, long, const 
+  176.10 us/step  56.00/step  void flashinfer::norm::FusedAddRMSNormKernel<(unsigned int)8, __nv_bfloat16>(T2 *, T2 *, T2 *, unsigned int, u
+   81.78 us/step  27.56/step  void at::native::elementwise_kernel<(int)128, (int)4, void at::native::gpu_kernel_impl_nocast<at::native::dire
+   78.54 us/step  28.00/step  void <unnamed>::rope_kernel<__nv_bfloat16>(T1 *, T1 *, const long *, const float *, const float *, long, long,
+   70.01 us/step  28.00/step  void <unnamed>::silu_mul_vector_kernel<__nv_bfloat16, (long)0>(const T1 *, T1 *, long, long)
+   61.25 us/step  28.00/step  void sglang::store_kvcache<(long)2048, (long)2048, (int)4, (bool)0, int>(sglang::StoreKVCacheParams)
+   59.07 us/step  28.00/step  void sglang::fused_qknorm_warp<(long)128, (bool)0, __nv_bfloat16>(sglang::QKNormParams)
+   13.80 us/step   0.44/step  void pi_attn::prefill_kernel<(bool)1>(const __nv_bfloat16 *, __nv_bfloat16 *, const __nv_bfloat16 *, const __n
+   13.62 us/step   0.89/step  void pi_gemm::gemm_streamk_kernel<__nv_bfloat16, (int)256, (int)3, (int)1>(const __nv_bfloat16 *, long, const 
+63 steps, idle 228.4 us/step over 343.7 gaps/step
+  gaps     0-    2 us:  338.7/step,    16.3 us/step
+  gaps     2-    5 us:    1.8/step,     4.8 us/step
+  gaps     5-   20 us:    3.0/step,    44.8 us/step
+  gaps    20-1000000 us:    0.2/step,   162.4 us/step
+   123.8 us/step  0.02/step  void at::native::index_elementwise_kernel<(int)128, (int)4,   ->  void at::native::vectorized_elementwise_kernel<(int)2, at::n

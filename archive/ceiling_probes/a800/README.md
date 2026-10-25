@@ -195,3 +195,27 @@ Earlier probes:
 - `nsys_c8_c32.txt`: per-step kernel time of the same runs.
 - `e2e_quick_after_prefill.txt`: the long-context gain from the prefill change. 30000/128
   c1 goes from −20.3% to −11.7%, and TTFT from +41.8% to +18.5%.
+- `nsys_c8_38c32da.txt`: the same breakdown for engine 38c32da (Qwen3-1.7B, 8 × 512-token
+  prompts; `scripts/nsys_decode.sh`, `scripts/nsys_step.py`, idle gaps from `nsys_gaps.py`).
+  - Decode attention: 884 µs per step against FlashInfer's 548 + 105 (merge).
+  - o and down projections: about 100 µs per step above cuBLAS with split-K. The other
+    kernels are the engine's own in both modes.
+  - Idle time between kernels: 228–282 µs per step against FlashInfer's 320–344.
+
+## Where the A800 stops
+
+At engine 38c32da the 1.7B c8 kernel gap is about 330 µs per step. It splits into two parts.
+
+- Decode attention, about 8 µs per layer. Each working CTA runs group 0's 16 tiles in
+  order at about 1.1–1.4 µs per tile, plus the fold of two groups. That costs the same at
+  batch 1, where bandwidth is not under pressure.
+  - Under the contract the floor is about 26 µs per layer; the shipped kernel takes 31.5.
+  - Deeper loads (the ring), other decode designs (three-phase, deep ring, warp pair) and
+    the device gate were measured above and do not move it in the engine.
+- o and down projections, about 3.5 µs per layer. This is cuBLAS's split-K, which the
+  per-element chain forbids.
+
+Fable's third review checked the scheduling-only levers that remain, against the traces
+and the code, and found none with a credible engine-level gain:
+- the prefill grid and wave quantisation;
+- the GEMM grids and the merge kernels.
