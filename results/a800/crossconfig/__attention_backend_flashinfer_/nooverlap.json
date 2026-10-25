@@ -1,0 +1,41 @@
+{
+ "url": "http://127.0.0.1:18095",
+ "tokens": 256,
+ "prompts": 16,
+ "lengths": [
+  24,
+  300,
+  1100,
+  2600
+ ],
+ "compare": {
+  "greedy": {
+   "requests": 16,
+   "mismatched": 6,
+   "first_divergence_tokens": [
+    14,
+    15,
+    46,
+    59,
+    65,
+    66
+   ]
+  },
+  "sampled": {
+   "requests": 16,
+   "mismatched": 9,
+   "first_divergence_tokens": [
+    0,
+    1,
+    7,
+    10,
+    10,
+    11,
+    17,
+    29,
+    201
+   ]
+  }
+ },
+ "seconds": 3.8
+}

@@ -1,0 +1,2 @@
+compare {"greedy": {"requests": 16, "mismatched": 0, "first_divergence_tokens": []}, "sampled": {"requests": 16, "mismatched": 0, "first_divergence_tokens": []}}
+DETERMINISTIC

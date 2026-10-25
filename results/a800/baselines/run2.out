@@ -1,0 +1,15 @@
+Qwen3-1.7B rust detcheck exit=1
+Qwen3-1.7B rust loadgen exit=0
+Qwen3-1.7B rust-det detcheck exit=0
+Qwen3-1.7B rust-det loadgen exit=0
+Qwen3-1.7B sglang detcheck exit=1
+Qwen3-1.7B sglang loadgen exit=0
+Qwen3-1.7B sglang-det detcheck exit=1
+Qwen3-1.7B sglang-det loadgen exit=0
+Qwen3-1.7B sglang-det-triton detcheck exit=1
+Qwen3-1.7B sglang-det-triton loadgen exit=1
+Qwen3-1.7B vllm detcheck exit=1
+Qwen3-1.7B vllm loadgen exit=0
+Qwen3-1.7B vllm-det detcheck exit=1
+Qwen3-1.7B vllm-det loadgen exit=0
+BASELINES_DONE

@@ -10,7 +10,7 @@ out=$ROOT/results/nsys/$name
 mkdir -p $ROOT/results/nsys
 port=18099
 export LD_PRELOAD=$TORCH_LIB/libtorch_cuda.so
-nsys profile -t cuda --cuda-graph-trace=node -o $out -f true \
+nsys profile -t cuda --cuda-graph-trace=node --cuda-flush-interval=100 -o $out -f true \
   $ROOT/llm_infer_rust/target/release/sglang-rust --model-path $ROOT/models/${MODEL:-Qwen3-0.6B} --port $port --device cuda \
   --max-running-req 8 --max-seq-len 4096 --max-total-tokens 65536 --log-dir $ROOT/logs "$@" > $ROOT/logs/nsys_$name.out 2>&1 &
 pid=$!

@@ -20,3 +20,16 @@ the engine commit named in the paper.
 | §7.3 GEMM tuning time at startup | `e2e_matrix/tuning.txt` | `run_all.sh` (the engine's `PI GEMM tiles tuned` and `PI GEMM tile choice` log lines) |
 
 Server logs (`*.server.log`) are kept on disk but not committed (`.gitignore`).
+
+## A800 (paper Section 7.5)
+
+`a800/` has the same layout, written by one `eval/run_all.sh` run on an A800-SXM4-80GB with
+engine commit 38c32da (environment and commits in `a800/ENV.txt`). The RTX 4090 D results
+above use engine fdc184b (ablation 870c171). Three exceptions:
+- SGLang and vLLM rows in `a800/baselines/Qwen3-1.7B/` come from the first A800 run
+  (2026-10-24, same venvs), as on the 4090 D they run outside `run_all.sh`.
+- `a800/nsys/` was re-traced after the run with `--cuda-flush-interval=100`
+  (`scripts/nsys_decode.sh`), because nsys dropped the kernel records of the 0.6B PI trace.
+- Cross-GPU files, written from `kernels/` and `eval/`:
+  - `a800/xgpu/compare_4090D_A800.txt`: `python ../eval/xgpu_compare.py ../results/xgpu/NVIDIA_GeForce_RTX_4090_D.json ../results/a800/xgpu/NVIDIA_A800-SXM4-80GB.json`
+  - `a800/accuracy/xgpu_4090D_vs_A800.md`: `python xgpu_accuracy.py ../results/accuracy/<model> ../results/a800/accuracy/<model>`, for 1.7B and 8B.

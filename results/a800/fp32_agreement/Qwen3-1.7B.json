@@ -1,0 +1,14 @@
+{
+ "/uniparser/users/luhaocheng/pi_attn/build/a800/results/fp32_agreement/Qwen3-1.7B.flashinfer.gen.json": {
+  "tokens": 1280,
+  "agree_fp32_argmax": 0.99140625,
+  "disagreements": 11,
+  "max_margin_at_disagreement": 0.1387195587158203
+ },
+ "/uniparser/users/luhaocheng/pi_attn/build/a800/results/fp32_agreement/Qwen3-1.7B.deterministic.gen.json": {
+  "tokens": 1280,
+  "agree_fp32_argmax": 0.99296875,
+  "disagreements": 9,
+  "max_margin_at_disagreement": 0.08846473693847656
+ }
+}

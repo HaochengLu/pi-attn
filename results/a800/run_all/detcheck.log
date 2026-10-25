@@ -1,0 +1,4 @@
+Qwen3-0.6B detcheck exit=0 DETERMINISTIC
+Qwen3-1.7B detcheck exit=0 DETERMINISTIC
+Qwen3-4B detcheck exit=0 DETERMINISTIC
+Qwen3-8B detcheck exit=0 DETERMINISTIC

@@ -1,0 +1,36 @@
+== Qwen3-0.6B: FlashInfer mode -> deterministic
+steps: 142 vs 142; us per step (a -> b, b - a)
+  projections        1175.3 ->   1224.5    +49.1
+  attention           375.8 ->    363.8    -12.0
+  other kernels       433.0 ->    424.5     -8.5
+  argmax               11.8 ->     10.7     -1.1
+  between kernels     108.1 ->     69.8    -38.3
+  step               2104.1 ->   2093.3    -10.8
+us per launch: qkv 9.14 -> 8.90  o 6.61 -> 8.05  gate_up 11.58 -> 11.00  down 8.50 -> 9.42  lm_head 171.99 -> 178.04
+== Qwen3-1.7B: FlashInfer mode -> deterministic
+steps: 81 vs 89; us per step (a -> b, b - a)
+  projections        2687.0 ->   2548.0   -139.0
+  attention           382.5 ->    265.4   -117.1
+  other kernels       436.8 ->    442.1     +5.3
+  argmax               11.1 ->     11.2     +0.1
+  between kernels     114.3 ->     59.2    -55.1
+  step               3631.7 ->   3325.9   -305.8
+us per launch: qkv 14.11 -> 14.25  o 10.46 -> 9.93  gate_up 33.13 -> 33.81  down 25.95 -> 20.74  lm_head 344.59 -> 343.52
+== Qwen3-4B: FlashInfer mode -> deterministic
+steps: 38 vs 46; us per step (a -> b, b - a)
+  projections        5271.3 ->   5258.7    -12.6
+  attention          1160.5 ->    471.5   -689.0
+  other kernels       764.0 ->    578.4   -185.6
+  argmax               11.0 ->     10.9     -0.2
+  between kernels     379.3 ->     56.5   -322.9
+  step               7586.2 ->   6376.0  -1210.3
+us per launch: qkv 22.37 -> 21.94  o 16.01 -> 16.13  gate_up 62.90 -> 62.81  down 33.05 -> 32.88  lm_head 435.53 -> 443.26
+== Qwen3-8B: FlashInfer mode -> deterministic
+steps: 25 vs 27; us per step (a -> b, b - a)
+  projections        9287.7 ->   9384.3    +96.6
+  attention          1104.7 ->    488.4   -616.3
+  other kernels       630.4 ->    612.6    -17.8
+  argmax               10.5 ->     10.7     +0.2
+  between kernels     364.2 ->     59.9   -304.2
+  step              11397.6 ->  10556.0   -841.6
+us per launch: qkv 32.63 -> 34.62  o 23.81 -> 24.79  gate_up 118.65 -> 118.16  down 63.74 -> 63.81  lm_head 689.77 -> 694.94

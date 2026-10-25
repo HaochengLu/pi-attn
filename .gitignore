@@ -13,3 +13,5 @@ results/accuracy/*/*/
 *.server.log
 results/*.out
 results/quick/
+results/a800/accuracy/*/*/
+results/a800/detcheck/*.json

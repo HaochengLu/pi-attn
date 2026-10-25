@@ -1,0 +1,8 @@
+base: saved references to /uniparser/users/luhaocheng/pi_attn/build/a800/results/crossconfig/__deterministic_/refs.json DETERMINISTIC 
+chunk512: compare {"greedy": {"requests": 16, "mismatched": 0, "first_divergence_tokens": []}, "sampled": {"requests": 16, "mismatched": 0, "first_divergence_tokens": []}} DETERMINISTIC 
+nochunk: compare {"greedy": {"requests": 16, "mismatched": 0, "first_divergence_tokens": []}, "sampled": {"requests": 16, "mismatched": 0, "first_divergence_tokens": []}} DETERMINISTIC 
+eager: compare {"greedy": {"requests": 16, "mismatched": 0, "first_divergence_tokens": []}, "sampled": {"requests": 16, "mismatched": 0, "first_divergence_tokens": []}} DETERMINISTIC 
+maxreq4: compare {"greedy": {"requests": 16, "mismatched": 0, "first_divergence_tokens": []}, "sampled": {"requests": 16, "mismatched": 0, "first_divergence_tokens": []}} DETERMINISTIC 
+nooverlap: compare {"greedy": {"requests": 16, "mismatched": 0, "first_divergence_tokens": []}, "sampled": {"requests": 16, "mismatched": 0, "first_divergence_tokens": []}} DETERMINISTIC 
+page32: compare {"greedy": {"requests": 16, "mismatched": 0, "first_divergence_tokens": []}, "sampled": {"requests": 16, "mismatched": 0, "first_divergence_tokens": []}} DETERMINISTIC 
+restart: compare {"greedy": {"requests": 16, "mismatched": 0, "first_divergence_tokens": []}, "sampled": {"requests": 16, "mismatched": 0, "first_divergence_tokens": []}} DETERMINISTIC 
