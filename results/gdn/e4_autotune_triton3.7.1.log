@@ -1,0 +1,21 @@
+baseline e026c632df
+chunk_fwd.chunk_gated_delta_rule_fwd_kkt_solve_kernel   configs  6  distinct outputs 1
+wy_fast.prepare_wy_repr_bwd_kernel                      configs  6  distinct outputs 1
+wy_fast.recompute_w_u_fwd_kernel                        configs  9  distinct outputs 1
+chunk_delta_h.chunk_gated_delta_rule_bwd_kernel_dhu_blockdim64 configs  4  distinct outputs 1
+chunk_delta_h.chunk_gated_delta_rule_fwd_kernel_h_blockdim64 configs  8  distinct outputs 1
+chunk_o.chunk_bwd_kernel_dqkwg                          configs  9  distinct outputs 1
+chunk_o.chunk_bwd_kernel_dv                             configs  9  distinct outputs 1
+chunk_o.chunk_bwd_kernel_dv_local                       configs  9  distinct outputs 1
+chunk_o.chunk_fwd_kernel_o                              configs  3  distinct outputs 1
+cumsum.chunk_global_cumsum_scalar_kernel                configs 48  distinct outputs 1
+cumsum.chunk_global_cumsum_vector_kernel                configs 48  distinct outputs 1
+cumsum.chunk_local_cumsum_scalar_kernel                 configs  4  distinct outputs 1
+cumsum.chunk_local_cumsum_vector_kernel                 configs  6  distinct outputs 1
+l2norm.l2norm_bwd_kernel                                configs 25  distinct outputs 1
+l2norm.l2norm_bwd_kernel1                               configs  6  distinct outputs 1
+l2norm.l2norm_fwd_kernel                                configs 25  distinct outputs 3
+      e026c632df: BT: 8, num_warps: 1, num_stages: 3 (+21 more)
+      7e7b21ee99: BT: 8, num_warps: 8, num_stages: 3 (+1 more)
+      8c90064289: BT: 8, num_warps: 16, num_stages: 3
+l2norm.l2norm_fwd_kernel1                               configs  6  distinct outputs 1

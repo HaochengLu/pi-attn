@@ -1,0 +1,8 @@
+== venv-vllm17 (Triton 3.6.0)
+seed 0: l2norm picks (NB: (BT, warps)) {'1': (8, 2), '20': (16, 16)}  rows differing alone-vs-packed 20.9%
+seed 1: l2norm picks (NB: (BT, warps)) {'1': (8, 2), '20': (16, 16)}  rows differing alone-vs-packed 35.5%
+seed 2: l2norm picks (NB: (BT, warps)) {'1': (8, 2), '20': (16, 16)}  rows differing alone-vs-packed 28.5%
+== venv (Triton 3.7.1)
+seed 0: l2norm picks (NB: (BT, warps)) {'1': (16, 4), '20': (16, 16)}  rows differing alone-vs-packed 20.9%
+seed 1: l2norm picks (NB: (BT, warps)) {'1': (16, 4), '20': (16, 16)}  rows differing alone-vs-packed 35.5%
+seed 2: l2norm picks (NB: (BT, warps)) {'1': (16, 4), '20': (16, 16)}  rows differing alone-vs-packed 28.5%

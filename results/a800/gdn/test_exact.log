@@ -11,4 +11,5 @@ exact_decode_ref         H=16 HV=32 K=128 V=128 beta bfloat16: rows 2936 mismatc
 spec window KT=4          H=32 HV=32 K=128 V=128: accepted rows 2933 mismatching 0; boundary states 44 mismatching 0
 spec window KT=4          H=16 HV=32 K=128 V=128: accepted rows 2933 mismatching 0; boundary states 44 mismatching 0
 spec window KT=16          H=32 HV=32 K=128 V=128: accepted rows 3173 mismatching 0; boundary states 48 mismatching 0
+spec window KT=16          H=16 HV=32 K=128 V=128: accepted rows 3173 mismatching 0; boundary states 48 mismatching 0
 PASS

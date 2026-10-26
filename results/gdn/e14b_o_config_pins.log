@@ -1,0 +1,48 @@
+chunk_fwd_kernel_o pinned to config 0: {'BK': 128, 'BV': 128} num_warps 8
+exact_decode 2:4:64      H=32 HV=32 K=128 V=128 beta bfloat16: rows 2936 mismatching 0; boundary states 42 mismatching 0
+exact_decode 2:4:64      H=16 HV=16 K=128 V=128 beta bfloat16: rows 2936 mismatching 0; boundary states 42 mismatching 0
+exact_decode 2:4:64      H=16 HV=32 K=128 V=128 beta bfloat16: rows 2936 mismatching 0; boundary states 42 mismatching 0
+exact_decode 2:4:128     H=32 HV=32 K=128 V=128 beta bfloat16: rows 2936 mismatching 0; boundary states 42 mismatching 0
+exact_decode 2:4:128     H=16 HV=16 K=128 V=128 beta bfloat16: rows 2936 mismatching 0; boundary states 42 mismatching 0
+exact_decode 2:4:128     H=16 HV=32 K=128 V=128 beta bfloat16: rows 2936 mismatching 0; boundary states 42 mismatching 0
+exact_decode 2:4:64      H=16 HV=16 K= 64 V= 64 beta bfloat16: rows 2936 mismatching 0; boundary states 42 mismatching 0
+exact_decode 2:4:64      H=16 HV=32 K=128 V=128 beta float32 : rows 2936 mismatching 0; boundary states 42 mismatching 0
+exact_decode_ref         H=32 HV=32 K=128 V=128 beta bfloat16: rows 2936 mismatching 0; boundary states 42 mismatching 0
+exact_decode_ref         H=16 HV=32 K=128 V=128 beta bfloat16: rows 2936 mismatching 0; boundary states 42 mismatching 0
+spec window KT=4          H=32 HV=32 K=128 V=128: accepted rows 2933 mismatching 0; boundary states 44 mismatching 0
+spec window KT=4          H=16 HV=32 K=128 V=128: accepted rows 2933 mismatching 0; boundary states 44 mismatching 0
+spec window KT=16          H=32 HV=32 K=128 V=128: accepted rows 3173 mismatching 0; boundary states 48 mismatching 0
+spec window KT=16          H=16 HV=32 K=128 V=128: accepted rows 3173 mismatching 0; boundary states 48 mismatching 0
+PASS
+chunk_fwd_kernel_o pinned to config 1: {'BK': 64, 'BV': 64} num_warps 4
+exact_decode 2:4:64      H=32 HV=32 K=128 V=128 beta bfloat16: rows 2936 mismatching 140; boundary states 42 mismatching 0
+exact_decode 2:4:64      H=16 HV=16 K=128 V=128 beta bfloat16: rows 2936 mismatching 87; boundary states 42 mismatching 0
+exact_decode 2:4:64      H=16 HV=32 K=128 V=128 beta bfloat16: rows 2936 mismatching 151; boundary states 42 mismatching 0
+exact_decode 2:4:128     H=32 HV=32 K=128 V=128 beta bfloat16: rows 2936 mismatching 140; boundary states 42 mismatching 0
+exact_decode 2:4:128     H=16 HV=16 K=128 V=128 beta bfloat16: rows 2936 mismatching 87; boundary states 42 mismatching 0
+exact_decode 2:4:128     H=16 HV=32 K=128 V=128 beta bfloat16: rows 2936 mismatching 151; boundary states 42 mismatching 0
+exact_decode 2:4:64      H=16 HV=16 K= 64 V= 64 beta bfloat16: rows 2936 mismatching 0; boundary states 42 mismatching 0
+exact_decode 2:4:64      H=16 HV=32 K=128 V=128 beta float32 : rows 2936 mismatching 152; boundary states 42 mismatching 0
+exact_decode_ref         H=32 HV=32 K=128 V=128 beta bfloat16: rows 2936 mismatching 140; boundary states 42 mismatching 0
+exact_decode_ref         H=16 HV=32 K=128 V=128 beta bfloat16: rows 2936 mismatching 151; boundary states 42 mismatching 0
+spec window KT=4          H=32 HV=32 K=128 V=128: accepted rows 2933 mismatching 145; boundary states 44 mismatching 0
+spec window KT=4          H=16 HV=32 K=128 V=128: accepted rows 2933 mismatching 154; boundary states 44 mismatching 0
+spec window KT=16          H=32 HV=32 K=128 V=128: accepted rows 3173 mismatching 154; boundary states 48 mismatching 0
+spec window KT=16          H=16 HV=32 K=128 V=128: accepted rows 3173 mismatching 160; boundary states 48 mismatching 0
+FAIL
+chunk_fwd_kernel_o pinned to config 2: {'BK': 32, 'BV': 32} num_warps 2
+exact_decode 2:4:64      H=32 HV=32 K=128 V=128 beta bfloat16: rows 2936 mismatching 0; boundary states 42 mismatching 0
+exact_decode 2:4:64      H=16 HV=16 K=128 V=128 beta bfloat16: rows 2936 mismatching 0; boundary states 42 mismatching 0
+exact_decode 2:4:64      H=16 HV=32 K=128 V=128 beta bfloat16: rows 2936 mismatching 0; boundary states 42 mismatching 0
+exact_decode 2:4:128     H=32 HV=32 K=128 V=128 beta bfloat16: rows 2936 mismatching 0; boundary states 42 mismatching 0
+exact_decode 2:4:128     H=16 HV=16 K=128 V=128 beta bfloat16: rows 2936 mismatching 0; boundary states 42 mismatching 0
+exact_decode 2:4:128     H=16 HV=32 K=128 V=128 beta bfloat16: rows 2936 mismatching 0; boundary states 42 mismatching 0
+exact_decode 2:4:64      H=16 HV=16 K= 64 V= 64 beta bfloat16: rows 2936 mismatching 0; boundary states 42 mismatching 0
+exact_decode 2:4:64      H=16 HV=32 K=128 V=128 beta float32 : rows 2936 mismatching 0; boundary states 42 mismatching 0
+exact_decode_ref         H=32 HV=32 K=128 V=128 beta bfloat16: rows 2936 mismatching 0; boundary states 42 mismatching 0
+exact_decode_ref         H=16 HV=32 K=128 V=128 beta bfloat16: rows 2936 mismatching 0; boundary states 42 mismatching 0
+spec window KT=4          H=32 HV=32 K=128 V=128: accepted rows 2933 mismatching 0; boundary states 44 mismatching 0
+spec window KT=4          H=16 HV=32 K=128 V=128: accepted rows 2933 mismatching 0; boundary states 44 mismatching 0
+spec window KT=16          H=32 HV=32 K=128 V=128: accepted rows 3173 mismatching 0; boundary states 48 mismatching 0
+spec window KT=16          H=16 HV=32 K=128 V=128: accepted rows 3173 mismatching 0; boundary states 48 mismatching 0
+PASS

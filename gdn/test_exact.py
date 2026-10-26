@@ -5,7 +5,7 @@ different rows of their chunks, including boundaries); the prefill is fla's chun
 plus the partial chunk [b, P) loaded into the decoder; then all slots decode token by token to T together.
 Checked: every decoded row against the full forward's row, and the fp32 state at every 64-token boundary against
 fla's final state of the prefix. Both implementations: exact_decode (fast) and exact_decode_ref (stateless).
-Speculative mode (exact_decode): windows of up to 4 or 16 tokens per step, a random number of them accepted per slot,
+Speculative mode (exact_decode): windows of up to 4 or 16 tokens per step (16: also how exact_gdn replays a prefill), a random number of them accepted per slot,
 one random slot idle per step; rejected positions carry wrong-draft inputs. Accepted rows must equal the trainer's rows bitwise and the
 rejected drafts must leave no trace in later rows or states.
 
@@ -13,10 +13,11 @@ usage: PYTHONPATH=<fla> python gdn/test_exact.py            (exit status 1 on an
 import sys, torch, torch.nn.functional as F
 from fla.ops.gated_delta_rule import chunk_gated_delta_rule
 from fla.modules.l2norm import l2norm_fwd
-from exact_decode import GDNExactDecode, BT
+from exact_decode import GDNExactDecode, BT, pin_fla_configs
 from exact_decode_ref import GDNExactDecodeRef
 
 dev, T = 'cuda', 700
+pin_fla_configs()                                   # the reference is fla's forward with its odd configs removed
 PS = [1, 63, 64, 65, 130, 200, 255, 333]
 
 
@@ -126,6 +127,6 @@ if __name__ == '__main__':
     cases += [('exact_decode', dict(H=16, HV=16, K=64, V=64)), ('exact_decode', dict(H=16, HV=32, beta_dtype=torch.float32))]
     cases += [('exact_decode_ref', dict(H=H, HV=HV)) for H, HV in ((32, 32), (16, 32))]
     ok = all([run(impl, **kw) for impl, kw in cases])
-    ok = all([run_spec(H, HV, KT) for H, HV, KT in ((32, 32, 4), (16, 32, 4), (32, 32, 16))]) and ok
+    ok = all([run_spec(H, HV, KT) for H, HV, KT in ((32, 32, 4), (16, 32, 4), (32, 32, 16), (16, 32, 16))]) and ok
     print('PASS' if ok else 'FAIL')
     sys.exit(0 if ok else 1)
