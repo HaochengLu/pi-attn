@@ -1,12 +1,14 @@
 # Exact GDN decode: the trainer's chunk program as the decode kernel
 
 Hybrid models (Qwen3.5, Qwen3-Next, Kimi Linear) are trained with Gated DeltaNet's *chunked* forward (fla
-`chunk_gated_delta_rule`, 64-token chunks) but served with a *recurrent* decode kernel. The two are different
-floating-point programs, so the sampler's log-probabilities are not the trainer's. This directory makes GDN decode
-execute the trainer's own program: every decode step returns, bitwise, the row that fla 0.5.0's chunked forward
-produces for that token, with the trainer's kernel unchanged.
+`chunk_gated_delta_rule`, 64-token chunks) but served with a *recurrent* decode kernel, and speculative decoding
+verifies drafts with yet another multi-token path. These are different floating-point programs, so the sampler's
+log-probabilities are neither the trainer's nor independent of whether speculation is on. This directory makes GDN
+decode execute the trainer's own program: every decoded token, one per step or verified in a speculative window,
+gets, bitwise, the row fla 0.5.0's chunked forward produces for it, with the trainer's kernel unchanged and with
+rejected drafts rolled back for free.
 
-All numbers below are from the A800-80GB box (sm_80, driver 535), Triton 3.7.1, torch 2.13 (engine venv), fla 0.5.0
+All numbers are from the A800-80GB box (sm_80, driver 535), Triton 3.7.1, torch 2.13 (engine venv), fla 0.5.0
 (`env/fla_pkgs`, see `VERSIONS.txt`); logs in `results/a800/gdn/`.
 
 ## Results
@@ -17,9 +19,10 @@ the fp32 state at any 64-token boundary, replaying a partial chunk token by toke
 boundary), and varlen packing all reproduce the full forward's rows exactly. fla's own recurrent kernel
 (`fused_recurrent_gated_delta_rule`) differs on 100% of rows (relative L2 4.7e-3).
 
-**2. On real models GDN is the whole prefill/decode gap** (`experiments/e2_qwen35.py`; `e2_*_{rowinv,default}.log`;
-teacher-forced, 1024 tokens of the model README, 300-token prefill, 724 scored positions).
-With every Linear, RMSNorm and full-attention layer made row-invariant (a stand-in for PI-Attn's kernels, `ROWINV=1`):
+**2. On real models GDN is the whole prefill/decode gap once dense ops are row-invariant**
+(`experiments/e2_qwen35.py`; `e2_*_{rowinv,default}.log`; teacher-forced, 1024 tokens of the model README, 300-token
+prefill, 724 scored positions). With every Linear, RMSNorm and full-attention layer made row-invariant (a stand-in for
+PI-Attn's kernels, `ROWINV=1`):
 
 | | Qwen3.5-0.8B | Qwen3.5-4B |
 |---|---|---|
@@ -28,75 +31,110 @@ With every Linear, RMSNorm and full-attention layer made row-invariant (a stand-
 | end to end, recurrent decode: mean KL / argmax flips vs trainer | 7.6e-4 / 1.24% | 6.6e-4 / 0.83% |
 | end to end, chunk replay: logits equal to trainer | 100% (KL 0) | 100% (KL 0) |
 
-Without the row-invariant dense ops (`*_default.log`) the replay does not help (KL 7.0e-4 / 6.1e-4): GEMM row
-count and attention dominate. GDN exactness is only worth having on top of a row-invariant engine, and with one it
-is the entire remaining gap. The causal conv1d needs no change: HF's update path is already bitwise to the full conv.
+Without row-invariant dense ops (`*_default.log`) the replay does not reduce the KL (7.0e-4 / 6.1e-4): GEMM row count
+and attention dominate. GDN exactness is worth having on top of a row-invariant engine, where it is the entire
+remaining gap. The causal conv1d needs no change: HF's update path is already bitwise to the full conv.
 
-**3. The exact decode kernel** (`exact_decode.py`; checked by `test_exact.py`, run in `bench_decode.py`, end to end in
-`experiments/e9_qwen35_exact.py`).
+**3. The exact decode kernel** (`exact_decode.py`).
 
-- Bitwise: `test_exact.py` passes for H=HV=32, H=HV=16 and H=16/HV=32 (2936 decode rows and 42 boundary states each,
-  8 slots at different chunk rows, both implementations).
-- End to end (`e9_qwen35_exact.log`): Qwen3.5-0.8B and 4B with row-invariant dense ops and `exact_decode` in every GDN
-  layer produce logits equal to the trainer forward on all 724 scored positions.
-- Cost per layer per step, CUDA graphs, Qwen3.5-4B shape (`bench_decode.log`; baseline = fla 0.5.0 `fused_recurrent`,
-  state read and written once):
+- Bitwise (`test_exact.py`, `test_exact.log`): every case passes, 2936 decode rows and 42 boundary states each:
+  kernel configs 2:4:64 and 2:4:128 (num_warps of K1:K2, V block), head layouts H=HV=32, H=HV=16, H=16/HV=32, K=V=64,
+  fp32 beta, and the stateless reference implementation `exact_decode_ref.py`.
+- End to end (`experiments/e9_qwen35_exact.py`, `e9_qwen35_exact.log`): Qwen3.5-0.8B and 4B with row-invariant dense
+  ops and `exact_decode` in every GDN layer produce logits equal to the trainer forward on all 724 scored positions.
+- Cost per layer per step, CUDA graphs, Qwen3.5-4B shape, config 2:4:128 (`bench_decode.py`, `bench_decode.log`;
+  baseline: fla 0.5.0 `fused_recurrent_gated_delta_rule`, fla's generic recurrent kernel, state read and written once):
 
   | batch | 1 | 8 | 32 | 64 | 128 | 256 |
   |---|---|---|---|---|---|---|
-  | fla fused_recurrent (us) | 6.4 | 30.9 | 95.4 | 181.6 | 336.8 | 666.2 |
-  | exact_decode (us) | 19.4 | 30.1 | 96.7 | 163.8 | 293.5 | 518.6 |
-  | ratio | 3.02x | 0.97x | 1.01x | 0.90x | 0.87x | 0.78x |
+  | fla fused_recurrent (us) | 6.3 | 30.2 | 95.4 | 172.3 | 337.1 | 666.1 |
+  | exact_decode (us) | 20.7 | 30.0 | 98.7 | 140.4 | 282.1 | 534.0 |
+  | ratio | 3.29x | 0.99x | 1.03x | 0.81x | 0.84x | 0.80x |
 
-  B=32 varies run to run between 86 and 97 us (`e8_cost4*.log`). At batch >= 8 the exact kernel is as fast or faster
-  than the inexact one: per step it reads the bf16 copy of the state (32 KB/head) plus the chunk's cached rows and
-  writes nothing to the state except at the fold, while the recurrence reads and writes 128 KB/head of fp32. At
-  batch 1 both are latency-bound and the exact path is two dependent kernels with three barriers.
-- Memory per slot per layer (H=HV=32, K=V=128): 6.25 MiB (fp32 boundary state 2, its bf16 copy 1, chunk inputs 1,
-  (I+A)^-1 rows 0.75, u/w/v_new rows 1.5) versus 2 MiB for the recurrent state: 3.1x.
+  Within noise at batch 8-32 (B=32 ranged 86-99 us across runs, `e8_cost4*.log`), 16-20% faster at 64-256. Per step
+  the exact kernel reads the bf16 copy of the state (32 KB/head) plus the chunk's cached rows and writes the state
+  once per 64 tokens; the recurrence reads and writes 128 KB/head of fp32 every token. At batch 1 both are
+  latency-bound and the exact path is two dependent kernels with barriers.
+- Memory per slot per layer (H=HV=32, K=V=128): 6.75 MiB (fp32 boundary state 2, its bf16 copy 1, chunk inputs and
+  l2norm(q) rows 1.5, (I+A)^-1 rows 0.75, u/w/v_new rows 1.5) versus 2 MiB for the recurrent state: 3.4x. Against a
+  long context's KV cache this is small (Qwen3.5-4B: 4 KV heads x 256 dims x 32K tokens, K and V in bf16, is 128 MiB
+  per attention layer); it
+  matters for short-context, high-batch serving.
 - How we got there (`archive/gdn_iterations/`, `e3_cost.log`, `e6_*`, `e7_*`, `e8_*`): calling fla's chunk on the
-  partial chunk costs 4.5-8.4x the recurrent kernel's GPU time plus ~900 us of host prep; a stateless fused kernel
-  (`exact_decode_ref.py`) 3.7x at B=256 and 10.5x at B=1 (`e6_cost_v2.log`; `e6_cost_v1.log` used a baseline
-  inflated by a state copy-back); row-incremental in one kernel 1.11x at B=256 but 7.75x at B=1 (255 registers);
-  the same with in-kernel l2norm and V split 1.48x at B=256, 2.74x at B=1 (`e7_cost3.log`); split into K1 (no
-  state) + K2 (state) as above.
+  partial chunk costs 4.5-8.4x the recurrent kernel's GPU time, plus host preparation (~900 us of wall time at
+  B <= 32); a stateless fused kernel (`exact_decode_ref.py`) 3.7x at B=256 and 10.5x at B=1 (`e6_cost_v2.log`;
+  `e6_cost_v1.log` used a baseline inflated by a state copy-back); row-incremental in one kernel 1.11x at B=256 but
+  7.75x at B=1; the same with in-kernel l2norm and a V split 1.48x at B=256, 2.74x at B=1 (`e7_cost3.log`); split
+  into a kernel without the state and one with it as above.
+
+**4. Speculative verification is invisible** (`exact_decode.step` / `commit`).
+
+A step can verify a window of up to 16 tokens per slot (the current token plus drafts), never past the slot's next
+64-token boundary. Its rows are the trainer's rows whatever the window size, because the window just computes more rows
+of the same chunk program. Rejection costs nothing: rows past the accepted ones are garbage by construction (every
+consumer masks them) and are overwritten by the next window, and a completed chunk is folded into the state only after
+its 64th row is accepted (lazily, by a small kernel at the start of the next step). No per-draft state checkpoints.
+
+- Bitwise with random acceptance and wrong drafts (`test_exact.log`, "spec window"): windows of 4, 1-4 tokens
+  accepted per slot per step, rejected positions fed with another sequence's tokens; 2889 accepted rows and 42
+  boundary states equal to the trainer's, for H=HV=32 and H=16/HV=32.
+- End to end (`experiments/e12_qwen35_spec.py`, `e12_qwen35_spec.log`): greedy generation of 300 tokens after a
+  200-token prompt with prompt-lookup drafting (up to 4 drafts) gives the same tokens and bitwise the same fp32
+  log-probability for every generated token as one-token decode and as the trainer's teacher-forced forward, on
+  Qwen3.5-0.8B (221 of 241 drafts accepted, 3.80 tokens per target forward) and 4B (32 of 126 accepted, so mostly
+  rollbacks, 1.12 tokens per forward). The status quo for contrast (`experiments/e12b_hf_default_spec.py`, same log):
+  stock HF/fla re-scoring the same tokens in verification windows of 5 instead of one at a time gives bitwise-equal
+  log-probabilities for 24/300 (0.8B) and 4/300 (4B) tokens, mean |dlogp| 2.9e-3 / 8.8e-3, max 0.085 / 0.127.
+- Cost of a 4-token window per layer (`bench_decode.log`): 1.59-1.88x fla's recurrent kernel over the same 4 tokens
+  at batch >= 8. That baseline keeps only the final state; a recurrent verifier that can roll back must also keep a
+  state per draft token (3 more fp32 states per slot and head written per step here), which it does not pay.
+  Per verified token the window costs 0.63x (B=256) to 0.66x (B=8) of exact one-token decode.
 
 ## What the canonical program is
 
 "The trainer's program" is only a single program once these are fixed, on both sides:
 
 - fla 0.5.0 `chunk_gated_delta_rule` with `use_qk_l2norm_in_kernel=True` and fla's default `use_exp2` path; chunk 64.
+  The gate and beta computation, conv1d and output norm around it are the caller's to match (`exact_decode` takes the
+  raw log-gate g and beta as tensors, with beta in the trainer's dtype); fla's `use_gate_in_kernel` path and
+  context-parallel prefill are outside the tested contract.
 - `FLA_USE_FAST_OPS` unset (it swaps `exp`/`exp2` implementations).
 - fla's `l2norm_fwd_kernel` config. Its autotune key includes `NB = cdiv(tokens x heads, 65536)`, so the trainer's
   packed micro-batches and the sampler are tuned separately, and 3 of its 25 configs (BT=8 with 8 or 16 warps and
-  one more config) produce different bits (`e4_autotune.log`). In 6 fresh processes the picks differed between NB=1 and
-  NB=20 yet the outputs agreed (`e4b_l2pick.log`, `e10_pack.log`), so this is a latent risk, not an observed
+  one more config) produce different bits (`e4_autotune.log`). In 6 fresh processes the picks differed between NB=1
+  and NB=20 yet the outputs agreed (`e4b_l2pick.log`, `e10_pack.log`), so this is a latent risk, not an observed
   mismatch: pin the config. Every other autotuned kernel on the forward path is config-independent (`e4_autotune.log`).
 - Triton version and GPU architecture: the kernels reproduce fla's compiled arithmetic (MMA shapes, fp-contraction);
-  validated on sm_80 with Triton 3.7.1 only. Hopper's wgmma is a different instruction.
+  validated on sm_80 with Triton 3.7.1 only. Hopper's wgmma is a different instruction and is not covered.
 
 ## Traps found while reproducing a Triton program bitwise
 
 - **fp-contraction.** fla's `chunk_fwd_kernel_o` computes `b_o * scale + dot(A, v) * scale`; its PTX is
-  `fma(scale, dot, b_o * scale)`. The same source in another kernel was contracted differently (4.9% of rows off by
-  up to 1.2e-4). `exact_decode` writes the fma out.
-- **Dot operands from registers.** An operand built in registers through a cast or a splice (`tl.where`, `tl.join`)
-  is compiled to different numerics than the same bf16 values loaded from memory (a failed v5 kept the token's rows
-  in registers to drop barriers: 6-20% of rows off). `exact_decode` passes such rows through memory.
-- **Layout is global.** Selecting sub-block gates from a register vector instead of reloading them changed the
-  reduction layout of the forward substitution elsewhere in the kernel. Edits that are "pure data movement" can
-  change bits; `test_exact.py` is the arbiter.
+  `fma(scale, dot, b_o * scale)`. The same source in another kernel was contracted differently, which changed a few
+  percent of output rows by up to ~1e-4. `exact_decode` writes the fma out.
+- **Restructuring that only moves data can change bits.** A variant that kept the token's rows in registers and spliced
+  them into the dot tiles instead of reloading them, and one that selected the sub-block gates from a register vector,
+  stopped being bitwise; Triton's layout and contraction choices are made for the whole kernel. `test_exact.py` is the
+  arbiter after any edit, including ones that look arithmetic-neutral.
 
 ## Prior art and what is (not) claimed
 
-Replaying the trainer's chunk program at decode from a 64-token boundary state is published: Together AI's
-zero-mismatch RL stack does it for Qwen3.5/3.6 GDN (A. Panda, 2026-08-17, https://kiddyboots216.github.io/mismatch/;
-exact GDN decode is "the largest single cost": half of a 39.4% sampling slowdown), NVIDIA Megatron-Core does it for
-Mamba2 (`batch_invariant_decode.py`), and vLLM RFC #55524 for Mamba2 (2-2.6x the recurrent kernel). Faster-than-
-recurrent decode by checkpoint + replay with low-precision state reads is also published, without training
-exactness: ReplaySSM (arXiv 2610.13778, 1.43-1.64x over tuned vLLM at B=256 on H100/B300), DeltaLog (arXiv 2608.15533).
+Replaying the trainer's chunk program at decode from a 64-token boundary state is published for one token per step:
+Together AI's zero-mismatch RL stack does it for Qwen3.5/3.6 GDN (A. Panda, 2026-08-17,
+https://kiddyboots216.github.io/mismatch/; exact GDN decode is "the largest single cost": about half of a 39.4%
+sampling slowdown), NVIDIA Megatron-Core for Mamba2 (`batch_invariant_decode.py`, which asserts one token per entry,
+"no speculative decoding"), and vLLM RFC #55524 for Mamba2 (2-2.6x the recurrent kernel; speculative decoding is
+rejected in that mode). Checkpoint + replay with low-precision state reads that is faster than recurrence is also
+published, without training exactness: ReplaySSM (arXiv 2610.13778, 1.43-1.64x over tuned vLLM at B=256 on
+H100/B300; rollback by moving a ring-buffer pointer, equal "up to floating-point error"), DeltaLog (arXiv 2608.15533).
+Production engines roll speculative GDN decode back with a full state snapshot per draft token (SGLang, vLLM,
+FlashInfer's MTP kernel).
 
-What this directory adds, on the evidence above: a training-exact GDN decode, against an unmodified stock fla trainer
-kernel, whose per-layer cost is at or below fla's fp32 recurrent kernel for batch >= 8 on A800.
-Not claimed: speed versus ReplaySSM-style or bf16-state kernels, or versus vLLM's packed/CUDA GDN decode kernels
-(not yet measured here); anything on Hopper/Blackwell; serving-engine throughput (not integrated yet); batch 1.
+What this directory adds, on the evidence above: speculative verification for a hybrid model whose accepted tokens are
+bitwise the tokens and log-probabilities of one-token decode and of the trainer's stock forward, with rollback that
+needs no state snapshots, built on a training-exact GDN decode whose per-layer cost is at or below fla's fp32
+recurrent kernel for batch >= 8 on A800.
+
+Not claimed: speed versus ReplaySSM-style or bf16-state kernels, or versus vLLM's packed/CUDA GDN decode kernels (not
+yet measured here); anything on Hopper/Blackwell; serving-engine throughput (not integrated into an engine yet);
+batch 1, where the exact path is 3.3x fla's recurrent kernel per layer.
