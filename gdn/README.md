@@ -51,7 +51,10 @@ remaining gap. The causal conv1d needs no change: HF's update path is already bi
   | exact_decode (us) | 20.7 | 30.0 | 98.7 | 140.4 | 282.1 | 534.0 |
   | ratio | 3.29x | 0.99x | 1.03x | 0.81x | 0.84x | 0.80x |
 
-  Within noise at batch 8-32 (B=32 ranged 86-99 us across runs, `e8_cost4*.log`), 16-20% faster at 64-256. Per step
+  Within noise at batch 8-32 (B=32 ranged 86-99 us across runs, `e8_cost4*.log`), 16-20% faster at 64-256.
+  Against the production kernel, vLLM 0.17.1's GDN decode as its Qwen3.5 model calls it (fused_recurrent with the
+  state updated in place in its pool; `bench_vllm_gdn.py`, `bench_vllm_gdn.log`, run in `env/venv-vllm17`): 11.3,
+  22.7, 96.9, 175.5, 333.1, 653.8 us, so exact decode is 1.83x, 1.32x, 1.02x, 0.80x, 0.85x, 0.82x of it. Per step
   the exact kernel reads the bf16 copy of the state (32 KB/head) plus the chunk's cached rows and writes the state
   once per 64 tokens; the recurrence reads and writes 128 KB/head of fp32 every token. At batch 1 both are
   latency-bound and the exact path is two dependent kernels with barriers.
@@ -85,10 +88,20 @@ its 64th row is accepted (lazily, by a small kernel at the start of the next ste
   rollbacks, 1.12 tokens per forward). The status quo for contrast (`experiments/e12b_hf_default_spec.py`, same log):
   stock HF/fla re-scoring the same tokens in verification windows of 5 instead of one at a time gives bitwise-equal
   log-probabilities for 24/300 (0.8B) and 4/300 (4B) tokens, mean |dlogp| 2.9e-3 / 8.8e-3, max 0.085 / 0.127.
-- Cost of a 4-token window per layer (`bench_decode.log`): 1.59-1.88x fla's recurrent kernel over the same 4 tokens
-  at batch >= 8. That baseline keeps only the final state; a recurrent verifier that can roll back must also keep a
-  state per draft token (3 more fp32 states per slot and head written per step here), which it does not pay.
-  Per verified token the window costs 0.63x (B=256) to 0.66x (B=8) of exact one-token decode.
+- Cost of a 4-token window per layer against vLLM 0.17.1's speculative path, which writes the state after every
+  draft token into its own pool slot (that is its rollback) and starts from the accepted one (`bench_vllm_gdn.log`,
+  `bench_decode.log`, config 2:4:128):
+
+  | batch | 1 | 8 | 32 | 64 | 128 | 256 |
+  |---|---|---|---|---|---|---|
+  | vLLM 0.17.1 verify, 4 tokens (us) | 32.7 | 69.5 | 248.0 | 457.5 | 901.7 | 1792.4 |
+  | exact_decode window of 4 (us) | 55.5 | 78.8 | 211.6 | 358.2 | 706.1 | 1336.4 |
+  | ratio | 1.70x | 1.13x | 0.85x | 0.78x | 0.78x | 0.75x |
+
+  State memory per slot and layer for 4 drafts: vLLM keeps 1 + 4 fp32 states (10 MiB), exact_decode 6.75 MiB.
+  Against fla's recurrent kernel over the same 4 tokens keeping only the final state (no rollback possible), the
+  window is 1.59-1.88x at batch >= 8. Per verified token it costs 0.63x (B=256) to 0.66x (B=8) of exact one-token
+  decode.
 
 ## What the canonical program is
 
@@ -132,9 +145,10 @@ FlashInfer's MTP kernel).
 
 What this directory adds, on the evidence above: speculative verification for a hybrid model whose accepted tokens are
 bitwise the tokens and log-probabilities of one-token decode and of the trainer's stock forward, with rollback that
-needs no state snapshots, built on a training-exact GDN decode whose per-layer cost is at or below fla's fp32
-recurrent kernel for batch >= 8 on A800.
+needs no state snapshots; on A800 its per-layer cost is 0.75-0.85x of vLLM 0.17.1's (inexact) speculative verifier
+at batch >= 32, with less state memory, and plain exact decode is 0.80-0.85x of vLLM's decode kernel at batch >= 64.
+Both are slower at batch 1-8 (1.1-1.8x).
 
-Not claimed: speed versus ReplaySSM-style or bf16-state kernels, or versus vLLM's packed/CUDA GDN decode kernels (not
-yet measured here); anything on Hopper/Blackwell; serving-engine throughput (not integrated into an engine yet);
-batch 1, where the exact path is 3.3x fla's recurrent kernel per layer.
+Not claimed: speed versus ReplaySSM-style or bf16-state kernels, or versus the packed/CUDA GDN decode kernels of vLLM
+releases after 0.17.1 (their wheels need CUDA 13, which driver 535 cannot run); anything on Hopper/Blackwell;
+serving-engine throughput (not integrated into an engine yet); batch 1-8, where the exact path is slower.

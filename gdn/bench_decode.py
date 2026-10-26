@@ -8,24 +8,9 @@ extra state read+write per 64 tokens). Reported: graph replay time per step (us)
 import sys, torch, torch.nn.functional as F
 from fla.ops.gated_delta_rule import fused_recurrent_gated_delta_rule
 from exact_decode import GDNExactDecode
+from timing import graph_time
 
 dev, H, HV, K, V = 'cuda', 32, 32, 128, 128
-
-
-def graph_time(fn, iters=200):
-    s = torch.cuda.Stream(); s.wait_stream(torch.cuda.current_stream())
-    with torch.cuda.stream(s):
-        for _ in range(3): fn()
-    torch.cuda.current_stream().wait_stream(s)
-    gr = torch.cuda.CUDAGraph()
-    with torch.cuda.graph(gr): fn()
-    for _ in range(10): gr.replay()
-    torch.cuda.synchronize()
-    e0, e1 = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
-    e0.record()
-    for _ in range(iters): gr.replay()
-    e1.record(); torch.cuda.synchronize()
-    return e0.elapsed_time(e1) / iters * 1e3
 
 
 def fill(dec, gen):

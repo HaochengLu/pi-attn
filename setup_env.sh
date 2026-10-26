@@ -92,7 +92,9 @@ if ! uv --version 2>/dev/null | grep -q "^uv $UV_VER"; then
     || uv_from_wheel
 fi
 export UV_PYTHON_INSTALL_DIR=$ENV/python UV_CACHE_DIR=$ENV/uv-cache UV_PYTHON_INSTALL_MIRROR
-for v in venv:engine:cu126 venv-sglang:sglang:cu128 venv-vllm:vllm:cu128; do
+# venv-vllm17 (vllm 0.17.1, torch 2.10 cu128): the newest vLLM whose wheels run on driver 535 and that serves
+#    Qwen3.5; it is the production baseline for gdn/ (gdn/bench_vllm_gdn.py).
+for v in venv:engine:cu126 venv-sglang:sglang:cu128 venv-vllm:vllm:cu128 venv-vllm17:vllm17:cu128; do
   IFS=: read -r dir lock cu <<< "$v"
   [[ -x $ENV/$dir/bin/python ]] || uv venv --python $PY_VER $ENV/$dir
   uv pip install --python $ENV/$dir/bin/python --index-url $PYPI_INDEX \
@@ -171,7 +173,8 @@ py() { $ENV/$1/bin/python -c "import importlib.metadata as m; print(' '.join(p +
   echo "engine venv ($($ENV/venv/bin/python --version)): $(py venv 'torch flashinfer-python transformers lm-eval')"
   echo "sglang venv: $(py venv-sglang 'sglang torch flashinfer-python sgl-kernel transformers')"
   echo "vllm venv: $(py venv-vllm 'vllm torch flashinfer-python transformers')"
+  echo "vllm17 venv: $(py venv-vllm17 'vllm torch triton flashinfer-python transformers')"
   echo "fla (env/fla_pkgs, --no-deps, PYTHONPATH over the engine venv): $(PYTHONPATH=$ENV/fla_pkgs py venv 'fla-core flash-linear-attention')"
-  echo "full package lists: requirements/{engine,sglang,vllm}.txt"
+  echo "full package lists: requirements/{engine,sglang,vllm,vllm17}.txt"
 } > $ROOT/VERSIONS.txt
 cat $ROOT/VERSIONS.txt
