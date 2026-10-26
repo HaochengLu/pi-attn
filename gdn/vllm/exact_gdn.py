@@ -5,20 +5,27 @@ Per GDN layer:
     (fp32 state at the last 64-token boundary, its bf16 copy and the current chunk's rows; state_layout), so vLLM
     sizes and allocates them itself and the memory cost of exactness shows up as fewer concurrent sequences.
   * prefill (incl. chunked prefill continuing a sequence): fla 0.5.0's chunk program, the trainer's (vLLM's vendored
-    copy is a different one, e13), resumed from the sequence's boundary state with the cached rows of its partial
-    chunk in front, varlen over the prefill requests, up to their last 64-token boundary; the rows after it are
-    replayed through exact_decode, which gives them (bitwise fla's rows) and fills the row caches.
-  * decode: exact_decode.decode (bitwise the row fla's chunked forward gives that token), in decode-only and mixed
-    batches alike (stock vLLM uses its recurrent kernel for decode-only batches and its chunk kernel for mixed ones).
-  * speculative decoding (n-gram drafter): each request's window [last token, drafts...] goes through
-    exact_decode.step, so every accepted token gets the bits it gets in plain decode. The previous window's acceptance
-    is committed at the start of the next step (rows past it are overwritten later; a chunk is folded into the state
-    only once its 64th row is accepted). The proposer is patched to cut drafts at the next 64-token boundary, which a
-    window never crosses.
+    copy is a different one, e13), up to each prompt chunk's last 64-token boundary, in two varlen calls: the chunks
+    that complete a partly cached chunk (the cached rows packed in front of the new tokens, from the sequence's
+    boundary state) and then the whole chunks after them, in place in the batch's rows; the rows after the last
+    boundary are replayed through exact_decode, which gives them (bitwise fla's rows) and fills the row caches.
+  * decode: exact_decode (bitwise the row fla's chunked forward gives that token), in decode-only and mixed batches
+    alike (stock vLLM uses its recurrent kernel for decode-only batches and its chunk kernel for mixed ones). Its
+    kernels read q, k, v from the conv output and write the layer output in place (step_rows).
+  * speculative decoding (n-gram drafter): each request's window [last token, drafts...] goes through an exact_decode
+    window, so every accepted token gets the bits it gets in plain decode. The previous window's acceptance is
+    committed at the start of the next step (rows past it are overwritten later; a chunk is folded into the state only
+    once its 64th row is accepted). The proposer is patched to cut drafts at the next 64-token boundary, which a window
+    never crosses. One-token entries (no draft metadata in the step, or a one-token prompt chunk) are plain decodes,
+    after a fold their slot's last window may have left.
   * memory: one state block per request also with speculative decoding (vLLM allocates 1 + drafts, a state per draft
     to roll back to; the request's slot is column 0 of its block table either way).
-  * positions: per slot ws (absolute position of the last window's first token) and wn (its length). A request's
-    current position is seq_len - query_len from the runner's metadata, its last window's acceptance pos - ws.
+  * positions: a request's current position is seq_len - query_len from the runner's metadata. Per slot, ws and wn
+    record the last step: a window (its first position and length; its acceptance is pos - ws, committed at the
+    slot's next step), or a step that kept every token (the next position, wn = 0). Each layer commits its slots'
+    previous windows in one launch (_advance); the index plans of a step are built once and shared by the layers.
+    No step waits for the device (indices go host-to-device from pinned memory, nothing comes back), except the rare
+    speculative-engine step with a one-token prompt chunk among longer ones (vLLM's prefill conv without metadata).
 Unchanged: projections, conv1d (vLLM's prefill, decode and speculative conv kernels agree bitwise: check_conv*.py),
 gating, norm.
 
@@ -111,10 +118,10 @@ def fix_vllm_mixed_spec_decodes():
     (it knows prompt lengths; the builder does not), and the builder's assertion is dropped for what remains, a
     one-token chunk of a prompt (query length 1, so vLLM counts it as a decode). For the exact layer the metadata also
     keeps the batch's seq_lens and query_start_loc (the runner's persistent buffers, so valid inside CUDA graphs), the
-    host copy of the non-speculative entries' query_start_loc, and,
-    in mixed batches, the batch index of every speculative and non-speculative entry: the exact layer derives each
-    request's absolute position from them instead of the accepted counts, which vLLM passes only in steps that have
-    drafts."""
+    host copies of the non-speculative entries' query_start_loc and of every request's computed tokens (the runner's),
+    and, in mixed batches, the batch index of every speculative and non-speculative entry: the exact layer derives
+    each request's absolute position from them instead of the accepted counts, which vLLM passes only in steps that
+    have drafts."""
     import inspect, textwrap
     import vllm.v1.attention.backends.gdn_attn as ga
     import vllm.v1.worker.gpu_model_runner as gmr
@@ -148,8 +155,11 @@ def fix_vllm_mixed_spec_decodes():
     mixed = spec_sequence_masks is not None and (num_prefills > 0 or num_decodes > 0)
     _dev = m.query_start_loc.device
     _mask = spec_sequence_masks_cpu[:m.num_reqs] if mixed else None
-    attn_metadata.spec_req_idx = torch.nonzero(_mask).flatten().to(_dev) if mixed else None
-    attn_metadata.non_spec_req_idx = torch.nonzero(~_mask).flatten().to(_dev) if mixed else None
+    attn_metadata.spec_req_idx = torch.nonzero(_mask).flatten().pin_memory().to(_dev, non_blocking=True) if mixed else None
+    attn_metadata.non_spec_req_idx_cpu = torch.nonzero(~_mask).flatten() if mixed else None
+    attn_metadata.non_spec_req_idx = (attn_metadata.non_spec_req_idx_cpu.pin_memory().to(_dev, non_blocking=True)
+                                      if mixed else None)
+    attn_metadata.num_computed_cpu = m._num_computed_tokens_cpu
     return attn_metadata
 """)
     ns = {}
@@ -161,7 +171,7 @@ def fix_vllm_mixed_spec_decodes():
 def _decoders(layer, storage, num_spec):
     """The layer's exact_decode objects over vLLM's pool (rebuilt if vLLM reallocates it): one for single tokens
     (decode, replay) and, with speculative decoding, one for windows of 1 + num_spec tokens, sharing the storage and
-    the fold flags; plus the slot counters ws, wn (one extra entry receives padded CUDA-graph entries, slot -1)."""
+    the fold flags; plus the slot counters ws, wn (_advance_windows)."""
     from exact_decode import GDNExactDecode
     st = getattr(layer, '_exact', None)
     if st is None or st['one'].storage.data_ptr() != storage.data_ptr():
@@ -170,8 +180,8 @@ def _decoders(layer, storage, num_spec):
         assert 1 + num_spec <= 16, 'exact GDN: windows of at most 16 tokens (num_speculative_tokens <= 15)'
         mk = lambda KT: GDNExactDecode(n, layer.num_k_heads, layer.num_v_heads, layer.head_k_dim, layer.head_v_dim,
                                        dev, KT=KT, BV=128, nw1=2, nw2=4, storage=storage)
-        st = {'one': mk(1), 'ws': torch.zeros(n + 1, device=dev, dtype=torch.int32),
-              'wn': torch.zeros(n + 1, device=dev, dtype=torch.int32)}
+        st = {'one': mk(1), 'ws': torch.zeros(n, device=dev, dtype=torch.int32),
+              'wn': torch.zeros(n, device=dev, dtype=torch.int32)}
         if num_spec:
             st['win'] = mk(1 + num_spec)
             st['win'].pending = st['one'].pending
@@ -187,9 +197,42 @@ def _positions(md, req_idx, n):
     return (md.seq_lens_all[r] - (md.qsl_all[r + 1] - md.qsl_all[r])).to(torch.int32)
 
 
-def _slot_index(slots, counters):
-    """Counter index per slot; padded CUDA-graph entries (slot < 0) go to the extra last entry."""
-    return torch.where(slots < 0, counters.shape[0] - 1, slots).long()
+@triton.jit
+def _advance_windows(slots, pos, nrows, ws, wn, pending, acc, n, ACCEPTED: tl.constexpr, BT: tl.constexpr,
+                     BLOCK: tl.constexpr):
+    """Entry i (slot s = slots[i]; skipped if s < 0, CUDA-graph padding) feeds tokens from position pos[i] on. If s's
+    last step was a window (wn[s] > 0) of the same sequence (pos > 0), pos - ws[s] of its tokens were accepted:
+    acc[i] = that (else 1, as after a plain step), and s's fold flag is set if they completed a chunk. Then this step
+    is recorded: ws[s], wn[s] = pos, nrows[i] (a window, committed at s's next step), or with ACCEPTED (every token
+    of the step is kept: plain decode, prompt chunk) the next position and no window, pos + nrows[i], 0."""
+    o = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    inb = o < n
+    s = tl.load(slots + o, mask=inb, other=-1).to(tl.int64)
+    m = inb & (s >= 0)
+    p = tl.load(pos + o, mask=m, other=0)
+    w0 = tl.load(ws + s, mask=m, other=0)
+    prev = m & (tl.load(wn + s, mask=m, other=0) > 0) & (p > 0)
+    a = tl.where(prev, p - w0, 1)
+    tl.store(acc + o, a, mask=inb)
+    tl.store(pending + s, tl.full([BLOCK], 1, tl.int32), mask=prev & (w0 % BT + a == BT))
+    nr = tl.load(nrows + o, mask=m, other=0)
+    if ACCEPTED:
+        tl.store(ws + s, p + nr, mask=m)
+        tl.store(wn + s, tl.zeros([BLOCK], tl.int32), mask=m)
+    else:
+        tl.store(ws + s, p, mask=m)
+        tl.store(wn + s, nr, mask=m)
+
+
+def _advance(st, slots, pos, nrows, accepted):
+    """Commit each slot's previous window and record this step's (_advance_windows); one launch, no host sync.
+    slots, pos, nrows: contiguous int32. Returns the previous window's acceptance per entry (1 if none), which the
+    speculative conv update rolls back by."""
+    n = slots.shape[0]
+    acc = torch.empty_like(pos)
+    _advance_windows[(triton.cdiv(n, 256),)](slots, pos, nrows, st['ws'], st['wn'], st['one'].pending, acc, n,
+                                            ACCEPTED=accepted, BT=BT, BLOCK=256)
+    return acc
 
 
 def _forward_core_exact(self, mixed_qkv, b, a, core_attn_out):
@@ -211,38 +254,47 @@ def _forward_core_exact(self, mixed_qkv, b, a, core_attn_out):
     spec = md.spec_sequence_masks is not None
     only_spec = spec and md.num_prefills == 0 and md.num_decodes == 0
 
-    # 1. conv1d and gating, exactly as stock vLLM (its prefill and decode conv kernels agree bitwise)
+    # 1. this step's entries (plans shared by the layers) and each slot's previous window, committed (_advance):
+    #    speculative windows; one-token entries (decodes, one-token prompt chunks), whose slot is cleared if they start
+    #    a sequence; prompt chunks (_prefill)
     if spec:
-        # vLLM's speculative conv update, rolled back by the previous window's acceptance derived from positions (as
-        # for GDN): vLLM's own count is stale for a request it did not schedule in some step (its persistent batch
-        # drops and re-adds it)
-        nsd = md.num_spec_decodes
-        sl_s = md.spec_state_indices_tensor[:, 0][:nsd]
-        idx_s = _slot_index(sl_s, st['ws'])
-        acc_s = torch.where(st['wn'][idx_s] > 0, _positions(md, None if md.spec_req_idx is None else
-                                                            md.spec_req_idx[:nsd], nsd) - st['ws'][idx_s], 1)
-        x_spec = mixed_qkv if only_spec else mixed_qkv.index_select(0, md.spec_token_indx)
-        x_spec = causal_conv1d_update(x_spec, conv_state, conv_w, self.conv1d.bias, self.activation,
-                                      conv_state_indices=sl_s, num_accepted_tokens=acc_s.to(torch.int32),
-                                      query_start_loc=md.spec_query_start_loc,
-                                      max_query_len=1 + self.num_spec, validate_data=False)
+        sp = _spec_plan(md, not only_spec)
+        acc_s = _advance(st, sp['slots'], sp['pos'], sp['nrows'], False)
     x_non = None if only_spec else (mixed_qkv if not spec else mixed_qkv.index_select(0, md.non_spec_token_indx))
     ns = _split_non_spec(md, self.num_spec) if x_non is not None and md.num_decodes + md.num_prefills > 0 else None
+    one = None
     if ns is not None:
-        if ns['one'] is None or ns['one'].numel():
+        n_one = md.num_decodes if ns['one'] is None else ns['one'].numel()
+        if n_one:
             _reset_fresh(st, md, ns, kv[0])
+            one = _one_plan(md, ns, n_one)
+            # speculative engine: the previous step may have been a window; these steps keep every token
+            one['acc'] = _advance(st, one['slots'], one['pos'], one['ones'], True) if self.num_spec else None
+
+    # 2. conv1d and gating, exactly as stock vLLM (its prefill and decode conv kernels agree bitwise), the speculative
+    #    update rolled back by the acceptance derived from positions (as GDN is): vLLM's own count is stale for a
+    #    request it did not schedule in some step (its persistent batch drops and re-adds it)
+    if spec:
+        nsd = md.num_spec_decodes
+        x_spec = mixed_qkv if only_spec else mixed_qkv.index_select(0, md.spec_token_indx)
+        x_spec = causal_conv1d_update(x_spec, conv_state, conv_w, self.conv1d.bias, self.activation,
+                                      conv_state_indices=sp['slots'][:nsd], num_accepted_tokens=acc_s[:nsd],
+                                      query_start_loc=md.spec_query_start_loc,
+                                      max_query_len=1 + self.num_spec, validate_data=False)
+    if ns is not None:
         if md.num_prefills == 0:                                     # one-token entries only (no host sync)
-            x_non = _conv_one(self, st, md, x_non, conv_state, conv_w, ns)
-        elif self.num_spec == 0:
-            # no rollback to do: vLLM's prefill conv over every entry, one-token ones included, with its metadata
+            x_non = _conv_one(self, x_non, conv_state, conv_w, one)
+        elif self.num_spec == 0 or one is None:
+            # no rollback to do (no speculation, or prompt chunks only): vLLM's prefill conv over every entry, one-token
+            # ones included, with its metadata (host-built: no device-to-host copy)
             x_non = causal_conv1d_fn(x_non.transpose(0, 1), conv_w, self.conv1d.bias, activation=self.activation,
                                      conv_states=conv_state, has_initial_state=md.has_initial_state,
                                      cache_indices=md.non_spec_state_indices_tensor,
                                      query_start_loc=md.non_spec_query_start_loc, metadata=md).transpose(0, 1)
-        else:
+        else:                            # one-token entries rolled back, prompt chunks (this path syncs: rare)
             x_out = torch.empty_like(x_non)
-            if ns['one'].numel():
-                x_out[ns['tok_one']] = _conv_one(self, st, md, x_non[ns['tok_one']], conv_state, conv_w, ns)
+            if one is not None:
+                x_out[ns['tok_one']] = _conv_one(self, x_non[ns['tok_one']], conv_state, conv_w, one)
             if ns['long'].numel():
                 x_out[ns['tok_long']] = causal_conv1d_fn(
                     x_non[ns['tok_long']].transpose(0, 1), conv_w, self.conv1d.bias, activation=self.activation,
@@ -254,55 +306,58 @@ def _forward_core_exact(self, mixed_qkv, b, a, core_attn_out):
     scale = self.head_k_dim ** -0.5
     out = core_attn_out[:n_tok]
 
+    # 3. the GDN core (speculative windows: read from the conv output and written to the layer output in place)
     if spec:
-        g_s, b_s = (g, beta) if only_spec else (g.index_select(1, md.spec_token_indx),
-                                                beta.index_select(1, md.spec_token_indx))
-        o_s = _spec_windows(self, st, md, x_spec, g_s[0], b_s[0], scale)
-        if only_spec:
-            out.copy_(o_s)
-        else:
-            out.index_copy_(0, md.spec_token_indx, o_s)
+        _spec_windows(self, st, sp, x_spec, g[0], beta[0], scale, out)
     if ns is not None:
         g_n, b_n = (g, beta) if not spec else (g.index_select(1, md.non_spec_token_indx),
                                                beta.index_select(1, md.non_spec_token_indx))
         o_n = torch.zeros(x_non.shape[0], self.num_v_heads, self.head_v_dim, device=x_non.device, dtype=out.dtype)
-        _non_spec(self, st, md, x_non, g_n[0], b_n[0], scale, o_n, ns)
+        _non_spec(self, st, md, x_non, g_n[0], b_n[0], scale, o_n, ns, one)
         if spec:
             out.index_copy_(0, md.non_spec_token_indx, o_n)
         else:
             out.copy_(o_n)
 
 
-def _spec_windows(self, st, md, x, g, beta, scale):
-    """Speculative requests: commit the previous window's acceptance, then verify this window."""
-    dec, ws, wn = st['win'], st['ws'], st['wn']
-    KT = dec.KT
-    q, k, v = self.rearrange_mixed_qkv(x)                            # [1, L, H, K] ...
+def _spec_plan(md, mixed):
+    """The speculative entries of this step, built once and shared by every layer (cached on the metadata): slots
+    (the block table's slot column, compacted), window positions and lengths, and each window's first row among the
+    speculative tokens (the conv output) and in the batch (gate, beta and the layer output; the same rows unless the
+    batch is mixed)."""
+    sp = md.__dict__.get('_exact_sp')
+    if sp is not None:
+        return sp
     nsd = md.spec_state_indices_tensor.shape[0]                      # spec requests (incl. CUDA-graph padding)
-    slots = md.spec_state_indices_tensor[:, 0]
+    slots = md.spec_state_indices_tensor[:, 0].to(torch.int32).contiguous()
     qsl = md.spec_query_start_loc[:nsd + 1]
     nrows = (qsl[1:] - qsl[:-1]).to(torch.int32)
-    idx = _slot_index(slots, ws)
     pos = _positions(md, md.spec_req_idx, nsd)
-    acc = torch.where(wn[idx] > 0, pos - ws[idx], 0)              # tokens of the previous window that were kept
-    dec.commit(ws[idx], acc, slots=slots)
     # a window never runs past its chunk's 64th row: the n-gram proposer is cut to that (install); a drafter that is
     # not would get rows the kernels do not compute, so fail loudly (device-side, no host sync)
     torch._assert_async(((nrows <= BT - pos % BT) | (slots < 0)).all())
-    L = q.shape[1]
-    gather = (qsl[:-1, None] + torch.arange(KT, device=q.device)[None, :]).clamp(max=max(L - 1, 0)).long()
-    pick = lambda t: t[gather].contiguous()                          # [nsd, KT, ...]
-    folds = _debug_fold_refs(dec, slots, scale) if DEBUG else None
-    o = dec.step(pick(q[0]), pick(k[0]), pick(v[0]), pick(g), pick(beta), pos, nrows, scale, slots=slots)
-    if DEBUG:
-        _debug_check(dec, slots, pos, nrows, gather, q, k, v, g, beta, scale, o, folds)
-    ws[idx] = pos
-    wn[idx] = nrows
-    valid = torch.arange(KT, device=q.device)[None, :] < nrows[:, None]
-    dest = torch.where(valid, gather, L).flatten()                  # rows outside a window go to a dummy row L
-    out = torch.zeros(L + 1, self.num_v_heads, self.head_v_dim, device=q.device, dtype=o.dtype)
-    out.index_copy_(0, dest, o.flatten(0, 1))
-    return out[:L]
+    rows = qsl[:-1].to(torch.int32)
+    sp = {'slots': slots, 'pos': pos, 'nrows': nrows, 'rows': rows,
+          'rows_b': md.qsl_all[md.spec_req_idx].to(torch.int32) if mixed else rows}
+    md._exact_sp = sp
+    return sp
+
+
+def _spec_windows(self, st, sp, x, g, beta, scale, out):
+    """Speculative requests: verify this step's windows (the previous windows are committed by _advance). x: the
+    speculative tokens after conv1d, q | k | v per row; g, beta [rows, HV] and out [rows, HV, V] over the batch."""
+    dec = st['win']
+    q, k, v = x[:, :self.key_dim], x[:, self.key_dim:2 * self.key_dim], x[:, 2 * self.key_dim:]
+    folds = _debug_fold_refs(dec, sp['slots'], scale) if DEBUG else None
+    dec.step_rows(q, k, v, g, beta, sp['rows'], sp['rows_b'], sp['pos'], sp['nrows'], scale, sp['slots'], out,
+                  sp['rows_b'])
+    if DEBUG:                            # the windows' inputs and outputs gathered [n, KT, ...]
+        j = torch.arange(dec.KT, device=x.device)
+        gx = (sp['rows'][:, None] + j).clamp(max=x.shape[0] - 1).long()
+        gb = (sp['rows_b'][:, None] + j).clamp(max=g.shape[0] - 1).long()
+        H, K, HV, V = self.num_k_heads, self.head_k_dim, self.num_v_heads, self.head_v_dim
+        xs = (q[gx].unflatten(2, (H, K)), k[gx].unflatten(2, (H, K)), v[gx].unflatten(2, (HV, V)), g[gb], beta[gb])
+        _debug_check(dec, sp['slots'], sp['pos'], sp['nrows'], xs, scale, out[gb], folds)
 
 
 def _split_non_spec(md, num_spec):
@@ -320,20 +375,44 @@ def _split_non_spec(md, num_spec):
         n = md.num_decodes + md.num_prefills
         qsl = md.non_spec_qsl_cpu[:n + 1].tolist()
         lens = [qsl[i + 1] - qsl[i] for i in range(n)]
-        dev = md.non_spec_query_start_loc.device
-        t = lambda xs: torch.tensor(xs, device=dev, dtype=torch.long)
         if num_spec == 0:
             long = list(range(md.num_decodes, n))
+            parts = {'long': long}
         else:
             one = [i for i in range(n) if lens[i] == 1]
             long = [i for i in range(n) if lens[i] > 1]
-            ns.update(one=t(one), tok_one=t([qsl[i] for i in one]),
-                      tok_long=t([r for i in long for r in range(qsl[i], qsl[i + 1])]),
-                      qsl_long=torch.tensor([0] + list(itertools.accumulate(lens[i] for i in long)), device=dev,
-                                            dtype=torch.int32))
-        ns.update(long=t(long), long_host=long, qsl_host=qsl)
+            parts = {'long': long, 'one': one, 'tok_one': [qsl[i] for i in one],
+                     'tok_long': [r for i in long for r in range(qsl[i], qsl[i + 1])],
+                     'qsl_long': [0] + list(itertools.accumulate(lens[i] for i in long))}
+        ns.update(_h2d(parts, md.non_spec_query_start_loc.device), long_host=long, qsl_host=qsl)
+        if num_spec:
+            ns['qsl_long'] = ns['qsl_long'].to(torch.int32)
     md._exact_ns = ns
     return ns
+
+
+_STAGING = {'bufs': [None] * 4, 'events': [None] * 4, 'next': 0}
+
+
+def _h2d(parts, dev):
+    """Index arrays {name: host ints} to the device as int64 tensors, in one copy that does not stall the host: a copy
+    from pageable memory first waits for the stream, so the data goes through a pinned staging buffer, one of a ring
+    of four, each reused once the copy that last read it has run (pinning a new buffer per copy costs ~1 ms)."""
+    import numpy as np
+    arrs = [np.asarray(a, dtype=np.int64).ravel() for a in parts.values()]
+    flat = torch.from_numpy(np.concatenate(arrs)) if arrs else torch.zeros(0, dtype=torch.int64)
+    i = _STAGING['next']
+    _STAGING['next'] = (i + 1) % len(_STAGING['bufs'])
+    if _STAGING['events'][i] is not None:
+        _STAGING['events'][i].synchronize()
+    buf = _STAGING['bufs'][i]
+    if buf is None or buf.numel() < flat.numel():
+        buf = _STAGING['bufs'][i] = torch.empty(max(2 * flat.numel(), 1 << 16), dtype=torch.int64, pin_memory=True)
+    buf[:flat.numel()].copy_(flat)
+    out = buf[:flat.numel()].to(dev, non_blocking=True)
+    _STAGING['events'][i] = torch.cuda.Event()
+    _STAGING['events'][i].record()
+    return dict(zip(parts, torch.split(out, [a.size for a in arrs])))
 
 
 def _one_entries(md, ns, n_rows):
@@ -345,6 +424,20 @@ def _one_entries(md, ns, n_rows):
         return slots[:n], (None if md.non_spec_req_idx is None else md.non_spec_req_idx[:n]), n
     ent = ns['one']
     return slots[ent], (ent if md.non_spec_req_idx is None else md.non_spec_req_idx[ent]), ent.numel()
+
+
+def _one_plan(md, ns, n_rows):
+    """The one-token entries' slots (compacted int32), positions and rows among the non-speculative tokens, plus the
+    per-entry constants their updates take; built once per step (cached with ns). Per layer, 'acc' is added: the
+    previous window's acceptance."""
+    p = ns.get('one_plan')
+    if p is None:
+        sl, req, n = _one_entries(md, ns, n_rows)
+        pos = _positions(md, req, n)
+        qsl = torch.arange(n + 1, device=pos.device, dtype=torch.int32)
+        p = ns['one_plan'] = {'slots': sl.to(torch.int32).contiguous(), 'pos': pos, 'ones': torch.ones_like(pos),
+                              'qsl': qsl, 'rows': qsl[:n] if ns['one'] is None else ns['tok_one'].to(torch.int32)}
+    return dict(p)
 
 
 @triton.jit
@@ -390,157 +483,195 @@ def _reset_fresh(st, md, ns, conv_rows):
         HAS_REQ=req is not None, BLOCK=1024)
 
 
-def _conv_one(self, st, md, x, conv_state, conv_w, ns):
+def _conv_one(self, x, conv_state, conv_w, one):
     """conv1d of the one-token entries x [n, dim]. In a speculative engine their previous step may have been a window
     with rejected drafts, while vLLM's plain conv update takes the conv history as it stands (vLLM sends no speculative
     metadata in a step without drafts, and one-token prompt chunks are never speculative): roll the history back by
-    the previous window's acceptance, derived from positions (1 when the last step was not a window)."""
+    the previous window's acceptance (one['acc'], from positions; 1 when the last step was not a window)."""
     from vllm.model_executor.layers.mamba.ops.causal_conv1d import causal_conv1d_update
-    sl, req, n = _one_entries(md, ns, x.shape[0])
-    if self.num_spec == 0:
-        return causal_conv1d_update(x, conv_state, conv_w, self.conv1d.bias, self.activation, conv_state_indices=sl,
-                                    validate_data=True)
-    idx = _slot_index(sl, st['ws'])
-    pos = _positions(md, req, n)
-    acc = torch.where(st['wn'][idx] > 0, pos - st['ws'][idx], 1).to(torch.int32)
-    return causal_conv1d_update(x, conv_state, conv_w, self.conv1d.bias, self.activation, conv_state_indices=sl,
-                                num_accepted_tokens=acc,
-                                query_start_loc=torch.arange(n + 1, device=x.device, dtype=torch.int32),
-                                max_query_len=1 + self.num_spec, validate_data=False)
+    if one['acc'] is None:
+        return causal_conv1d_update(x, conv_state, conv_w, self.conv1d.bias, self.activation,
+                                    conv_state_indices=one['slots'], validate_data=True)
+    return causal_conv1d_update(x, conv_state, conv_w, self.conv1d.bias, self.activation,
+                                conv_state_indices=one['slots'], num_accepted_tokens=one['acc'],
+                                query_start_loc=one['qsl'], max_query_len=1 + self.num_spec, validate_data=False)
 
 
-def _non_spec(self, st, md, x, g, beta, scale, out, ns):
-    """Non-speculative entries: one-token entries (every token accepted) and prompt chunks (prefill)."""
-    dec, ws, wn = st['one'], st['ws'], st['wn']
-    q, k, v = self.rearrange_mixed_qkv(x)
-    if ns['one'] is None:
-        n = md.num_decodes
-        rows = slice(0, n)
-    else:
-        n = ns['one'].numel()
-        rows = ns['tok_one']
-    if n > 0:
-        sl, req, _ = _one_entries(md, ns, n)
-        idx = _slot_index(sl, ws)
-        if 'win' in st:                                              # speculative engine: one-token windows
-            win = st['win']
-            pos = _positions(md, req, n)
-            acc = torch.where(wn[idx] > 0, pos - ws[idx], 0)
-            win.commit(ws[idx], acc, slots=sl)
-            pad = lambda t: torch.cat([t[rows][:, None], t[rows][:, None].new_zeros(n, win.KT - 1, *t.shape[1:])],
-                                      1).contiguous()
-            ones = torch.ones_like(pos)
-            out[rows] = win.step(pad(q[0]), pad(k[0]), pad(v[0]), pad(g), pad(beta), pos, ones, scale, slots=sl)[:, 0]
-        else:                                                        # plain decode, chunk folded on its 64th row
-            pos = ws[idx] + wn[idx]
-            out[rows] = dec.decode(q[0, rows], k[0, rows], v[0, rows], g[rows], beta[rows], pos, scale, slots=sl)
-            ones = torch.ones_like(pos)                              # a device tensor: capturable in a CUDA graph
-        ws[idx] = pos
-        wn[idx] = ones
-    if ns.get('long_host'):
-        _prefill(self, st, md, q, k, v, g, beta, scale, out, ns)
+def _non_spec(self, st, md, x, g, beta, scale, out, ns, one):
+    """Non-speculative entries: one-token entries (plain decodes: every token is kept, and a chunk is folded on its
+    64th row in the same step) and prompt chunks (prefill)."""
+    dec = st['one']
+    prefill = bool(ns.get('long_host'))
+    if prefill:                          # vLLM's prefill conv output is column-major: copied to [1, L, H, K] ...
+        q, k, v = self.rearrange_mixed_qkv(x)
+        qkv = (q[0].flatten(1), k[0].flatten(1), v[0].flatten(1))
+    else:                                # the conv update's output, q | k | v per row, read in place
+        qkv = (x[:, :self.key_dim], x[:, self.key_dim:2 * self.key_dim], x[:, 2 * self.key_dim:])
+    if prefill:                          # first: it writes every row of out, the one-token entries' rows below
+        _prefill(self, st, md, qkv, g, beta, scale, out, ns)
+    if one is not None:
+        if 'win' in st:                  # a chunk that the previous window's acceptance completed (marked by _advance)
+            dec.fold(one['slots'])
+        dec.step_rows(*qkv, g, beta, one['rows'], one['rows'], one['pos'], one['ones'], scale, one['slots'], out,
+                      one['rows'])
 
 
-def _prefill(self, st, md, q, k, v, g, beta, scale, out, ns):
-    """The prompt chunks (entries ns['long']) in one go. Request i adds tokens at absolute positions p0 .. end-1; its
-    slot holds the state at b0 = 64 * (p0 // 64) and the rows b0 .. p0-1 (a new request: p0 = 0, and its slot is cleared).
-    For the requests that reach a new boundary b1 = 64 * (end // 64), fla's chunk program runs, varlen over them, on
-    b0 .. b1 (cached rows in front of the new tokens), giving their rows p0 .. b1-1 and the fp32 state at b1. The rows
-    after the last boundary (b1 .. end-1, or p0 .. end-1 for a request within one chunk) are replayed through
-    exact_decode in windows of 16 rows, which fills the row caches and gives those rows: decode rows are bitwise fla's
-    rows, so every request gets the rows of the single forward over b0 .. end (row-causality and resumability,
-    e1_premise). Host work is vectorized over requests, with one device-to-host and one host-to-device copy."""
+def _prefill_plan(md, ns, L):
+    """Index plan of _prefill for this step's prompt chunks (L: rows of the non-speculative tokens). It does not
+    depend on the layer, so it is built once per step (cached on the metadata the layers share), from host data the
+    builder has: positions (the runner's num_computed_tokens) and token offsets (non_spec_qsl_cpu); one host-to-device
+    copy, no device-to-host copy."""
     import numpy as np
-    from fla.ops.gated_delta_rule.chunk import chunk_gated_delta_rule_fwd
-    from fla.modules.l2norm import l2norm_fwd
-    dec, ws, wn = st['one'], st['ws'], st['wn']
-    dev = q.device
+    pf = md.__dict__.get('_exact_pf')
+    if pf is not None:
+        return pf
     W = 16
-    slots_d = md.non_spec_state_indices_tensor[ns['long']]
-    init_d = md.has_initial_state[ns['long']]
-    sl_l = slots_d.long()
-    if 'win' in st:
-        # speculative engine: a one-token chunk of a prompt runs as a one-token window, whose acceptance would be
-        # committed at the slot's next window; commit it here (all of it, prompt tokens) and fold the chunk it may have
-        # completed before reading the boundary state
-        st['win'].commit(ws[sl_l], torch.where(init_d, wn[sl_l], 0), slots=slots_d)
-        if DEBUG:                                                    # how often these cases occur
-            add = lambda key, v: DEBUG_STATS.update({key: DEBUG_STATS.get(key, 0) + int(v)})
-            add('prefill_after_window', ((wn[sl_l] > 0) & init_d).sum())
-            add('prefill_folds', (dec.pending[sl_l] * init_d).sum())
-        dec.fold(slots_d)
-    p0_d = torch.where(init_d, ws[sl_l] + wn[sl_l], 0)
-    slot, p0, init = torch.stack([slots_d, p0_d.to(slots_d.dtype),
-                                  init_d.to(slots_d.dtype)]).cpu().numpy().astype(np.int64)       # host sync
+    long = ns['long_host']
+    req = long if md.non_spec_req_idx_cpu is None else md.non_spec_req_idx_cpu[long].tolist()
+    assert md.num_computed_cpu is not None, 'exact GDN: the runner passes no host num_computed_tokens'
+    p0 = md.num_computed_cpu[req].numpy().astype(np.int64)
     qh = ns['qsl_host']
-    s0 = np.array([qh[i] for i in ns['long_host']], dtype=np.int64)
-    e0 = np.array([qh[i + 1] for i in ns['long_host']], dtype=np.int64)
+    s0 = np.array([qh[i] for i in long], dtype=np.int64)
+    e0 = np.array([qh[i + 1] for i in long], dtype=np.int64)
     end = p0 + e0 - s0
     b0, b1 = p0 - p0 % BT, end - end % BT
-    cross = np.nonzero(b1 > b0)[0]                                   # requests reaching a new boundary
-    fresh = np.nonzero(init == 0)[0]
-    # replay: (slot, first position, first token, rows) of each request's rows after its last boundary
-    r_first = np.where(b1 > b0, b1, p0)
+    bc = np.where(p0 % BT == 0, p0, b0 + BT)                         # first boundary at or after p0
+    reach = b1 > b0                                                  # entries reaching a new boundary
+    head = np.nonzero(reach & (p0 % BT != 0))[0]                     # ... completing a partly cached chunk
+    body = np.nonzero(reach & (b1 > bc))[0]                          # ... with whole chunks bc .. b1 after it
+    fresh = np.nonzero(p0 == 0)[0]
+    # replay: (entry, first position, first token, rows) of each entry's rows after its last boundary
+    r_first = np.where(reach, b1, p0)
     rp = np.nonzero(end > r_first)[0]
-    r_slot, r_pos, r_tok, r_n = slot[rp], r_first[rp], s0[rp] + r_first[rp] - p0[rp], end[rp] - r_first[rp]
+    r_pos, r_tok, r_n = r_first[rp], s0[rp] + r_first[rp] - p0[rp], end[rp] - r_first[rp]
     nwin = -(-int(r_n.max()) // W) if rp.size else 0
     w0 = np.arange(nwin)[:, None] * W                                # [nwin, 1]
     r_nr = np.clip(r_n[None, :] - w0, 0, W)                          # [nwin, nr] rows per window
-    j = np.arange(W)
-    r_tix = r_tok[None, :, None] + np.minimum(w0[:, :, None] + j, np.maximum(r_n[None, :, None] - 1, 0))
-    r_valid = j[None, None, :] < r_nr[:, :, None]
-    # chunk segments: cached rows 0 .. c-1 of the slot, then the new tokens up to b1
-    c, m = (p0 - b0)[cross], (b1 - p0)[cross]
-    L = c + m
-    cu = np.r_[0, np.cumsum(L)]
-    seg = np.repeat(np.arange(cross.size), L)
-    off = np.arange(cu[-1]) - cu[seg]
+    # head chunks, packed: the slot's cached rows 0 .. c-1, then the new tokens p0 .. bc-1 (64 rows each)
+    nh = head.size
+    c = (p0 - b0)[head]
+    seg, off = np.repeat(np.arange(nh), BT), np.tile(np.arange(BT), nh)
     is_new = off >= c[seg]
-    tok = s0[cross][seg] + off - c[seg]
-    nck = -(-L // BT)
-    ci = np.stack([np.repeat(np.arange(cross.size), nck), np.arange(nck.sum()) - np.repeat(np.cumsum(nck) - nck, nck)], 1)
-    # one host-to-device copy of every index
-    parts = {'fresh': slot[fresh], 'cross': slot[cross], 'cu': cu, 'ci': ci.ravel(), 'is_new': is_new,
-             'gi': np.where(is_new, tok, 0), 'cs': np.where(is_new, 0, slot[cross][seg]),
-             'cr': np.where(is_new, 0, off), 'oi': np.nonzero(is_new)[0], 'od': tok[is_new],
-             'r_slot': r_slot, 'r_pos': r_pos[None, :] + w0, 'r_nr': r_nr, 'r_tix': r_tix,
-             'r_src': np.nonzero(r_valid.reshape(nwin, -1))[1] if nwin else np.zeros(0, np.int64),
-             'r_dst': r_tix[r_valid], 'r_cnt': r_valid.reshape(nwin, -1).sum(1) if nwin else np.zeros(0, np.int64),
-             'end': end}
-    flat = torch.from_numpy(np.concatenate([np.asarray(a, np.int64).ravel() for a in parts.values()])).to(dev)
-    sizes = [np.asarray(a).size for a in parts.values()]
-    d = dict(zip(parts, torch.split(flat, sizes)))
-    r_cnt = parts['r_cnt'].tolist()
+    tok = s0[head][seg] + off - c[seg]
+    # body chunks, in place in the batch's rows: rows bs .. be-1 of each body entry are a sequence of the varlen call,
+    # the rows between them (heads, tails, one-token entries, padding) filler sequences whose outputs are not used
+    bs, be = s0 + bc - p0, s0 + b1 - p0
+    cuts, kind = [0], []
+    for i in body:
+        if bs[i] > cuts[-1]:
+            cuts += [bs[i]]
+            kind += [-1]
+        cuts += [be[i]]
+        kind += [i]
+    if body.size and cuts[-1] < L:
+        cuts += [L]
+        kind += [-1]
+    kind, b_cu = np.array(kind, dtype=np.int64), np.array(cuts, dtype=np.int64)
+    nck = -(-np.diff(b_cu) // BT)
+    b_ci = np.stack([np.repeat(np.arange(nck.size), nck), np.arange(nck.sum()) - np.repeat(np.cumsum(nck) - nck, nck)], 1)
+    b_seq = np.nonzero(kind >= 0)[0]                                 # sequence of each body entry
+    hidx = np.full(p0.size, -1)
+    hidx[head] = np.arange(nh)
+    from_s = (hidx[body] < 0) & (p0[body] > 0)                       # body starts from the slot's state
+    from_h = hidx[body] >= 0                                         # ... from its head chunk's final state
+    head_only = head[b1[head] == bc[head]]
+    # one host-to-device copy of every index (entries are mapped to slots on the device)
+    parts = {'fresh': fresh, 'h_ent': head, 'h_new': is_new, 'h_gi': np.where(is_new, tok, 0),
+             'h_cs': np.where(is_new, 0, head[seg]), 'h_cr': np.where(is_new, 0, off), 'h_cu': np.arange(nh + 1) * BT,
+             'h_ci': np.stack([np.arange(nh), np.zeros(nh, np.int64)], 1).ravel(),
+             'h_oi': np.nonzero(is_new)[0], 'h_od': tok[is_new], 'b_cu': b_cu, 'b_ci': b_ci.ravel(), 'b_seq': b_seq,
+             'b_ent': body, 'bs_seq': b_seq[from_s], 'bs_ent': body[from_s], 'bh_seq': b_seq[from_h],
+             'bh_h': hidx[body[from_h]], 'ho_ent': head_only, 'ho_h': hidx[head_only],
+             'r_ent': rp, 'r_pos': r_pos[None, :] + w0, 'r_nr': r_nr, 'r_row': r_tok[None, :] + w0, 'p0': p0,
+             'qlen': e0 - s0}
+    d = _h2d(parts, md.qsl_all.device)
+    slots = md.non_spec_state_indices_tensor[ns['long']].to(torch.int32)
+    sl = slots.long()
+    i32 = torch.int32
+    some = lambda key, v: v if parts[key].size else None
+    pf = {'slots': slots, 'p0': d['p0'].to(i32), 'qlen': d['qlen'].to(i32), 'nwin': nwin, 'nh': nh, 'nb': body.size,
+          'fresh': some('fresh', sl[d['fresh']]),
+          'h_slot': sl[d['h_ent']], 'h_new': d['h_new'].bool(), 'h_gi': d['h_gi'], 'h_cs': sl[d['h_cs']],
+          'h_cr': d['h_cr'], 'h_cu': d['h_cu'].to(i32), 'h_ci': d['h_ci'].view(-1, 2).to(i32), 'h_oi': d['h_oi'],
+          'h_od': d['h_od'],
+          'b_cu': d['b_cu'].to(i32), 'b_ci': d['b_ci'].view(-1, 2).to(i32), 'nseq': kind.size, 'b_seq': d['b_seq'],
+          'b_slot': sl[d['b_ent']], 'bs_seq': some('bs_seq', d['bs_seq']), 'bs_slot': sl[d['bs_ent']],
+          'bh_seq': some('bh_seq', d['bh_seq']), 'bh_h': d['bh_h'], 'ho_slot': some('ho_ent', sl[d['ho_ent']]),
+          'ho_h': d['ho_h']}
+    if nwin:
+        pf.update(r_slot=slots[d['r_ent']], r_pos=d['r_pos'].view(nwin, -1).to(i32),
+                  r_nr=d['r_nr'].view(nwin, -1).to(i32), r_row=d['r_row'].view(nwin, -1).to(i32))
+    md._exact_pf = pf
+    return pf
 
-    if fresh.size:                                                   # a new request starts from the zero state
-        dec.S[d['fresh']] = 0
-        dec.Hb[d['fresh']] = 0
-    if cross.size:
-        qn, kn = l2norm_fwd(q[0])[0], l2norm_fwd(k[0])[0]
-        new = d['is_new'].bool()
-        gi, cs, cr = d['gi'], d['cs'], d['cr']
+
+def _prefill(self, st, md, qkv, g, beta, scale, out, ns):
+    """The prompt chunks (entries ns['long']) in one go. Entry i adds tokens at absolute positions p0 .. end-1 (rows
+    s0 .. of the batch); its slot holds the state at b0 = 64 * (p0 // 64) and the rows b0 .. p0-1 (a new request:
+    p0 = 0, and its slot is cleared). With bc the first boundary at or after p0 and b1 = 64 * (end // 64), fla's chunk
+    program runs on the chunks up to b1, in two varlen calls: the head chunks b0 .. bc of the entries that complete a
+    partly cached chunk (cached rows in front of the new tokens, packed; 64 rows each), then the body chunks bc .. b1
+    of every entry, in place in the batch's rows (other rows go through as filler sequences), each from its head's
+    final state, its slot's, or zero. They give the rows p0 .. b1-1 and the fp32 state at b1. The rows after the last
+    boundary (b1 .. end-1, or p0 .. end-1 for an entry within one chunk) are replayed through exact_decode in windows of
+    16 rows, which fills the row caches and gives those rows: decode rows are bitwise fla's rows, so every request gets
+    the rows of the single forward over b0 .. end (row-causality and resumability: e1_premise). qkv: q, k, v [L, H*K]
+    .. contiguous; g, beta [L, HV]; out [L, HV, V], every row of which is written here or after (one-token entries).
+    The index plan is shared by the layers (_prefill_plan)."""
+    from fla.ops.gated_delta_rule.chunk import chunk_gated_delta_rule_fwd
+    from fla.modules.l2norm import l2norm_fwd
+    dec = st['one']
+    pf = _prefill_plan(md, ns, qkv[0].shape[0])
+    slots = pf['slots']
+    if DEBUG:                            # the host positions against the device's, and how often a window precedes
+        add = lambda key, v: DEBUG_STATS.update({key: DEBUG_STATS.get(key, 0) + int(v)})
+        req = ns['long'] if md.non_spec_req_idx is None else md.non_spec_req_idx[ns['long']]
+        add('prefill_positions_bad', not torch.equal(_positions(md, req, slots.shape[0]), pf['p0']))
+        add('prefill_after_window', ((st['wn'][slots.long()] > 0) & (pf['p0'] > 0)).sum())
+    if 'win' in st:
+        # speculative engine: record the chunk (no window to commit at the slot's next step); a window before it
+        # (none in practice: one-token entries are plain decodes, and a prompt chunk follows prompt chunks) would be
+        # committed, and the chunk its acceptance completed folded, here
+        _advance(st, slots, pf['p0'], pf['qlen'], True)
+        dec.fold(slots)
+        dec.pending.index_fill_(0, slots.long(), 0)
+    if pf['fresh'] is not None:     # a new request starts from the zero state (index_fill_: assigning a Python scalar
+        dec.S.index_fill_(0, pf['fresh'], 0)       # through an index copies it from the host, which syncs)
+        dec.Hb.index_fill_(0, pf['fresh'], 0)
+    H, K, HV, V = self.num_k_heads, self.head_k_dim, self.num_v_heads, self.head_v_dim
+    if pf['nh'] or pf['nb']:
+        qn, kn = (l2norm_fwd(t.unflatten(1, (H, K)))[0] for t in qkv[:2])
+        vv = qkv[2].unflatten(1, (HV, V))
+    if pf['nh']:
+        new, gi, cs, cr = pf['h_new'], pf['h_gi'], pf['h_cs'], pf['h_cr']
         sel = lambda newv, cachev: torch.where(new.view(-1, *([1] * (newv.dim() - 1))), newv[gi],
                                                cachev[cs, cr])[None].contiguous()
-        Qs = torch.where(new[:, None, None], qn[gi], 0.)[None].contiguous()   # cached rows: outputs unused
-        slA = d['cross']
-        _, oA, _, SA, _, _ = chunk_gated_delta_rule_fwd(
-            Qs, sel(kn, dec.kbuf), sel(v[0], dec.vbuf), sel(g, dec.gbuf), sel(beta, dec.bbuf), scale,
-            dec.S[slA].contiguous(), True, cu_seqlens=d['cu'].to(torch.int32),
-            chunk_indices=d['ci'].view(-1, 2).to(torch.int32))
-        out.index_copy_(0, d['od'], oA[0, d['oi']].to(out.dtype))
-        dec.S[slA] = SA
-        dec.Hb[slA] = SA.to(dec.Hb.dtype)
-    dec.pending[sl_l] = 0
-    if nwin:
-        rs = d['r_slot'].to(torch.int32)
-        pos_w, nr_w, tix_w = d['r_pos'].view(nwin, -1), d['r_nr'].view(nwin, -1), d['r_tix'].view(nwin, rp.size, W)
-        src, dst = torch.split(d['r_src'], r_cnt), torch.split(d['r_dst'], r_cnt)
-        for w in range(nwin):
-            xs = [t[tix_w[w]].contiguous() for t in (q[0], k[0], v[0], g, beta)]
-            o = dec._launch(rs, *xs, pos_w[w].to(torch.int32), nr_w[w].to(torch.int32), scale, W)
-            out.index_copy_(0, dst[w], o.flatten(0, 1)[src[w]])
-    ws[sl_l] = d['end'].to(torch.int32)
-    wn[sl_l] = 0
+        Qh = torch.where(new[:, None, None], qn[gi], 0.)[None].contiguous()   # cached rows: outputs unused
+        _, oH, _, SH, _, _ = chunk_gated_delta_rule_fwd(
+            Qh, sel(kn, dec.kbuf), sel(vv, dec.vbuf), sel(g, dec.gbuf), sel(beta, dec.bbuf), scale,
+            dec.S[pf['h_slot']].contiguous(), True, cu_seqlens=pf['h_cu'], chunk_indices=pf['h_ci'])
+    if pf['nb']:
+        init = torch.zeros(pf['nseq'], HV, K, V, device=qn.device, dtype=torch.float32)
+        if pf['bs_seq'] is not None:
+            init.index_copy_(0, pf['bs_seq'], dec.S[pf['bs_slot']])
+        if pf['bh_seq'] is not None:
+            init.index_copy_(0, pf['bh_seq'], SH[pf['bh_h']])
+        _, oB, _, SB, _, _ = chunk_gated_delta_rule_fwd(
+            qn[None], kn[None], vv[None], g[None], beta[None], scale, init, True, cu_seqlens=pf['b_cu'],
+            chunk_indices=pf['b_ci'])
+        out.copy_(oB[0])                 # the body rows; the other rows are overwritten below and after
+        SB = SB[pf['b_seq']]
+        dec.S[pf['b_slot']] = SB
+        dec.Hb[pf['b_slot']] = SB.to(dec.Hb.dtype)
+    if pf['nh']:
+        out.index_copy_(0, pf['h_od'], oH[0, pf['h_oi']].to(out.dtype))
+        if pf['ho_slot'] is not None:    # no body chunks after the head: its final state is the state at b1
+            SH = SH[pf['ho_h']]
+            dec.S[pf['ho_slot']] = SH
+            dec.Hb[pf['ho_slot']] = SH.to(dec.Hb.dtype)
+    for w in range(pf['nwin']):                                      # rows read and written in place
+        dec.step_rows(*qkv, g, beta, pf['r_row'][w], pf['r_row'][w], pf['r_pos'][w], pf['r_nr'][w], scale,
+                      pf['r_slot'], out, pf['r_row'][w], KT=16)
 
 
 def _debug_fold_refs(dec, slots, scale):
@@ -557,7 +688,7 @@ def _debug_fold_refs(dec, slots, scale):
     return refs
 
 
-def _debug_check(dec, slots, pos, nrows, gather, q, k, v, g, beta, scale, o, folds):
+def _debug_check(dec, slots, pos, nrows, xs, scale, o, folds):
     """EXACT_GDN_DEBUG: every fold of this step, and every window's rows against fla's chunk program run from the
     slot's boundary state over its cached rows and the window; counts in DEBUG_STATS."""
     from fla.ops.gated_delta_rule import chunk_gated_delta_rule
@@ -571,12 +702,12 @@ def _debug_check(dec, slots, pos, nrows, gather, q, k, v, g, beta, scale, o, fol
             continue
         p, n = int(pos[i]), int(nrows[i])
         r = p % BT
-        rows = gather[i, :n]
-        qn, kn = l2norm_fwd(q[0, rows])[0], l2norm_fwd(k[0, rows])[0]
+        qi, ki, vi, gi, bi = (t[i, :n] for t in xs)
+        qn, kn = l2norm_fwd(qi)[0], l2norm_fwd(ki)[0]
         cat = lambda old, new: torch.cat([old, new], 0)[None].contiguous()
         ref, _ = chunk_gated_delta_rule(cat(qn.new_zeros(r, *qn.shape[1:]), qn), cat(dec.kbuf[sl, :r], kn),
-                                        cat(dec.vbuf[sl, :r], v[0, rows]), cat(dec.gbuf[sl, :r], g[rows]),
-                                        cat(dec.bbuf[sl, :r], beta[rows]), scale=scale,
+                                        cat(dec.vbuf[sl, :r], vi), cat(dec.gbuf[sl, :r], gi),
+                                        cat(dec.bbuf[sl, :r], bi), scale=scale,
                                         initial_state=dec.S[sl][None].clone(), output_final_state=True,
                                         use_qk_l2norm_in_kernel=False)
         count('windows', not torch.equal(ref[0, r:], o[i, :n]))

@@ -129,7 +129,10 @@ def _kkt3(k, ks0, kj0, nrow_s, H: tl.constexpr, K: tl.constexpr, BC: tl.constexp
 
 @triton.jit
 def _gdn_k0(
-    pending, kbuf, Uc, Wc, sgc, S, Hb, slots, sS, sHb, skb, svb, sgb, sbb, sAi, sAb, sU, sW, sVN, ssg, sqn,
+    pending, kbuf, Uc, Wc, sgc, S, Hb, slots,
+    sS: tl.constexpr, sHb: tl.constexpr, skb: tl.constexpr, svb: tl.constexpr, sgb: tl.constexpr, sbb: tl.constexpr,
+    sAi: tl.constexpr, sAb: tl.constexpr, sU: tl.constexpr, sW: tl.constexpr, sVN: tl.constexpr, ssg: tl.constexpr,
+    sqn: tl.constexpr,
     H: tl.constexpr, HV: tl.constexpr, K: tl.constexpr, V: tl.constexpr, BT: tl.constexpr,
 ):
     """Fold the previous chunk into the state if its 64th row was accepted (pending): fwd_h's update by one complete
@@ -173,12 +176,13 @@ def _gdn_k0(
 
 @triton.jit
 def _k1_row(
-    r, j, i_n, i_h, i_hk, i_nh, q_in, k_in, v_in, g_in, b_in, k, v, g, beta, qn, AiF, Abf, Uc, Wc, sg,
-    gscale, eps, KT,
+    r, j, xr, gr, i_h, i_hk, q_in, k_in, v_in, g_in, b_in, sqk, sv, k, v, g, beta, qn, AiF, Abf, Uc, Wc, sg,
+    gscale, eps,
     H: tl.constexpr, HV: tl.constexpr, K: tl.constexpr, V: tl.constexpr, BT: tl.constexpr, BC: tl.constexpr,
 ):
-    """One token (chunk row r, window index j): everything K1 computes for it. Rows < r of the chunk caches are
-    final (earlier steps or earlier iterations of this window)."""
+    """One token (chunk row r, window index j; its inputs are row xr + j of q, k, v and row gr + j of g, beta):
+    everything K1 computes for it. Rows < r of the chunk caches are final (earlier steps or earlier iterations of this
+    window)."""
     T = r + 1
     s = r // BC
     i = r - s * BC
@@ -193,8 +197,8 @@ def _k1_row(
     # ---- token: l2norm(q), l2norm(k) (fla l2norm_fwd_kernel), chunk-buffer row -----------------------------------
     # With HV > H every value head of a key head writes the same normalised k row (identical bytes) and reads it back
     # after its own barrier.
-    p_q = q_in + ((i_n * KT + j) * H + i_hk) * K
-    p_k = k_in + ((i_n * KT + j) * H + i_hk) * K
+    p_q = q_in + (xr + j) * sqk + i_hk * K
+    p_k = k_in + (xr + j) * sqk + i_hk * K
     rq = _rstd(tl.load(p_q + o_K[None, :] + o_i[:, None] * 0), eps)
     rk = _rstd(tl.load(p_k + o_K[None, :] + o_i[:, None] * 0), eps)
     for i_k in tl.static_range(K // 64):
@@ -204,9 +208,9 @@ def _k1_row(
         b_kx = tl.load(p_k + i_k * 64 + o_64[None, :] + o_i[:, None] * 0)
         tl.store(k + r * (H*K) + i_k * 64 + o_64[None, :] + o_i[:, None] * 0,
                  (b_kx.to(tl.float32) * rk[:, None]).to(b_kx.dtype), mask=(o_i == 0)[:, None])
-    tl.store(v + r * (HV*V) + o_V, tl.load(v_in + ((i_n * KT + j) * HV + i_h) * V + o_V))
-    tl.store(g + r * HV, tl.load(g_in + (i_n * KT + j) * HV + i_h))
-    tl.store(beta + r * HV, tl.load(b_in + (i_n * KT + j) * HV + i_h))
+    tl.store(v + r * (HV*V) + o_V, tl.load(v_in + (xr + j) * sv + i_h * V + o_V))
+    tl.store(g + r * HV, tl.load(g_in + (gr + j) * HV + i_h))
+    tl.store(beta + r * HV, tl.load(b_in + (gr + j) * HV + i_h))
     tl.debug_barrier()
 
     # ---- chunk_local_cumsum_scalar_kernel ----------------------------------------------------------------------
@@ -301,14 +305,18 @@ def _k1_row(
 
 @triton.jit
 def _gdn_k1(
-    q_in, k_in, v_in, g_in, b_in, pos, nrows, pending, kbuf, vbuf, gbuf, bbuf, qn, AiF, Abf, Uc, Wc, sgc,
-    slots, sS, sHb, skb, svb, sgb, sbb, sAi, sAb, sU, sW, sVN, ssg, sqn,
-    gscale, eps, KT,
+    q_in, k_in, v_in, g_in, b_in, xrow, grow, sqk, sv, pos, nrows, pending, kbuf, vbuf, gbuf, bbuf, qn, AiF, Abf, Uc,
+    Wc, sgc, slots,
+    sS: tl.constexpr, sHb: tl.constexpr, skb: tl.constexpr, svb: tl.constexpr, sgb: tl.constexpr, sbb: tl.constexpr,
+    sAi: tl.constexpr, sAb: tl.constexpr, sU: tl.constexpr, sW: tl.constexpr, sVN: tl.constexpr, ssg: tl.constexpr,
+    sqn: tl.constexpr,
+    gscale, eps,
     H: tl.constexpr, HV: tl.constexpr, K: tl.constexpr, V: tl.constexpr, BT: tl.constexpr, BC: tl.constexpr,
     SINGLE: tl.constexpr,
 ):
-    """Rows pos % 64 .. pos % 64 + nrows - 1 of one (slot, head); the slot's head-0 program then resets the fold flag
-    (K0 has run)."""
+    """Rows pos % 64 .. pos % 64 + nrows - 1 of one (slot, head), the window's tokens being rows xrow .. of q, k, v
+    (row stride sqk, sv) and rows grow .. of g, beta; the slot's head-0 program then resets the fold flag (K0 has
+    run)."""
     i_nh = tl.program_id(0)
     i_n, i_h = i_nh // HV, i_nh % HV
     i_hk = i_h // (HV // H)
@@ -327,13 +335,15 @@ def _gdn_k1(
     qn += slot * sqn + i_h * BT * K
     r0 = tl.load(pos + i_n) % BT
     nr = tl.load(nrows + i_n)
+    xr = tl.load(xrow + i_n).to(tl.int64)
+    gr = tl.load(grow + i_n).to(tl.int64)
     if SINGLE:                          # one token: no loop (a runtime loop costs registers and occupancy)
-        _k1_row(r0, 0, i_n, i_h, i_hk, i_nh, q_in, k_in, v_in, g_in, b_in, k, v, g, beta, qn, AiF, Abf, Uc, Wc,
-                sg, gscale, eps, KT, H, HV, K, V, BT, BC)
+        _k1_row(r0, 0, xr, gr, i_h, i_hk, q_in, k_in, v_in, g_in, b_in, sqk, sv, k, v, g, beta, qn, AiF, Abf, Uc,
+                Wc, sg, gscale, eps, H, HV, K, V, BT, BC)
     else:
         for j in range(nr):
-            _k1_row(r0 + j, j, i_n, i_h, i_hk, i_nh, q_in, k_in, v_in, g_in, b_in, k, v, g, beta, qn, AiF, Abf, Uc,
-                    Wc, sg, gscale, eps, KT, H, HV, K, V, BT, BC)
+            _k1_row(r0 + j, j, xr, gr, i_h, i_hk, q_in, k_in, v_in, g_in, b_in, sqk, sv, k, v, g, beta, qn, AiF,
+                    Abf, Uc, Wc, sg, gscale, eps, H, HV, K, V, BT, BC)
             tl.debug_barrier()
     if i_h == 0:
         tl.store(pending + slot, 0)                                  # K0 has run
@@ -341,15 +351,17 @@ def _gdn_k1(
 
 @triton.jit
 def _gdn_k2(
-    pos, nrows, kbuf, qn, Hb, o, Uc, Wc, VNc, sgc,
-    S, slots, sS, sHb, skb, svb, sgb, sbb, sAi, sAb, sU, sW, sVN, ssg, sqn, scale, KT,
-    H: tl.constexpr, HV: tl.constexpr, K: tl.constexpr, V: tl.constexpr, BV: tl.constexpr,
+    pos, nrows, kbuf, qn, Hb, o, orow, Uc, Wc, VNc, sgc, S, slots,
+    sS: tl.constexpr, sHb: tl.constexpr, skb: tl.constexpr, svb: tl.constexpr, sgb: tl.constexpr, sbb: tl.constexpr,
+    sAi: tl.constexpr, sAb: tl.constexpr, sU: tl.constexpr, sW: tl.constexpr, sVN: tl.constexpr, ssg: tl.constexpr,
+    sqn: tl.constexpr,
+    scale, H: tl.constexpr, HV: tl.constexpr, K: tl.constexpr, V: tl.constexpr, BV: tl.constexpr,
     BT: tl.constexpr, BC: tl.constexpr, TILE: tl.constexpr, EAGER_FOLD: tl.constexpr,
 ):
     """Window rows r0 .. r1 = r0 + nrows - 1 of one (V block, slot, head) on one TILE-row tile starting at r0's
     sub-block (16 rows for one token, 32 for a window of up to 16): v_new = u - w bf16(S) for the window's rows (fwd_h),
     then their output rows (chunk_fwd_kernel_o), which need the v_new rows of the whole window. Tile rows outside the
-    window are zero (MMA rows are independent)."""
+    window are zero (MMA rows are independent). Output row j of the window goes to row orow + j of o [rows, HV, V]."""
     i_v, i_nh = tl.program_id(0), tl.program_id(1)
     i_n, i_h = i_nh // HV, i_nh % HV
     r0 = tl.load(pos + i_n) % BT
@@ -407,7 +419,8 @@ def _gdn_k2(
     b_Aq = tl.where(m_A, b_Aq, 0)
     b_vn = tl.load(tl.make_block_ptr(VNc, (T, V), (V, 1), (0, i_v * BV), (BT, BV), (1, 0)), boundary_check=(0, 1))
     b_o = _o_epilogue(b_o, tl.dot(b_Aq.to(b_vn.dtype), b_vn), scale, O_FORM)
-    tl.store(o + ((i_n * KT + (rows - r0)) * HV + i_h)[:, None] * V + o_v[None, :], b_o.to(o.dtype.element_ty),
+    tl.store(o + ((tl.load(orow + i_n).to(tl.int64) + rows - r0) * HV + i_h)[:, None] * V + o_v[None, :],
+             b_o.to(o.dtype.element_ty),
              mask=m_win)
 
     # ---- plain decode folds a completed chunk right away (fwd_h's 64-row arithmetic from the cached u, w rows) ------
@@ -464,7 +477,9 @@ class GDNExactDecode:
     step), so rollback is free. With KT == 1 use decode(): every token is accepted and folds happen in the step.
 
     All caches of a slot live in one row of `storage` ([N, words] fp32, see state_layout), so an engine can keep them
-    in its own per-sequence state pool; `slots` arguments then name the pool rows a batch uses (default: 0..N-1)."""
+    in its own per-sequence state pool; `slots` arguments then name the pool rows a batch uses (default: 0..N-1).
+    step_rows() is step()/decode() for such an engine: it reads each window's tokens where they lie in the engine's
+    activations (row indices, any row stride) and writes its output rows in place, so a step needs no gathers."""
 
     def __init__(self, N, H, HV, K, V, device, KT=1, dtype=torch.bfloat16, beta_dtype=None, BV=64, nw1=2, nw2=4,
                  eps=1e-6, storage=None):
@@ -490,63 +505,96 @@ class GDNExactDecode:
         self.pending = torch.zeros(storage.shape[0] + 1, device=device, dtype=torch.int32)
         self._ones = torch.ones(N, device=device, dtype=torch.int32)
         self._slots = torch.arange(N, device=device, dtype=torch.int32)
+        # per-slot element strides of every cache, in the order the kernels take them (compile-time constants there)
+        self._st = tuple(getattr(self, n).stride(0) for n in
+                         ('S', 'Hb', 'kbuf', 'vbuf', 'gbuf', 'bbuf', 'AiF', 'Abf', 'Uc', 'Wc', 'VNc', 'sg', 'qn'))
+        self._rows = {}
 
     @staticmethod
     def window(pos, k):
         """Rows a step may process: min(k, tokens left in the slot's current chunk)."""
         return torch.clamp(BT - pos % BT, max=k).to(torch.int32)
 
-    def _strides(self):
-        """Per-slot element strides of every cache, in the order the kernels take them (after `slots`)."""
-        return tuple(getattr(self, n).stride(0) for n in
-                     ('S', 'Hb', 'kbuf', 'vbuf', 'gbuf', 'bbuf', 'AiF', 'Abf', 'Uc', 'Wc', 'VNc', 'sg', 'qn'))
+    def _rows_of(self, n, KT, device):
+        """Row i * KT for entries i = 0..n-1 (the [n, KT, ...] layout), int32; cached."""
+        r = self._rows.get((n, KT))
+        if r is None:
+            r = self._rows[(n, KT)] = torch.arange(0, n * KT, KT, device=device, dtype=torch.int32)
+        return r
 
-    def _launch(self, slots, q, k, v, g, beta, pos, nrows, scale, KT):
-        """Batch entry i uses cache slot slots[i]. KT == 1 (plain decode, every token accepted): K1 + K2 with a 16-row
-        tile and the fold done eagerly by K2 on the chunk's 64th row. KT > 1 (windows that may be partly rejected): K0
-        (lazy fold of an accepted chunk) + K1 + K2 with a 32-row tile."""
-        HV, ns = self.HV, slots.shape[0]
-        # the kernels index these with a unit stride: an engine's column view of its block table (e.g. vLLM with
-        # speculative decoding, whose table has 1 + drafts columns) must be compacted first
-        slots, pos, nrows = (t.to(torch.int32).contiguous() for t in (slots, pos, nrows))
-        st = (slots, *self._strides())
-        o = torch.empty(ns, KT, HV, self.V, device=q.device, dtype=v.dtype)
+    def _launch(self, slots, q, k, v, g, beta, pos, nrows, scale, KT, rows=None, rows_g=None, out=None, rows_out=None):
+        """Batch entry i uses cache slot slots[i]; its window's token j is row rows[i] + j of q, k [R, H*K] and v
+        [R, HV*V] (any row stride, unit column stride) and row rows_g[i] + j of g, beta [R', HV] (contiguous), and its
+        output row j goes to row rows_out[i] + j of out [R'', HV, V] (contiguous; rows past the window are not
+        written). Defaults: rows i * KT, and a new out [n * KT, HV, V]. slots, pos, nrows, rows*: int32, unit stride
+        (an engine's column view of its block table, e.g. vLLM's with speculative decoding, must be compacted first).
+        KT == 1 (plain decode, every token accepted): K1 + K2 with a 16-row tile and the fold done eagerly by K2 on the
+        chunk's 64th row. KT > 1 (windows that may be partly rejected): K0 (lazy fold of an accepted chunk) + K1 + K2
+        with a 32-row tile."""
+        HV, n = self.HV, slots.shape[0]
+        if rows is None:
+            rows = self._rows_of(n, KT, q.device)
+        if out is None:
+            out, rows_out = torch.empty(n * KT, HV, self.V, device=q.device, dtype=v.dtype), self._rows_of(n, KT, q.device)
         if KT > 1:
             self.fold(slots)
-        _gdn_k1[(ns * HV,)](
-            q, k, v, g, beta, pos, nrows, self.pending, self.kbuf, self.vbuf, self.gbuf, self.bbuf,
-            self.qn, self.AiF, self.Abf, self.Uc, self.Wc, self.sg, *st,
-            RCP_LN2, self.eps, KT, H=self.H, HV=HV, K=self.K, V=self.V, BT=BT, BC=BC, SINGLE=KT == 1,
-            num_warps=self.nw1)
-        _gdn_k2[(self.V // self.BV, ns * HV)](
-            pos, nrows, self.kbuf, self.qn, self.Hb, o, self.Uc, self.Wc, self.VNc,
-            self.sg, self.S, *st, scale, KT, H=self.H, HV=HV, K=self.K, V=self.V, BV=self.BV, BT=BT, BC=BC,
+        _gdn_k1[(n * HV,)](
+            q, k, v, g, beta, rows, rows if rows_g is None else rows_g, q.stride(0), v.stride(0), pos, nrows,
+            self.pending, self.kbuf, self.vbuf, self.gbuf, self.bbuf, self.qn, self.AiF, self.Abf, self.Uc, self.Wc,
+            self.sg, slots, *self._st, RCP_LN2, self.eps, H=self.H, HV=HV, K=self.K, V=self.V, BT=BT, BC=BC,
+            SINGLE=KT == 1, num_warps=self.nw1)
+        _gdn_k2[(self.V // self.BV, n * HV)](
+            pos, nrows, self.kbuf, self.qn, self.Hb, out, rows_out, self.Uc, self.Wc, self.VNc, self.sg, self.S, slots,
+            *self._st, scale, H=self.H, HV=HV, K=self.K, V=self.V, BV=self.BV, BT=BT, BC=BC,
             TILE=BC if KT == 1 else 2 * BC, EAGER_FOLD=KT == 1, num_warps=self.nw2)
-        return o
+        return out
 
     def _check(self, q, k, v, g, beta, n, KT):
         H, HV, K, V = self.H, self.HV, self.K, self.V
         for x, shape in ((q, (n, KT, H, K)), (k, (n, KT, H, K)), (v, (n, KT, HV, V)), (g, (n, KT, HV)), (beta, (n, KT, HV))):
             assert tuple(x.shape) == shape and x.is_contiguous(), (tuple(x.shape), shape)
+        self._check_dtypes(k, g, beta)
+
+    def _check_dtypes(self, k, g, beta):
         # fla's bits depend on these dtypes (beta enters recompute_w_u unconverted; g must be the fp32 log-gate)
         assert beta.dtype == self.bbuf.dtype and g.dtype == torch.float32 and k.dtype == self.kbuf.dtype
+
+    @staticmethod
+    def _i32(*ts):
+        return [t if t.dtype == torch.int32 and t.is_contiguous() else t.to(torch.int32).contiguous() for t in ts]
 
     def step(self, q, k, v, g, beta, pos, nrows, scale, slots=None):
         """q, k [n,KT,H,K] raw (normalised in-kernel), v [n,KT,HV,V], g [n,KT,HV] raw log-gate, beta [n,KT,HV];
         pos [n] int32 absolute position of the window's first token; nrows [n] int32 = window(pos, KT).
         Returns o [n,KT,HV,V] (rows >= nrows undefined). Three launches (K0 fold, K1, K2); graph-capturable."""
         slots = self._slots if slots is None else slots
-        assert self.KT > 1, 'KT == 1: use decode()'
-        self._check(q, k, v, g, beta, slots.shape[0], self.KT)
-        return self._launch(slots, q, k, v, g, beta, pos, nrows, scale, self.KT)
+        n, KT = slots.shape[0], self.KT
+        assert KT > 1, 'KT == 1: use decode()'
+        self._check(q, k, v, g, beta, n, KT)
+        x = [t.view(n * KT, -1) for t in (q, k, v, g, beta)]
+        return self._launch(*self._i32(slots), *x, *self._i32(pos, nrows), scale, KT).view(n, KT, self.HV, self.V)
+
+    def step_rows(self, q, k, v, g, beta, rows, rows_g, pos, nrows, scale, slots, out, rows_out, KT=None):
+        """step() (KT > 1, default this object's KT) or decode() (KT == 1, nrows 1) on tokens read where they lie and
+        outputs written where they go: entry i's token j is row rows[i] + j of q, k [R, H*K] and v [R, HV*V] (any row
+        stride, e.g. column slices of an engine's fused qkv activations) and row rows_g[i] + j of g, beta [R', HV]; its
+        output is row rows_out[i] + j of out [R'', HV, V] (rows past the window are left as they are). slots, pos,
+        nrows, rows*: int32 [n], unit stride."""
+        KT = self.KT if KT is None else KT
+        H, HV, K, V = self.H, self.HV, self.K, self.V
+        assert (q.shape[1] == k.shape[1] == H * K and v.shape[1] == HV * V and q.stride(1) == k.stride(1) == 1
+                and k.stride(0) == q.stride(0) and v.stride(1) == 1 and g.is_contiguous() and beta.is_contiguous()
+                and g.shape[1] == HV and out.is_contiguous() and tuple(out.shape[1:]) == (HV, V))
+        self._check_dtypes(k, g, beta)
+        return self._launch(slots, q, k, v, g, beta, pos, nrows, scale, KT, rows, rows_g, out, rows_out)
 
     def fold(self, slots):
         """Fold the completed chunk of every slot marked pending into its state now (K0; normally the start of the slot's
         next window). For a slot whose next step is not a window, e.g. an engine's prefill continuing it. The caller
         clears pending."""
-        slots = slots.to(torch.int32).contiguous()
+        slots, = self._i32(slots)
         _gdn_k0[(self.V // 64, slots.shape[0] * self.HV)](
-            self.pending, self.kbuf, self.Uc, self.Wc, self.sg, self.S, self.Hb, slots, *self._strides(),
+            self.pending, self.kbuf, self.Uc, self.Wc, self.sg, self.S, self.Hb, slots, *self._st,
             H=self.H, HV=self.HV, K=self.K, V=self.V, BT=BT, num_warps=4)
 
     def commit(self, pos, accepted, slots=None):
@@ -561,10 +609,11 @@ class GDNExactDecode:
         Every token is accepted, so a completed chunk is folded in the same step. The caller then increments pos."""
         assert self.KT == 1
         slots = self._slots if slots is None else slots
-        x = [t[:, None] for t in (q, k, v, g, beta)]
-        self._check(*x, slots.shape[0], 1)
-        ones = self._ones if slots.shape[0] == self.N else torch.ones_like(slots)
-        return self._launch(slots, *x, pos, ones, scale, 1)[:, 0]
+        n = slots.shape[0]
+        self._check(*[t[:, None] for t in (q, k, v, g, beta)], n, 1)
+        ones = self._ones if n == self.N else torch.ones_like(slots)
+        x = [t.view(n, -1) for t in (q, k, v, g, beta)]
+        return self._launch(*self._i32(slots), *x, *self._i32(pos), ones, scale, 1)
 
     def set_state(self, slot, S):
         """Slot `slot` starts from the boundary state S [HV,K,V] fp32 (its bf16 copy is derived)."""
@@ -584,7 +633,7 @@ class GDNExactDecode:
             w = min(BC, r - j0, BT - (p + j0) % BT)
             x = [t[None, j0:j0 + w].contiguous() for t in (q, k, v, g, beta)]
             self._check(*x, 1, w)
-            self._launch(sl, *x, torch.tensor([p + j0], device=dev, dtype=torch.int32),
+            self._launch(sl, *[t.view(w, -1) for t in x], torch.tensor([p + j0], device=dev, dtype=torch.int32),
                          torch.tensor([w], device=dev, dtype=torch.int32), 1.0, w)
 
     def load(self, n, S, b, q, k, v, g, beta):

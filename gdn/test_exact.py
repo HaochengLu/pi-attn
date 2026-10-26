@@ -8,6 +8,7 @@ fla's final state of the prefix. Both implementations: exact_decode (fast) and e
 Speculative mode (exact_decode): windows of up to 4 or 16 tokens per step (16: also how exact_gdn replays a prefill), a random number of them accepted per slot,
 one random slot idle per step; rejected positions carry wrong-draft inputs. Accepted rows must equal the trainer's rows bitwise and the
 rejected drafts must leave no trace in later rows or states.
+"rows" cases: the same through step_rows, inputs read and outputs written in place in an engine-like layout (in_place).
 
 usage: PYTHONPATH=<fla> python gdn/test_exact.py            (exit status 1 on any mismatch)"""
 import sys, torch, torch.nn.functional as F
@@ -35,7 +36,27 @@ def chunk(q, k, v, g, beta):
     return chunk_gated_delta_rule(q, k, v, g, beta, output_final_state=True, use_qk_l2norm_in_kernel=True)
 
 
-def run(impl, H, HV, K=128, V=128, cfg=(2, 4, 64), beta_dtype=torch.bfloat16):
+def in_place(dec, x, pos, nrows, scale, KT):
+    """dec.step_rows on window inputs x = (q, k, v, g, beta), each [N, KT, ...], laid out as an engine has them: q|k|v
+    side by side in the rows of one wider activation buffer (row stride larger than q's), the slots' windows in
+    reverse order with a garbage row between them; gate and beta at other row offsets, outputs to other rows of a
+    larger buffer. Returns o [N, KT, HV, V] gathered from there."""
+    N, HK, HVV, HV, V = x[0].shape[0], x[0][0, 0].numel(), x[2][0, 0].numel(), x[2].shape[2], x[2].shape[3]
+    gap, R = KT + 1, N * (KT + 1)
+    rows = torch.tensor([(N - 1 - n) * gap for n in range(N)], device=dev, dtype=torch.int32)
+    buf = torch.randn(R, 2 * HK + HVV + 8, device=dev).to(x[0].dtype)
+    gb = [torch.randn(R + 3, HV, device=dev).to(t.dtype) for t in x[3:]]
+    tix = (rows[:, None] + torch.arange(KT, device=dev)).long()          # [N, KT]
+    buf[tix, :HK], buf[tix, HK:2 * HK], buf[tix, 2 * HK:2 * HK + HVV] = x[0].flatten(2), x[1].flatten(2), x[2].flatten(2)
+    for t, src in zip(gb, x[3:]):
+        t[tix + 3] = src
+    out = torch.zeros(R + 7, HV, V, device=dev, dtype=x[2].dtype)
+    dec.step_rows(buf[:, :HK], buf[:, HK:2 * HK], buf[:, 2 * HK:2 * HK + HVV], gb[0], gb[1], rows, rows + 3,
+                  pos, nrows, scale, dec._slots, out, rows + 7, KT=KT)
+    return out[tix + 7]
+
+
+def run(impl, H, HV, K=128, V=128, cfg=(2, 4, 64), beta_dtype=torch.bfloat16, inplace=False):
     N, scale = len(PS), K ** -0.5
     seqs = [seq(i, H, HV, K, V, beta_dtype) for i in range(N)]
     ref = [chunk(*s) for s in seqs]
@@ -56,7 +77,10 @@ def run(impl, H, HV, K=128, V=128, cfg=(2, 4, 64), beta_dtype=torch.bfloat16):
     for s in range(T - max(PS)):
         ts = [P + s for P in PS]
         at = lambda xs, j: torch.stack([xs[n][j][0, t] for n, t in enumerate(ts)])
-        if impl == 'exact_decode':
+        if impl == 'exact_decode' and inplace:
+            pos = torch.tensor(ts, device=dev, dtype=torch.int32)
+            o = in_place(dec, [at(seqs, j)[:, None] for j in range(5)], pos, torch.ones_like(pos), scale, 1)[:, 0]
+        elif impl == 'exact_decode':
             o = dec.decode(at(seqs, 0), at(seqs, 1), at(seqs, 2), at(seqs, 3), at(seqs, 4),
                            torch.tensor(ts, device=dev, dtype=torch.int32), scale)
         else:
@@ -70,13 +94,13 @@ def run(impl, H, HV, K=128, V=128, cfg=(2, 4, 64), beta_dtype=torch.bfloat16):
                 q, k, v, g, beta = seqs[n]
                 Sref = chunk(q[:, :b], k[:, :b], v[:, :b], g[:, :b], beta[:, :b])[1][0]
                 bad_states += int(not torch.equal(dec.S[n], Sref)); states += 1
-    tag = f'{impl} {nw1}:{nw2}:{BV}' if impl == 'exact_decode' else impl
+    tag = f'{impl} {nw1}:{nw2}:{BV}{" rows" if inplace else ""}' if impl == 'exact_decode' else impl
     print(f'{tag:24s} H={H:2d} HV={HV:2d} K={K:3d} V={V:3d} beta {str(beta_dtype)[6:]:8s}: rows {rows} mismatching {bad_rows}; '
           f'boundary states {states} mismatching {bad_states}')
     return bad_rows == 0 and bad_states == 0
 
 
-def run_spec(H, HV, KT=4, K=128, V=128):
+def run_spec(H, HV, KT=4, K=128, V=128, inplace=False):
     """Speculative windows: KT tokens per slot per step, the first `acc` of them the true next tokens, the rest
     wrong drafts (the same positions of another slot's sequence); acc is random in 1..window. Each step one random
     slot is idle (nrows = 0, nothing accepted), as in a batch where it has nothing to verify."""
@@ -105,7 +129,7 @@ def run_spec(H, HV, KT=4, K=128, V=128):
             true = torch.stack([seqs[n][x][0, int(pos[n]):int(pos[n]) + KT] for n in range(N)])
             draft = torch.stack([seqs[(n + 1) % N][x][0, int(pos[n]):int(pos[n]) + KT] for n in range(N)])
             win.append(torch.where(keep.view(N, KT, *([1] * (true.dim() - 2))), true, draft))
-        o = dec.step(*win, pos, nrows, scale)
+        o = in_place(dec, win, pos, nrows, scale, KT) if inplace else dec.step(*win, pos, nrows, scale)
         for n in range(N):
             t0, a = int(pos[n]), int(acc[n])
             bad_rows += int((o[n, :a] != ref[n][0][0, t0:t0 + a]).flatten(1).any(1).sum()); rows += a
@@ -116,7 +140,7 @@ def run_spec(H, HV, KT=4, K=128, V=128):
             bad_states += int(not torch.equal(dec.S[n], Sref)); states += 1
         dec.commit(pos, acc)
         pos = pos + acc
-    print(f'spec window KT={KT}          H={H:2d} HV={HV:2d} K={K:3d} V={V:3d}: accepted rows {rows} mismatching {bad_rows}; '
+    print(f'spec window KT={KT:<2d}{" rows" if inplace else "     "}    H={H:2d} HV={HV:2d} K={K:3d} V={V:3d}: accepted rows {rows} mismatching {bad_rows}; '
           f'boundary states {states} mismatching {bad_states}')
     return bad_rows == 0 and bad_states == 0
 
@@ -154,9 +178,11 @@ if __name__ == '__main__':
     cases = [('exact_decode', dict(H=H, HV=HV, cfg=cfg)) for cfg in ((2, 4, 64), (2, 4, 128))
              for H, HV in ((32, 32), (16, 16), (16, 32))]
     cases += [('exact_decode', dict(H=16, HV=16, K=64, V=64)), ('exact_decode', dict(H=16, HV=32, beta_dtype=torch.float32))]
+    cases += [('exact_decode', dict(H=16, HV=32, inplace=True))]
     cases += [('exact_decode_ref', dict(H=H, HV=HV)) for H, HV in ((32, 32), (16, 32))]
     ok = all([run(impl, **kw) for impl, kw in cases])
     ok = all([run_spec(H, HV, KT) for H, HV, KT in ((32, 32, 4), (16, 32, 4), (32, 32, 16), (16, 32, 16))]) and ok
+    ok = all([run_spec(16, 32, KT, inplace=True) for KT in (5, 16)]) and ok
     ok = run_fold() and ok
     print('PASS' if ok else 'FAIL')
     sys.exit(0 if ok else 1)
