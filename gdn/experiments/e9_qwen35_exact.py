@@ -41,8 +41,8 @@ def v4_forward(self, hidden_states, cache_params=None, attention_mask=None, **kw
         st['dec'].load(0, Sb, b, q[0, b:n], k[0, b:n], v[0, b:n], g[0, b:n], beta[0, b:n])
     else:
         pos = torch.tensor([t0], device=q.device, dtype=torch.int32)
-        core = st['dec'].step(q[:, 0].contiguous(), k[:, 0].contiguous(), v[:, 0].contiguous(), g[:, 0].contiguous(),
-                              beta[:, 0].contiguous(), pos, self.head_k_dim ** -0.5)[None]
+        core = st['dec'].decode(q[:, 0].contiguous(), k[:, 0].contiguous(), v[:, 0].contiguous(), g[:, 0].contiguous(),
+                                beta[:, 0].contiguous(), pos, self.head_k_dim ** -0.5)[None]
     st['t'] = t0 + n
     core = self.norm(core.reshape(-1, self.head_v_dim), z.reshape(-1, self.head_v_dim)).reshape(bsz, n, -1)
     return self.out_proj(core)

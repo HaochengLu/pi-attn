@@ -49,6 +49,9 @@ Notes recorded while setting up the RTX 4090 D dev box (driver 535 / CUDA 12.2):
   `env.sh` unsets it.
 - Python is fetched from a mirror (`UV_PYTHON_INSTALL_MIRROR`); the FlashInfer JIT cache
   lives in `env/flashinfer-home`.
+- On the A800 box pypi.org is slow or unreachable directly: set `HTTP_PROXY=HTTPS_PROXY=100.68.165.249:3128`
+  with `NO_PROXY=mirrors.ivolces.com` (the proxy cannot tunnel to the internal mirror); astral.sh is unreachable, so
+  `setup_env.sh` takes uv from its PyPI wheel.
 
 ## Running
 

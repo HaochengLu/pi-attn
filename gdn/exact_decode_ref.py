@@ -9,7 +9,7 @@ A step writes the new token into row r and runs one kernel that re-executes fla'
   cumsum(g)*log2(e) -> kkt + forward substitution + block merge (I+A)^-1 -> w, u -> v_new = u - w Hb -> o row r.
 On r == 63 the same kernel folds the chunk into S exactly like fwd_h's chunk loop and refreshes Hb.
 Every expression below is copied from the fla kernel it mirrors (named in the comments) with the same operand
-dtypes and the same tl.dot shapes, so per-element arithmetic is identical; tests/e5 checks it bitwise.
+dtypes and the same tl.dot shapes, so per-element arithmetic is identical; gdn/test_exact.py checks it bitwise.
 
 This version recomputes the whole partial chunk every step (stateless apart from the inputs): it is the
 readable statement of the algorithm and the cross-check for exact_decode.py, not the fast path."""
