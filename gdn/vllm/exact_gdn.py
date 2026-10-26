@@ -28,8 +28,11 @@ with speculative ones kills the engine on an assertion and their conv state is n
 request has a draft vLLM sends no speculative metadata and runs its plain conv on the decode requests (alone, or with
 prefill requests in the same batch), which takes the previous window's rejected drafts as conv history (handled here
 by rolling the conv state back with the acceptance derived from positions); with speculative decoding the mamba block
-table has 1 + drafts columns, so a request's slot column is a strided view (exact_decode compacts it); a one-token
-prompt is run as a decode from whatever state its slot holds (refused in vLLM's input validation).
+table has 1 + drafts columns, so a request's slot column is a strided view (exact_decode compacts it); a sequence
+whose first chunk has one token (a one-token prompt, or a prompt the token budget cuts that way) is run as a decode
+from whatever state its slot holds (such slots are cleared here); vLLM's count of
+accepted tokens is stale for a request its scheduler left out of a step, so the speculative conv update is rolled back
+by the acceptance derived from positions here, as GDN is.
 
 Not handled: prefix caching, tensor parallelism (asserted), drafters other than n-gram (their drafts are not cut at
 the 64-token boundary; a window crossing it trips a device-side assertion), and full CUDA graphs with speculative
@@ -39,9 +42,12 @@ env/fla_pkgs and gdn/, mamba_ssm_cache_dtype='float32', enable_prefix_caching=Fa
 Decode equals the engine's prefill bitwise only with batch-invariant dense ops as well (VLLM_BATCH_INVARIANT=1,
 attention_backend='FLASH_ATTN'); without them GDN is exact and the dense ops are not.
 EXACT_GDN_DEBUG=1 cross-checks every speculative window and every fold against fla's chunk program (slow)."""
+import itertools
 import os
 
 import torch
+import triton
+import triton.language as tl
 
 BT = 64
 DEBUG = os.environ.get('EXACT_GDN_DEBUG') == '1'
@@ -53,7 +59,6 @@ def install():
     import vllm.model_executor.layers.mamba.mamba_utils as mu
     import vllm.model_executor.models.qwen3_next as qn
     from vllm.v1.spec_decode.ngram_proposer import NgramProposer
-    from vllm.v1.engine.input_processor import InputProcessor
     from exact_decode import state_layout, pin_fla_configs
 
     orig_shape = mu.MambaStateShapeCalculator.gated_delta_net_state_shape.__func__
@@ -95,19 +100,6 @@ def install():
 
     NgramProposer.propose = propose
 
-    orig_validate = InputProcessor._validate_prompt_len
-
-    def _validate_prompt_len(self, prompt_len, prompt_type):
-        """vLLM 0.17.1 runs a one-token prompt as a decode (query length 1), from whatever state its slot holds (mamba
-        slots are not cleared for new requests); the request is refused where vLLM refuses an empty prompt, so the
-        caller gets the error and the engine runs on."""
-        if prompt_len == 1 and prompt_type == 'decoder':
-            raise ValueError('exact GDN: prompts of one token are not supported (vLLM would decode them from a stale '
-                             'state slot)')
-        return orig_validate(self, prompt_len, prompt_type)
-
-    InputProcessor._validate_prompt_len = _validate_prompt_len
-
 
 def fix_vllm_mixed_spec_decodes():
     """vLLM 0.17.1 bug fix, applied to stock and exact runs alike. With n-gram drafting some decode requests have no
@@ -118,7 +110,8 @@ def fix_vllm_mixed_spec_decodes():
     as history). The fix: the runner marks every request past its prompt as a speculative request with 0 or more drafts
     (it knows prompt lengths; the builder does not), and the builder's assertion is dropped for what remains, a
     one-token chunk of a prompt (query length 1, so vLLM counts it as a decode). For the exact layer the metadata also
-    keeps the batch's seq_lens and query_start_loc (the runner's persistent buffers, so valid inside CUDA graphs) and,
+    keeps the batch's seq_lens and query_start_loc (the runner's persistent buffers, so valid inside CUDA graphs), the
+    host copy of the non-speculative entries' query_start_loc, and,
     in mixed batches, the batch index of every speculative and non-speculative entry: the exact layer derives each
     request's absolute position from them instead of the accepted counts, which vLLM passes only in steps that have
     drafts."""
@@ -151,10 +144,12 @@ def fix_vllm_mixed_spec_decodes():
     assert n_sum == 1, 'vLLM GDN builder changed; re-check the fix'
     src = src.replace("    return attn_metadata\n", """    attn_metadata.seq_lens_all = m.seq_lens
     attn_metadata.qsl_all = m.query_start_loc
+    attn_metadata.non_spec_qsl_cpu = non_spec_query_start_loc_cpu
     mixed = spec_sequence_masks is not None and (num_prefills > 0 or num_decodes > 0)
     _dev = m.query_start_loc.device
-    attn_metadata.spec_req_idx = torch.nonzero(spec_sequence_masks_cpu[:m.num_reqs]).flatten().to(_dev) if mixed else None
-    attn_metadata.non_spec_req_idx = torch.nonzero(~spec_sequence_masks_cpu[:m.num_reqs]).flatten().to(_dev) if mixed else None
+    _mask = spec_sequence_masks_cpu[:m.num_reqs] if mixed else None
+    attn_metadata.spec_req_idx = torch.nonzero(_mask).flatten().to(_dev) if mixed else None
+    attn_metadata.non_spec_req_idx = torch.nonzero(~_mask).flatten().to(_dev) if mixed else None
     return attn_metadata
 """)
     ns = {}
@@ -218,44 +213,43 @@ def _forward_core_exact(self, mixed_qkv, b, a, core_attn_out):
 
     # 1. conv1d and gating, exactly as stock vLLM (its prefill and decode conv kernels agree bitwise)
     if spec:
+        # vLLM's speculative conv update, rolled back by the previous window's acceptance derived from positions (as
+        # for GDN): vLLM's own count is stale for a request it did not schedule in some step (its persistent batch
+        # drops and re-adds it)
+        nsd = md.num_spec_decodes
+        sl_s = md.spec_state_indices_tensor[:, 0][:nsd]
+        idx_s = _slot_index(sl_s, st['ws'])
+        acc_s = torch.where(st['wn'][idx_s] > 0, _positions(md, None if md.spec_req_idx is None else
+                                                            md.spec_req_idx[:nsd], nsd) - st['ws'][idx_s], 1)
         x_spec = mixed_qkv if only_spec else mixed_qkv.index_select(0, md.spec_token_indx)
         x_spec = causal_conv1d_update(x_spec, conv_state, conv_w, self.conv1d.bias, self.activation,
-                                      conv_state_indices=md.spec_state_indices_tensor[:, 0][:md.num_spec_decodes],
-                                      num_accepted_tokens=md.num_accepted_tokens,
+                                      conv_state_indices=sl_s, num_accepted_tokens=acc_s.to(torch.int32),
                                       query_start_loc=md.spec_query_start_loc,
                                       max_query_len=1 + self.num_spec, validate_data=False)
     x_non = None if only_spec else (mixed_qkv if not spec else mixed_qkv.index_select(0, md.non_spec_token_indx))
-    nd, npf = md.num_decodes, md.num_prefills
-    if nd > 0 and self.num_spec > 0:
-        # a speculative engine in a step in which no request has drafts (so vLLM sends none of its speculative
-        # metadata): vLLM would run its plain conv on the decode requests, which takes the previous window's rejected
-        # drafts as history; roll the conv state back by the previous window's acceptance instead (decodes come first)
-        sl = md.non_spec_state_indices_tensor[:nd]
-        idx = _slot_index(sl, st['ws'])
-        pos = _positions(md, None if md.non_spec_req_idx is None else md.non_spec_req_idx[:nd], nd)
-        acc = torch.where(st['wn'][idx] > 0, pos - st['ws'][idx], 1).to(torch.int32)
-        x_dec = causal_conv1d_update(x_non[:nd], conv_state, conv_w, self.conv1d.bias, self.activation,
-                                     conv_state_indices=sl, num_accepted_tokens=acc,
-                                     query_start_loc=torch.arange(nd + 1, device=x_non.device, dtype=torch.int32),
-                                     max_query_len=1 + self.num_spec, validate_data=False)
-        if npf > 0:                                                  # the prefill requests after them
-            qsl = md.non_spec_query_start_loc[nd:nd + npf + 1]
-            x_pre = causal_conv1d_fn(x_non[nd:qsl[-1]].transpose(0, 1), conv_w, self.conv1d.bias,
-                                     activation=self.activation, conv_states=conv_state,
-                                     has_initial_state=md.has_initial_state[nd:nd + npf],
-                                     cache_indices=md.non_spec_state_indices_tensor[nd:nd + npf],
-                                     query_start_loc=qsl - nd, metadata=None).transpose(0, 1)
-            x_dec = torch.cat([x_dec, x_pre, x_non[qsl[-1]:]])
-        x_non = x_dec
-    elif npf > 0:
-        x_non = causal_conv1d_fn(x_non.transpose(0, 1), conv_w, self.conv1d.bias, activation=self.activation,
-                                 conv_states=conv_state, has_initial_state=md.has_initial_state,
-                                 cache_indices=md.non_spec_state_indices_tensor,
-                                 query_start_loc=md.non_spec_query_start_loc, metadata=md).transpose(0, 1)
-    elif nd > 0:
-        x_non = causal_conv1d_update(x_non, conv_state, conv_w, self.conv1d.bias, self.activation,
-                                     conv_state_indices=md.non_spec_state_indices_tensor[:md.num_actual_tokens],
-                                     validate_data=True)
+    ns = _split_non_spec(md, self.num_spec) if x_non is not None and md.num_decodes + md.num_prefills > 0 else None
+    if ns is not None:
+        if ns['one'] is None or ns['one'].numel():
+            _reset_fresh(st, md, ns, kv[0])
+        if md.num_prefills == 0:                                     # one-token entries only (no host sync)
+            x_non = _conv_one(self, st, md, x_non, conv_state, conv_w, ns)
+        elif self.num_spec == 0:
+            # no rollback to do: vLLM's prefill conv over every entry, one-token ones included, with its metadata
+            x_non = causal_conv1d_fn(x_non.transpose(0, 1), conv_w, self.conv1d.bias, activation=self.activation,
+                                     conv_states=conv_state, has_initial_state=md.has_initial_state,
+                                     cache_indices=md.non_spec_state_indices_tensor,
+                                     query_start_loc=md.non_spec_query_start_loc, metadata=md).transpose(0, 1)
+        else:
+            x_out = torch.empty_like(x_non)
+            if ns['one'].numel():
+                x_out[ns['tok_one']] = _conv_one(self, st, md, x_non[ns['tok_one']], conv_state, conv_w, ns)
+            if ns['long'].numel():
+                x_out[ns['tok_long']] = causal_conv1d_fn(
+                    x_non[ns['tok_long']].transpose(0, 1), conv_w, self.conv1d.bias, activation=self.activation,
+                    conv_states=conv_state, has_initial_state=md.has_initial_state[ns['long']],
+                    cache_indices=md.non_spec_state_indices_tensor[ns['long']], query_start_loc=ns['qsl_long'],
+                    metadata=None).transpose(0, 1)
+            x_non = x_out
     g, beta = fused_gdn_gating(self.A_log, a, b, self.dt_bias)       # [1, L, HV] fp32, [1, L, HV] b.dtype
     scale = self.head_k_dim ** -0.5
     out = core_attn_out[:n_tok]
@@ -268,11 +262,11 @@ def _forward_core_exact(self, mixed_qkv, b, a, core_attn_out):
             out.copy_(o_s)
         else:
             out.index_copy_(0, md.spec_token_indx, o_s)
-    if x_non is not None and (md.num_prefills > 0 or md.num_decodes > 0):
+    if ns is not None:
         g_n, b_n = (g, beta) if not spec else (g.index_select(1, md.non_spec_token_indx),
                                                beta.index_select(1, md.non_spec_token_indx))
         o_n = torch.zeros(x_non.shape[0], self.num_v_heads, self.head_v_dim, device=x_non.device, dtype=out.dtype)
-        _non_spec(self, st, md, x_non, g_n[0], b_n[0], scale, o_n)
+        _non_spec(self, st, md, x_non, g_n[0], b_n[0], scale, o_n, ns)
         if spec:
             out.index_copy_(0, md.non_spec_token_indx, o_n)
         else:
@@ -311,38 +305,145 @@ def _spec_windows(self, st, md, x, g, beta, scale):
     return out[:L]
 
 
-def _non_spec(self, st, md, x, g, beta, scale, out):
-    """Plain decode requests (one token each, every token accepted) and prefill requests."""
+def _split_non_spec(md, num_spec):
+    """The non-speculative entries, split into one-token entries (decodes, or one-token chunks of a prompt: run as
+    decodes) and longer ones (prompt chunks: prefill). vLLM orders a batch by query length <= its reorder threshold:
+    1 without speculation, so the one-token entries come first (ns['one'] is None: the first num_decodes entries, rows
+    0..); 1 + drafts with speculation, so a short prompt chunk can precede a one-token entry and the entries are split
+    by query length. Computed once per step (cached on the metadata the layers share), from the builder's host copy of
+    query_start_loc (no sync)."""
+    ns = md.__dict__.get('_exact_ns')
+    if ns is not None:
+        return ns
+    ns = {'one': None}
+    if md.num_prefills > 0:
+        n = md.num_decodes + md.num_prefills
+        qsl = md.non_spec_qsl_cpu[:n + 1].tolist()
+        lens = [qsl[i + 1] - qsl[i] for i in range(n)]
+        dev = md.non_spec_query_start_loc.device
+        t = lambda xs: torch.tensor(xs, device=dev, dtype=torch.long)
+        if num_spec == 0:
+            long = list(range(md.num_decodes, n))
+        else:
+            one = [i for i in range(n) if lens[i] == 1]
+            long = [i for i in range(n) if lens[i] > 1]
+            ns.update(one=t(one), tok_one=t([qsl[i] for i in one]),
+                      tok_long=t([r for i in long for r in range(qsl[i], qsl[i + 1])]),
+                      qsl_long=torch.tensor([0] + list(itertools.accumulate(lens[i] for i in long)), device=dev,
+                                            dtype=torch.int32))
+        ns.update(long=t(long), long_host=long, qsl_host=qsl)
+    md._exact_ns = ns
+    return ns
+
+
+def _one_entries(md, ns, n_rows):
+    """(slots, batch request indices, count) of the one-token entries (n_rows: their count when they are the first
+    entries)."""
+    slots = md.non_spec_state_indices_tensor
+    if ns['one'] is None:
+        n = n_rows
+        return slots[:n], (None if md.non_spec_req_idx is None else md.non_spec_req_idx[:n]), n
+    ent = ns['one']
+    return slots[ent], (ent if md.non_spec_req_idx is None else md.non_spec_req_idx[ent]), ent.numel()
+
+
+@triton.jit
+def _clear_new_sequences(slots, req, seq_lens, qsl, n_req, S, sS, nS, Hb, sHb, nHb, conv, sconv, nconv, pending, ws, wn,
+                         HAS_REQ: tl.constexpr, BLOCK: tl.constexpr):
+    """For each one-token entry i: if it is at position 0 (seq_len - query_len of its request), clear its slot: boundary
+    state and its bf16 copy, conv history, fold flag, window counters. Other entries return at once."""
+    i = tl.program_id(0)
+    slot = tl.load(slots + i).to(tl.int64)
+    if slot < 0:                                   # CUDA-graph padding
+        return
+    if HAS_REQ:
+        r = tl.load(req + i).to(tl.int64)
+    else:
+        r = i.to(tl.int64)
+    r = tl.minimum(r, n_req - 1)
+    if tl.load(seq_lens + r) - (tl.load(qsl + r + 1) - tl.load(qsl + r)) != 0:
+        return
+    o = tl.arange(0, BLOCK)
+    for s0 in range(0, nS, BLOCK):
+        tl.store(S + slot * sS + s0 + o, tl.zeros([BLOCK], S.dtype.element_ty), mask=s0 + o < nS)
+    for s0 in range(0, nHb, BLOCK):
+        tl.store(Hb + slot * sHb + s0 + o, tl.zeros([BLOCK], Hb.dtype.element_ty), mask=s0 + o < nHb)
+    for s0 in range(0, nconv, BLOCK):
+        tl.store(conv + slot * sconv + s0 + o, tl.zeros([BLOCK], conv.dtype.element_ty), mask=s0 + o < nconv)
+    tl.store(pending + slot, 0)
+    tl.store(ws + slot, 0)
+    tl.store(wn + slot, 0)
+
+
+def _reset_fresh(st, md, ns, conv_rows):
+    """A one-token entry at position 0 starts a new sequence (a prompt cut into a first chunk of one token by the token
+    budget, or a one-token prompt) and runs as a decode, from whatever its slot holds: vLLM does not clear mamba slots
+    for new requests. Such slots get the zero state, an empty conv history and no previous window. One launch per
+    layer, graph-capturable, no host sync; the row caches need no clearing (a sequence reads only rows it wrote)."""
+    sl, req, n = _one_entries(md, ns, md.num_decodes)
+    dec = st['one']
+    assert conv_rows[0].is_contiguous() and dec.S[0].is_contiguous() and dec.Hb[0].is_contiguous()
+    _clear_new_sequences[(n,)](
+        sl.to(torch.int32).contiguous(), req if req is not None else sl, md.seq_lens_all, md.qsl_all,
+        md.seq_lens_all.shape[0], dec.S, dec.S.stride(0), dec.S[0].numel(), dec.Hb, dec.Hb.stride(0), dec.Hb[0].numel(),
+        conv_rows, conv_rows.stride(0), conv_rows[0].numel(), dec.pending, st['ws'], st['wn'],
+        HAS_REQ=req is not None, BLOCK=1024)
+
+
+def _conv_one(self, st, md, x, conv_state, conv_w, ns):
+    """conv1d of the one-token entries x [n, dim]. In a speculative engine their previous step may have been a window
+    with rejected drafts, while vLLM's plain conv update takes the conv history as it stands (vLLM sends no speculative
+    metadata in a step without drafts, and one-token prompt chunks are never speculative): roll the history back by
+    the previous window's acceptance, derived from positions (1 when the last step was not a window)."""
+    from vllm.model_executor.layers.mamba.ops.causal_conv1d import causal_conv1d_update
+    sl, req, n = _one_entries(md, ns, x.shape[0])
+    if self.num_spec == 0:
+        return causal_conv1d_update(x, conv_state, conv_w, self.conv1d.bias, self.activation, conv_state_indices=sl,
+                                    validate_data=True)
+    idx = _slot_index(sl, st['ws'])
+    pos = _positions(md, req, n)
+    acc = torch.where(st['wn'][idx] > 0, pos - st['ws'][idx], 1).to(torch.int32)
+    return causal_conv1d_update(x, conv_state, conv_w, self.conv1d.bias, self.activation, conv_state_indices=sl,
+                                num_accepted_tokens=acc,
+                                query_start_loc=torch.arange(n + 1, device=x.device, dtype=torch.int32),
+                                max_query_len=1 + self.num_spec, validate_data=False)
+
+
+def _non_spec(self, st, md, x, g, beta, scale, out, ns):
+    """Non-speculative entries: one-token entries (every token accepted) and prompt chunks (prefill)."""
     dec, ws, wn = st['one'], st['ws'], st['wn']
     q, k, v = self.rearrange_mixed_qkv(x)
-    nd, npf = md.num_decodes, md.num_prefills
-    slots = md.non_spec_state_indices_tensor
-    if nd > 0 and 'win' in st:                                       # speculative engine, a step without drafts:
-        win = st['win']                                              # one-token windows on the window path
-        sl = slots[:nd]
+    if ns['one'] is None:
+        n = md.num_decodes
+        rows = slice(0, n)
+    else:
+        n = ns['one'].numel()
+        rows = ns['tok_one']
+    if n > 0:
+        sl, req, _ = _one_entries(md, ns, n)
         idx = _slot_index(sl, ws)
-        pos = _positions(md, None if md.non_spec_req_idx is None else md.non_spec_req_idx[:nd], nd)
-        acc = torch.where(wn[idx] > 0, pos - ws[idx], 0)
-        win.commit(ws[idx], acc, slots=sl)
-        pad = lambda t: torch.cat([t[:nd, None], t[:nd, None].new_zeros(nd, win.KT - 1, *t.shape[1:])], 1).contiguous()
-        ones = torch.ones_like(pos)
-        out[:nd] = win.step(pad(q[0]), pad(k[0]), pad(v[0]), pad(g), pad(beta), pos, ones, scale, slots=sl)[:, 0]
+        if 'win' in st:                                              # speculative engine: one-token windows
+            win = st['win']
+            pos = _positions(md, req, n)
+            acc = torch.where(wn[idx] > 0, pos - ws[idx], 0)
+            win.commit(ws[idx], acc, slots=sl)
+            pad = lambda t: torch.cat([t[rows][:, None], t[rows][:, None].new_zeros(n, win.KT - 1, *t.shape[1:])],
+                                      1).contiguous()
+            ones = torch.ones_like(pos)
+            out[rows] = win.step(pad(q[0]), pad(k[0]), pad(v[0]), pad(g), pad(beta), pos, ones, scale, slots=sl)[:, 0]
+        else:                                                        # plain decode, chunk folded on its 64th row
+            pos = ws[idx] + wn[idx]
+            out[rows] = dec.decode(q[0, rows], k[0, rows], v[0, rows], g[rows], beta[rows], pos, scale, slots=sl)
+            ones = torch.ones_like(pos)                              # a device tensor: capturable in a CUDA graph
         ws[idx] = pos
         wn[idx] = ones
-    elif nd > 0:                                                     # vLLM orders decode requests first
-        sl = slots[:nd]
-        idx = _slot_index(sl, ws)
-        pos = ws[idx] + wn[idx]
-        out[:nd] = dec.decode(q[0, :nd], k[0, :nd], v[0, :nd], g[:nd], beta[:nd], pos, scale, slots=sl)
-        ws[idx] = pos
-        wn[idx] = torch.ones_like(pos)                               # a device tensor: capturable in a CUDA graph
-    if npf > 0:
-        _prefill(self, st, md, q, k, v, g, beta, scale, out, nd, npf)
+    if ns.get('long_host'):
+        _prefill(self, st, md, q, k, v, g, beta, scale, out, ns)
 
 
-def _prefill(self, st, md, q, k, v, g, beta, scale, out, nd, npf):
-    """Prefill requests nd .. nd+npf-1 in one go. Request i adds tokens at absolute positions p0 .. end-1; its slot
-    holds the state at b0 = 64 * (p0 // 64) and the rows b0 .. p0-1 (a new request: p0 = 0, and its slot is cleared).
+def _prefill(self, st, md, q, k, v, g, beta, scale, out, ns):
+    """The prompt chunks (entries ns['long']) in one go. Request i adds tokens at absolute positions p0 .. end-1; its
+    slot holds the state at b0 = 64 * (p0 // 64) and the rows b0 .. p0-1 (a new request: p0 = 0, and its slot is cleared).
     For the requests that reach a new boundary b1 = 64 * (end // 64), fla's chunk program runs, varlen over them, on
     b0 .. b1 (cached rows in front of the new tokens), giving their rows p0 .. b1-1 and the fp32 state at b1. The rows
     after the last boundary (b1 .. end-1, or p0 .. end-1 for a request within one chunk) are replayed through
@@ -355,21 +456,25 @@ def _prefill(self, st, md, q, k, v, g, beta, scale, out, nd, npf):
     dec, ws, wn = st['one'], st['ws'], st['wn']
     dev = q.device
     W = 16
-    slots_d = md.non_spec_state_indices_tensor[nd:nd + npf]
-    init_d = md.has_initial_state[nd:nd + npf]
-    qsl = md.non_spec_query_start_loc[nd:nd + npf + 1]
+    slots_d = md.non_spec_state_indices_tensor[ns['long']]
+    init_d = md.has_initial_state[ns['long']]
     sl_l = slots_d.long()
     if 'win' in st:
-        # speculative engine: a one-token chunk of a prompt runs as a one-token window (vLLM counts it as a decode),
-        # whose acceptance would be committed at the slot's next window; commit it here (all of it, prompt tokens) and
-        # fold the chunk it may have completed before reading the boundary state
+        # speculative engine: a one-token chunk of a prompt runs as a one-token window, whose acceptance would be
+        # committed at the slot's next window; commit it here (all of it, prompt tokens) and fold the chunk it may have
+        # completed before reading the boundary state
         st['win'].commit(ws[sl_l], torch.where(init_d, wn[sl_l], 0), slots=slots_d)
-        if DEBUG:
-            DEBUG_STATS['prefill_folds'] = DEBUG_STATS.get('prefill_folds', 0) + int((dec.pending[sl_l] * init_d).sum())
+        if DEBUG:                                                    # how often these cases occur
+            add = lambda key, v: DEBUG_STATS.update({key: DEBUG_STATS.get(key, 0) + int(v)})
+            add('prefill_after_window', ((wn[sl_l] > 0) & init_d).sum())
+            add('prefill_folds', (dec.pending[sl_l] * init_d).sum())
         dec.fold(slots_d)
     p0_d = torch.where(init_d, ws[sl_l] + wn[sl_l], 0)
-    s0, e0, slot, p0, init = torch.stack([qsl[:-1], qsl[1:], slots_d, p0_d.to(slots_d.dtype),
-                                          init_d.to(slots_d.dtype)]).cpu().numpy().astype(np.int64)  # host sync
+    slot, p0, init = torch.stack([slots_d, p0_d.to(slots_d.dtype),
+                                  init_d.to(slots_d.dtype)]).cpu().numpy().astype(np.int64)       # host sync
+    qh = ns['qsl_host']
+    s0 = np.array([qh[i] for i in ns['long_host']], dtype=np.int64)
+    e0 = np.array([qh[i + 1] for i in ns['long_host']], dtype=np.int64)
     end = p0 + e0 - s0
     b0, b1 = p0 - p0 % BT, end - end % BT
     cross = np.nonzero(b1 > b0)[0]                                   # requests reaching a new boundary

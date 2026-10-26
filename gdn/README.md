@@ -8,7 +8,7 @@ is on. This directory makes GDN
 decode execute the trainer's own program: every decoded token, one per step or verified in a speculative window,
 gets, bitwise, the row fla 0.5.0's chunked forward produces for it, with the trainer's kernel unchanged and with
 rejected drafts rolled back for free. In vLLM 0.17.1 (`vllm/exact_gdn.py`), with vLLM's batch-invariant dense ops,
-this makes Qwen3.5's decode bitwise the engine's own prefill, with n-gram speculative decoding on or off, at 0.99x the
+this makes Qwen3.5's decode bitwise the engine's own prefill, with n-gram speculative decoding on or off, at 0.98x the
 throughput of stock vLLM with the same dense ops (0.80x of its default ones) and a 3.2x smaller token pool (result 5).
 
 Numbers are from the A800-80GB box (sm_80, driver 535), Triton 3.7.1, torch 2.13 (engine venv), fla 0.5.0
@@ -148,54 +148,61 @@ committing each window's acceptance at the start of the next step. Projections, 
   alone leaves the dense ops' batch-shape effects; together decode is the engine's prefill. With both on, exact GDN is
   2048/2048 in every further configuration, and its hash is the same with n-gram speculation (4 drafts) as without:
   whole prefill (0.8B `715ac27bc918d55b`, 4B `c591b7426314faf2`), prefill chunked into 128-token steps so prompts
-  continue from a previous chunk's state (`586e6a6d6104a293`, `959d80f8ca51e8e8`), prompts of 10-55 tokens on slots
-  that held finished requests (`dd565b7655ed0b75`, `d149909481210805`), and prompts of 64-256 tokens that end on a
-  boundary, so decoding and drafting start a new chunk (`a4355a87e70ecf39`, `1876eb1a786f5b26`). This is the engine's
-  decode equal to the engine's prefill; equality with a trainer further needs the trainer to run the same projections,
-  conv, gating and norms (vLLM's here) and the same fla setup (see "What the canonical program is"). Stock GDN with
-  speculation stays at 311/2048 and 178/2048; its hash changes on the A800 (`0982c0620e6f8a64` vs `94d404da35349e42`
-  for 0.8B, `60207f493f0ec5f8` vs `f6ffbb278027c1a6` for 4B) and on the RTX 4090 for 0.8B, not for 4B. Stock vLLM
-  verifies drafts with the same recurrent kernel it decodes with, so these changes are not from GDN's verification
-  arithmetic; we did not trace them. On the RTX 4090 D (`gdn/vllm/selfcheck.log`) every exact-GDN run with
-  batch-invariant dense ops is 2048/2048 too, with the same hash with and without speculation, and every 0.8B hash
-  with batch-invariant dense ops (stock or exact) equals the A800's: for 0.8B the engine's outputs are cross-GPU
-  bitwise. For 4B only the chunked hash matches across the GPUs, and stock 4B already differs (`f6ffbb278027c1a6` vs
-  `9ae6d50e92bcb74b`): vLLM's batch-invariant dense ops are not cross-GPU invariant at 4B's shapes. Changing the
-  prefill chunk size changes the hash for a pure-attention model too (Qwen3-0.6B,
-  `selfcheck_qwen3_attention_only.log`), where speculation does not: the chunk schedule is an input of vLLM's
-  attention bits, not of exact GDN's.
+  continue from a previous chunk's state (`586e6a6d6104a293`, `959d80f8ca51e8e8`), prompts of 1-46 tokens on slots
+  that held finished requests (`00ac5759410e00b4`, `474320aa850c66c1`), and prompts of 64-256 tokens that end on a
+  boundary, so decoding and drafting start a new chunk (`a4355a87e70ecf39`, `1876eb1a786f5b26`); and 33 requests, 32
+  of 2-token prompts and one of 200, with 34 tokens per step, so the long prompt is prefilled a few tokens at a time
+  while the others decode, including one-token chunks, one of which completes a 64-token chunk (`e0eee150bdc01ba8`,
+  `6551ceabe9686fbd`; the debug counters in the log show the chunk-completing case occurred in the 0.8B run,
+  `prefill_folds` 18, once per GDN layer). This is the engine's decode equal to the engine's prefill; equality with a
+  trainer further needs the trainer to run the same projections, conv, gating and norms (vLLM's here) and the same fla
+  setup (see "What the canonical program is"). Stock GDN with speculation stays at 311/2048 and 178/2048; its hash
+  changes on the A800 (`0982c0620e6f8a64` vs `94d404da35349e42` for 0.8B, `60207f493f0ec5f8` vs `f6ffbb278027c1a6` for
+  4B) and on the RTX 4090 for 0.8B, not for 4B. Stock vLLM verifies drafts with the same recurrent kernel it decodes
+  with, so these changes are not from GDN's verification arithmetic; we did not trace them. On the RTX 4090 D
+  (`gdn/vllm/selfcheck.log`) every exact-GDN run with batch-invariant dense ops is 2048/2048 too, with the same hash
+  with and without speculation, and every 0.8B hash with batch-invariant dense ops (stock or exact) equals the A800's:
+  for 0.8B the engine's outputs are cross-GPU bitwise. For 4B only the chunked hash matches across the GPUs, and stock
+  4B already differs (`f6ffbb278027c1a6` vs `9ae6d50e92bcb74b`): vLLM's batch-invariant dense ops are not cross-GPU
+  invariant at 4B's shapes. Changing the prefill chunk size changes the hash for a pure-attention model too
+  (Qwen3-0.6B, `selfcheck_qwen3_attention_only.log`), where speculation does not: the chunk schedule is an input of
+  vLLM's attention bits, not of exact GDN's.
 - Throughput (`vllm/throughput.py`, `throughput.log`; Qwen3.5-4B, 256 requests of 200 prompt tokens, 256 new tokens
   each, submitted at once, after an identical warm-up):
 
   | | stock | exact | exact / stock | KV-cache tokens (stock / exact) |
   |---|---|---|---|---|
-  | default | 6444 tok/s | 6383 tok/s | 0.99x | 415,832 / 129,328 |
-  | batch-invariant dense ops | 5216 tok/s | 5163 tok/s | 0.99x | 415,360 / 129,328 |
-  | n-gram speculation (piecewise graphs) | 4490 tok/s | 3743 tok/s | 0.83x | 401,672 / 127,440 |
+  | default | 6440 tok/s | 6371 tok/s | 0.99x | 415,832 / 129,328 |
+  | batch-invariant dense ops | 5220 tok/s | 5135 tok/s | 0.98x | 415,360 / 129,328 |
+  | n-gram speculation (piecewise graphs) | 4440 tok/s | 3478 tok/s | 0.78x | 401,672 / 127,440 |
 
-  Bitwise needs the batch-invariant dense ops, so the exact configuration runs at 0.99x of stock with them and 0.80x
+  Bitwise needs the batch-invariant dense ops, so the exact configuration runs at 0.98x of stock with them and 0.80x
   of stock's default. The cost of exactness is memory: the pool holds 3.2x fewer tokens (274 instead of 881 requests
   of this length); with 256 requests it does not bind in this benchmark, at higher load it would cap the batch. With
   speculation vLLM keeps 1 + 4 states per request and exact GDN one, so the gap narrows (270 vs 213 requests). On
   this text n-gram drafting slows stock vLLM too.
-- vLLM 0.17.1 issues hit on the way (found by failing self-checks or hash mismatches, the one-token case by reading
-  vLLM's GDN metadata builder): the runner marks decode requests without drafts like prefill requests, so a batch
-  mixing them with speculative ones kills the engine on an assertion, and their conv state is not rolled back by the
-  previous window's acceptance (stock too; `fix_vllm_mixed_spec_decodes` marks every request past its prompt as
-  speculative with 0+ drafts); in a step where no request has a draft, vLLM sends no speculative metadata and runs
-  its plain conv update on decode requests (exact_gdn rolls the conv state back by the acceptance it derives from
-  positions; `check_conv_spec.log` checks the conv orders this produces); with speculation the mamba block table has
-  1 + drafts columns, so a request's slot column is a strided view; a one-token prompt runs as a decode from whatever
-  state its slot holds (refused in vLLM's input validation, so the caller gets the error); and vLLM reuses
-  torch.compile artifacts from its cache when the config hash matches, and an earlier artifact can be a different
-  program for the dense ops (4B, same config: two hashes depending on the cache), so the self-check compiles afresh.
-  Not reachable by the self-check (vLLM's scheduler did not produce it in any chunk-size we tried): a one-token chunk
-  of a prompt that completes a 64-token chunk, then more prefill; exact_gdn folds that chunk before the prefill
-  (`fold`), tested in `test_exact.py` ("fold without a following window").
+- vLLM 0.17.1 issues hit on the way (found by failing self-checks and hash mismatches): the runner marks decode
+  requests without drafts like prefill requests, so a batch mixing them with speculative ones kills the engine on an
+  assertion, and their conv state is not rolled back by the previous window's acceptance (stock too;
+  `fix_vllm_mixed_spec_decodes` marks every request past its prompt as speculative with 0+ drafts); in a step where no
+  request has a draft, vLLM sends no speculative metadata and runs its plain conv update on decode requests (exact_gdn
+  rolls the conv state back by the acceptance it derives from positions; `check_conv_spec.log` checks the conv orders
+  this produces); with speculation the mamba block table has 1 + drafts columns, so a request's slot column is a
+  strided view; a sequence whose first chunk has one token (a one-token prompt, or a longer one the token budget cuts
+  that way) runs as a decode from whatever state its slot holds, as vLLM does not clear mamba slots for new requests
+  (exact_gdn clears such slots in a graph-capturable kernel; found when the one-token-chunk run failed on the RTX
+  4090, whose small pool reuses slots); and vLLM reuses torch.compile artifacts from its cache when the config hash
+  matches, and an earlier artifact can be a different program for the dense ops (4B, same config: two hashes depending
+  on the cache), so the self-check compiles afresh; and vLLM's count of accepted tokens, which its speculative conv
+  update rolls back by, is stale for a request its scheduler left out of a step under token-budget pressure (found by
+  the one-token-chunk run), so exact_gdn derives the acceptance from positions for the conv as it does for GDN. A
+  one-token prompt chunk that completes a 64-token chunk is folded before the prefill that continues it (`fold`; also
+  tested directly in `test_exact.py`, "fold without a following window").
 - Limits: speculation needs piecewise CUDA graphs (stock vLLM 0.17.1 fails to capture full graphs for Qwen3.5 with
   n-gram drafts); prefix caching and tensor parallelism are not handled (TP is asserted); a drafter other than n-gram
   needs its drafts cut at the 64-token boundary as the n-gram proposer's are, otherwise a window crossing it trips a
-  device-side assertion.
+  device-side assertion; with speculation the GDN layer runs outside CUDA graphs (piecewise) and its per-step host
+  work is not optimized yet (0.78x).
 
 ## What the canonical program is
 
@@ -265,8 +272,8 @@ bitwise the tokens and log-probabilities of one-token decode and of the trainer'
 needs no state snapshots; on A800 its per-layer cost is 0.73-0.84x of vLLM 0.17.1's (inexact) speculative verifier
 at batch >= 32, with less state memory, and plain exact decode is 0.82-0.93x of vLLM's decode kernel at batch >= 32.
 Both are slower at batch 1-8 (1.1-2.0x). Integrated into vLLM 0.17.1, decode is bitwise the engine's own prefill for
-Qwen3.5-0.8B and 4B with n-gram speculation on or off, chunked prefill and slot reuse, at 0.99x the throughput of
-stock vLLM with the same batch-invariant dense ops (0.80x of its default ones) and 0.83x with speculation.
+Qwen3.5-0.8B and 4B with n-gram speculation on or off, chunked prefill and slot reuse, at 0.98x the throughput of
+stock vLLM with the same batch-invariant dense ops (0.80x of its default ones) and 0.78x with speculation.
 
 Not claimed: speed versus ReplaySSM-style or bf16-state kernels, or versus the packed/CUDA GDN decode kernels of vLLM
 releases after 0.17.1 (their wheels need CUDA 13, which driver 535 cannot run); anything on Hopper/Blackwell;

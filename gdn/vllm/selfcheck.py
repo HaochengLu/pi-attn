@@ -5,14 +5,16 @@ prompt_logprobs (prefill path). Counts the generated tokens whose decode-time fp
 prefill-time one bitwise, and whose greedy token equals the prefill's argmax. Dense ops can be made batch-invariant
 with VLLM_BATCH_INVARIANT=1 (FLASH_ATTN backend); with them on, what remains is the GDN layers.
 usage: [VLLM_BATCH_INVARIANT=1] python gdn/vllm/selfcheck.py MODEL_DIR [N_PROMPTS] [NEW] [--exact] [--spec]
-       [--prefill-chunk=T] [--short] [--aligned]
+       [--prefill-chunk=T] [--short] [--aligned] [--one-token-chunks]
 (--exact installs gdn/vllm/exact_gdn.py's patch first; --spec turns on n-gram speculative decoding with 4 drafts;
 CUDAGRAPH_MODE=PIECEWISE selects vLLM's piecewise CUDA graphs, needed with --spec: stock vLLM 0.17.1 fails to capture
 full graphs for Qwen3.5 with n-gram drafts; --prefill-chunk=T caps the tokens per step at T, so prompts are prefilled
 in chunks, continuing from the state a previous chunk left, and with T a multiple of 64 chunks end on chunk boundaries;
---short uses prompts of 10..10+3(N-1) tokens, generated after a batch of long prompts, so new requests whose prompt ends
+--short uses prompts of 1..1+3(N-1) tokens, generated after a batch of long prompts, so new requests whose prompt ends
 inside the first chunk take over slots that hold a finished request's state; --aligned uses prompts of 64, 128, 192, 256
-tokens, so prefill ends on a 64-token boundary and decoding starts a new chunk).
+tokens, so prefill ends on a 64-token boundary and decoding starts a new chunk; --one-token-chunks uses N-1 prompts of
+2 tokens and one of 200 with N+1 tokens per step, so while the short requests decode (served first) the long prompt
+advances a few tokens per step, including one-token chunks that complete a 64-token chunk).
 Also prints a hash of every generated token and the bits of its log-probability, to compare runs."""
 import hashlib, os, struct, sys
 
@@ -41,9 +43,12 @@ def main():
     tok = AutoTokenizer.from_pretrained(model)
     text = open(f'{model}/README.md').read()
     ids = tok(text).input_ids
-    short, aligned = '--short' in sys.argv, '--aligned' in sys.argv
-    plen = lambda i: 10 + 3 * i if short else 64 * (1 + i % 4) if aligned else 100 + 37 * i
+    short, aligned, trickle = '--short' in sys.argv, '--aligned' in sys.argv, '--one-token-chunks' in sys.argv
+    plen = lambda i: ((200 if i == n_prompts - 1 else 2) if trickle else 1 + 3 * i if short
+                      else 64 * (1 + i % 4) if aligned else 100 + 37 * i)
     prompts = [ids[200 * i:200 * i + plen(i)] for i in range(n_prompts)]
+    if trickle:
+        chunk = n_prompts + 1
     kw = {'attention_backend': 'FLASH_ATTN'} if os.environ.get('VLLM_BATCH_INVARIANT') == '1' else {}
     if spec:
         kw['speculative_config'] = {'method': 'ngram', 'num_speculative_tokens': 4, 'prompt_lookup_max': 3,
