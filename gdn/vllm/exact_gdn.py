@@ -114,14 +114,15 @@ def fix_vllm_mixed_spec_decodes():
     become non-speculative decodes in a batch with speculative ones, which the GDN metadata builder asserts never
     happens (`num_decodes: x, num_spec_decodes: y`), killing the engine; and as non-speculative decodes their conv
     state would not be rolled back by the previous window's acceptance (the plain conv update takes the rejected drafts
-    as history). The fix: the runner marks every request past its prompt as a speculative request with 0 or more drafts
-    (it knows prompt lengths; the builder does not), and the builder's assertion is dropped for what remains, a
-    one-token chunk of a prompt (query length 1, so vLLM counts it as a decode). For the exact layer the metadata also
-    keeps the batch's seq_lens and query_start_loc (the runner's persistent buffers, so valid inside CUDA graphs), the
-    host copies of the non-speculative entries' query_start_loc and of every request's computed tokens (the runner's),
-    and, in mixed batches, the batch index of every speculative and non-speculative entry: the exact layer derives
-    each request's absolute position from them instead of the accepted counts, which vLLM passes only in steps that
-    have drafts."""
+    as history). The fix: the runner marks every decoding request (past its prompt, with only its last sampled token
+    not yet computed; a preempted request recomputing its generated tokens is still a prefill) as a speculative request
+    with 0 or more drafts (it knows prompt and token counts; the builder does not), and the builder's assertion is
+    dropped for what remains, a one-token chunk of a prompt (query length 1, so vLLM counts it as a decode). For the
+    exact layer the metadata also keeps the batch's seq_lens and query_start_loc (the runner's persistent buffers, so
+    valid inside CUDA graphs), the host copies of the non-speculative entries' query_start_loc and of every request's
+    computed tokens (the runner's), and, in mixed batches, the batch index of every speculative and non-speculative
+    entry: the exact layer derives each request's absolute position from them instead of the accepted counts, which
+    vLLM passes only in steps that have drafts."""
     import inspect, textwrap
     import vllm.v1.attention.backends.gdn_attn as ga
     import vllm.v1.worker.gpu_model_runner as gmr
@@ -132,8 +133,9 @@ def fix_vllm_mixed_spec_decodes():
     src = textwrap.dedent(inspect.getsource(R._prepare_inputs))
     old = "num_decode_draft_tokens = np.full(num_reqs, -1, dtype=np.int32)"
     assert src.count(old) == 1, 'vLLM runner changed; re-check the fix'
-    src = src.replace(old, "num_decode_draft_tokens = np.where(self.input_batch.num_computed_tokens_cpu[:num_reqs] >= "
-                           "self.input_batch.num_prompt_tokens[:num_reqs], 0, -1).astype(np.int32)")
+    src = src.replace(old, "num_decode_draft_tokens = np.where((self.input_batch.num_computed_tokens_cpu[:num_reqs] >= "
+                           "self.input_batch.num_prompt_tokens[:num_reqs]) & (self.input_batch.num_computed_tokens_cpu"
+                           "[:num_reqs] + 1 >= self.input_batch.num_tokens_no_spec[:num_reqs]), 0, -1).astype(np.int32)")
     ns = {}
     exec(compile(src, gmr.__file__, 'exec'), gmr.__dict__, ns)
     R._prepare_inputs = ns['_prepare_inputs']
@@ -441,10 +443,11 @@ def _one_plan(md, ns, n_rows):
 
 
 @triton.jit
-def _clear_new_sequences(slots, req, seq_lens, qsl, n_req, S, sS, nS, Hb, sHb, nHb, conv, sconv, nconv, pending, ws, wn,
+def _clear_new_sequences(slots, req, seq_lens, qsl, n_req, stor, sstor, nstor, conv, sconv, nconv, pending, ws, wn,
                          HAS_REQ: tl.constexpr, BLOCK: tl.constexpr):
-    """For each one-token entry i: if it is at position 0 (seq_len - query_len of its request), clear its slot: boundary
-    state and its bf16 copy, conv history, fold flag, window counters. Other entries return at once."""
+    """For each one-token entry i: if it is at position 0 (seq_len - query_len of its request), clear its slot: every
+    word of exact_decode's caches (boundary state, its bf16 copy, row caches), the conv history, fold flag and window
+    counters. Other entries return at once."""
     i = tl.program_id(0)
     slot = tl.load(slots + i).to(tl.int64)
     if slot < 0:                                   # CUDA-graph padding
@@ -457,10 +460,8 @@ def _clear_new_sequences(slots, req, seq_lens, qsl, n_req, S, sS, nS, Hb, sHb, n
     if tl.load(seq_lens + r) - (tl.load(qsl + r + 1) - tl.load(qsl + r)) != 0:
         return
     o = tl.arange(0, BLOCK)
-    for s0 in range(0, nS, BLOCK):
-        tl.store(S + slot * sS + s0 + o, tl.zeros([BLOCK], S.dtype.element_ty), mask=s0 + o < nS)
-    for s0 in range(0, nHb, BLOCK):
-        tl.store(Hb + slot * sHb + s0 + o, tl.zeros([BLOCK], Hb.dtype.element_ty), mask=s0 + o < nHb)
+    for s0 in range(0, nstor, BLOCK):
+        tl.store(stor + slot * sstor + s0 + o, tl.zeros([BLOCK], stor.dtype.element_ty), mask=s0 + o < nstor)
     for s0 in range(0, nconv, BLOCK):
         tl.store(conv + slot * sconv + s0 + o, tl.zeros([BLOCK], conv.dtype.element_ty), mask=s0 + o < nconv)
     tl.store(pending + slot, 0)
@@ -471,16 +472,18 @@ def _clear_new_sequences(slots, req, seq_lens, qsl, n_req, S, sS, nS, Hb, sHb, n
 def _reset_fresh(st, md, ns, conv_rows):
     """A one-token entry at position 0 starts a new sequence (a prompt cut into a first chunk of one token by the token
     budget, or a one-token prompt) and runs as a decode, from whatever its slot holds: vLLM does not clear mamba slots
-    for new requests. Such slots get the zero state, an empty conv history and no previous window. One launch per
-    layer, graph-capturable, no host sync; the row caches need no clearing (a sequence reads only rows it wrote)."""
+    for new requests. Such slots are cleared whole (as _prefill clears a new prompt's): zero state, empty conv history,
+    no previous window, and row caches holding nothing another sequence or layer left (vLLM's pool can hand a slot
+    memory that held anything; the kernels need the cells they read without having written them to be finite). One
+    launch per layer, graph-capturable, no host sync."""
     sl, req, n = _one_entries(md, ns, md.num_decodes)
     dec = st['one']
-    assert conv_rows[0].is_contiguous() and dec.S[0].is_contiguous() and dec.Hb[0].is_contiguous()
+    assert conv_rows[0].is_contiguous() and dec.storage.stride(1) == 1
     _clear_new_sequences[(n,)](
         sl.to(torch.int32).contiguous(), req if req is not None else sl, md.seq_lens_all, md.qsl_all,
-        md.seq_lens_all.shape[0], dec.S, dec.S.stride(0), dec.S[0].numel(), dec.Hb, dec.Hb.stride(0), dec.Hb[0].numel(),
+        md.seq_lens_all.shape[0], dec.storage, dec.storage.stride(0), dec.storage.shape[1],
         conv_rows, conv_rows.stride(0), conv_rows[0].numel(), dec.pending, st['ws'], st['wn'],
-        HAS_REQ=req is not None, BLOCK=1024)
+        HAS_REQ=req is not None, BLOCK=4096)
 
 
 def _conv_one(self, x, conv_state, conv_w, one):
@@ -512,6 +515,11 @@ def _non_spec(self, st, md, x, g, beta, scale, out, ns, one):
     if one is not None:
         if 'win' in st:                  # a chunk that the previous window's acceptance completed (marked by _advance)
             dec.fold(one['slots'])
+        if DEBUG and not torch.cuda.is_current_stream_capturing():
+            # one-token entries whose token completes a chunk, folded in this step (in a speculative engine these are
+            # prompt chunks: its decodes are windows)
+            n_end = int(((one['pos'] + 1) % BT == 0).sum())
+            DEBUG_STATS['one_token_chunk_ends'] = DEBUG_STATS.get('one_token_chunk_ends', 0) + n_end
         dec.step_rows(*qkv, g, beta, one['rows'], one['rows'], one['pos'], one['ones'], scale, one['slots'], out,
                       one['rows'])
 
@@ -635,9 +643,10 @@ def _prefill(self, st, md, qkv, g, beta, scale, out, ns):
         _advance(st, slots, pf['p0'], pf['qlen'], True)
         dec.fold(slots)
         dec.pending.index_fill_(0, slots.long(), 0)
-    if pf['fresh'] is not None:     # a new request starts from the zero state (index_fill_: assigning a Python scalar
-        dec.S.index_fill_(0, pf['fresh'], 0)       # through an index copies it from the host, which syncs)
-        dec.Hb.index_fill_(0, pf['fresh'], 0)
+    if pf['fresh'] is not None:
+        # a new request: its slot cleared whole, as _reset_fresh does (index_fill_: a Python scalar assigned through an
+        # index is copied from the host, which syncs)
+        dec.storage.index_fill_(0, pf['fresh'], 0)
     H, K, HV, V = self.num_k_heads, self.head_k_dim, self.num_v_heads, self.head_v_dim
     if pf['nh'] or pf['nb']:
         qn, kn = (l2norm_fwd(t.unflatten(1, (H, K)))[0] for t in qkv[:2])

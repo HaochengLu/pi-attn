@@ -9,6 +9,8 @@ Speculative mode (exact_decode): windows of up to 4 or 16 tokens per step (16: a
 one random slot idle per step; rejected positions carry wrong-draft inputs. Accepted rows must equal the trainer's rows bitwise and the
 rejected drafts must leave no trace in later rows or states.
 "rows" cases: the same through step_rows, inputs read and outputs written in place in an engine-like layout (in_place).
+"dirty" cases: the slots' storage starts as finite garbage, not zeros (cells no step writes, e.g. (I+A)^-1 right of a
+row's diagonal block, must not matter).
 
 usage: PYTHONPATH=<fla> python gdn/test_exact.py            (exit status 1 on any mismatch)"""
 import sys, torch, torch.nn.functional as F
@@ -36,6 +38,15 @@ def chunk(q, k, v, g, beta):
     return chunk_gated_delta_rule(q, k, v, g, beta, output_final_state=True, use_qk_l2norm_in_kernel=True)
 
 
+def dirty(storage):
+    """A slot storage full of finite garbage, as words other code left behind (finite read as bf16 or as fp32: every
+    bf16 half is a normal sample). The kernels read cache cells they did not write only where the value meets an exact
+    zero, so finite garbage must not change a bit."""
+    s = torch.empty_like(storage)
+    s.view(torch.bfloat16).normal_()
+    return s
+
+
 def in_place(dec, x, pos, nrows, scale, KT):
     """dec.step_rows on window inputs x = (q, k, v, g, beta), each [N, KT, ...], laid out as an engine has them: q|k|v
     side by side in the rows of one wider activation buffer (row stride larger than q's), the slots' windows in
@@ -56,7 +67,7 @@ def in_place(dec, x, pos, nrows, scale, KT):
     return out[tix + 7]
 
 
-def run(impl, H, HV, K=128, V=128, cfg=(2, 4, 64), beta_dtype=torch.bfloat16, inplace=False):
+def run(impl, H, HV, K=128, V=128, cfg=(2, 4, 64), beta_dtype=torch.bfloat16, inplace=False, garbage=False):
     N, scale = len(PS), K ** -0.5
     seqs = [seq(i, H, HV, K, V, beta_dtype) for i in range(N)]
     ref = [chunk(*s) for s in seqs]
@@ -65,6 +76,9 @@ def run(impl, H, HV, K=128, V=128, cfg=(2, 4, 64), beta_dtype=torch.bfloat16, in
     nw1, nw2, BV = cfg
     dec = GDNExactDecode(N, H, HV, K, V, dev, beta_dtype=beta_dtype, BV=BV, nw1=nw1, nw2=nw2) \
         if impl == 'exact_decode' else GDNExactDecodeRef(N, H, HV, K, V, dev)
+    if garbage:
+        dec = GDNExactDecode(N, H, HV, K, V, dev, beta_dtype=beta_dtype, BV=BV, nw1=nw1, nw2=nw2,
+                             storage=dirty(dec.storage))
     for n, P in enumerate(PS):
         b = BT * (P // BT)
         q, k, v, g, beta = seqs[n]
@@ -94,13 +108,13 @@ def run(impl, H, HV, K=128, V=128, cfg=(2, 4, 64), beta_dtype=torch.bfloat16, in
                 q, k, v, g, beta = seqs[n]
                 Sref = chunk(q[:, :b], k[:, :b], v[:, :b], g[:, :b], beta[:, :b])[1][0]
                 bad_states += int(not torch.equal(dec.S[n], Sref)); states += 1
-    tag = f'{impl} {nw1}:{nw2}:{BV}{" rows" if inplace else ""}' if impl == 'exact_decode' else impl
+    tag = f'{impl} {nw1}:{nw2}:{BV}{" rows" if inplace else " dirty" if garbage else ""}' if impl == 'exact_decode' else impl
     print(f'{tag:24s} H={H:2d} HV={HV:2d} K={K:3d} V={V:3d} beta {str(beta_dtype)[6:]:8s}: rows {rows} mismatching {bad_rows}; '
           f'boundary states {states} mismatching {bad_states}')
     return bad_rows == 0 and bad_states == 0
 
 
-def run_spec(H, HV, KT=4, K=128, V=128, inplace=False):
+def run_spec(H, HV, KT=4, K=128, V=128, inplace=False, garbage=False):
     """Speculative windows: KT tokens per slot per step, the first `acc` of them the true next tokens, the rest
     wrong drafts (the same positions of another slot's sequence); acc is random in 1..window. Each step one random
     slot is idle (nrows = 0, nothing accepted), as in a batch where it has nothing to verify."""
@@ -108,6 +122,8 @@ def run_spec(H, HV, KT=4, K=128, V=128, inplace=False):
     seqs = [seq(i, H, HV, K, V) for i in range(N)]
     ref = [chunk(*s) for s in seqs]
     dec = GDNExactDecode(N, H, HV, K, V, dev, KT=KT)
+    if garbage:
+        dec = GDNExactDecode(N, H, HV, K, V, dev, KT=KT, storage=dirty(dec.storage))
     for n, P in enumerate(PS):
         b = BT * (P // BT)
         q, k, v, g, beta = seqs[n]
@@ -140,7 +156,7 @@ def run_spec(H, HV, KT=4, K=128, V=128, inplace=False):
             bad_states += int(not torch.equal(dec.S[n], Sref)); states += 1
         dec.commit(pos, acc)
         pos = pos + acc
-    print(f'spec window KT={KT:<2d}{" rows" if inplace else "     "}    H={H:2d} HV={HV:2d} K={K:3d} V={V:3d}: accepted rows {rows} mismatching {bad_rows}; '
+    print(f'spec window KT={KT:<2d}{" rows" if inplace else " dirty" if garbage else "     "}   H={H:2d} HV={HV:2d} K={K:3d} V={V:3d}: accepted rows {rows} mismatching {bad_rows}; '
           f'boundary states {states} mismatching {bad_states}')
     return bad_rows == 0 and bad_states == 0
 
@@ -178,11 +194,12 @@ if __name__ == '__main__':
     cases = [('exact_decode', dict(H=H, HV=HV, cfg=cfg)) for cfg in ((2, 4, 64), (2, 4, 128))
              for H, HV in ((32, 32), (16, 16), (16, 32))]
     cases += [('exact_decode', dict(H=16, HV=16, K=64, V=64)), ('exact_decode', dict(H=16, HV=32, beta_dtype=torch.float32))]
-    cases += [('exact_decode', dict(H=16, HV=32, inplace=True))]
+    cases += [('exact_decode', dict(H=16, HV=32, inplace=True)), ('exact_decode', dict(H=16, HV=32, garbage=True))]
     cases += [('exact_decode_ref', dict(H=H, HV=HV)) for H, HV in ((32, 32), (16, 32))]
     ok = all([run(impl, **kw) for impl, kw in cases])
     ok = all([run_spec(H, HV, KT) for H, HV, KT in ((32, 32, 4), (16, 32, 4), (32, 32, 16), (16, 32, 16))]) and ok
     ok = all([run_spec(16, 32, KT, inplace=True) for KT in (5, 16)]) and ok
+    ok = all([run_spec(16, 32, KT, garbage=True) for KT in (5, 16)]) and ok
     ok = run_fold() and ok
     print('PASS' if ok else 'FAIL')
     sys.exit(0 if ok else 1)

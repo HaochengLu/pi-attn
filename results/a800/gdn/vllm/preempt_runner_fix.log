@@ -1,0 +1,7 @@
+# selfcheck.py Qwen3.5-0.8B, batch-invariant dense ops, --preempt --prefill-chunk=128 (A800): the runner marking of
+# commit 9db31bd (every request past its prompt marked as decoding: logs/oldmark) against the current one (gdn/vllm)
+logs/oldmark/vllm --spec --exact --preempt --prefill-chunk=128 | 
+[rank0]: RuntimeError: Triton Error [CUDA]: device-side assert triggered 
+gdn/vllm --spec --exact --preempt --prefill-chunk=128 | RESULT exact=True spec=True batch_invariant=1: decode log-prob == prefill log-prob bitwise for 2048/2048 generated tokens; greedy token is prefill argmax for 2048/2048; tokens+log-probs sha256 586e6a6d6104a293 PREEMPTIONS 4
+gdn/vllm --exact --preempt --prefill-chunk=128 | RESULT exact=True spec=False batch_invariant=1: decode log-prob == prefill log-prob bitwise for 2048/2048 generated tokens; greedy token is prefill argmax for 2048/2048; tokens+log-probs sha256 586e6a6d6104a293 PREEMPTIONS 7
+gdn/vllm --spec --preempt --prefill-chunk=128 | RESULT exact=False spec=True batch_invariant=1: decode log-prob == prefill log-prob bitwise for 275/2048 generated tokens; greedy token is prefill argmax for 2048/2048; tokens+log-probs sha256 bbb56f599db2f924 PREEMPTIONS 4

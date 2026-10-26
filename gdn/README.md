@@ -8,9 +8,10 @@ is on. This directory makes GDN
 decode execute the trainer's own program: every decoded token, one per step or verified in a speculative window,
 gets, bitwise, the row fla 0.5.0's chunked forward produces for it, with the trainer's kernel unchanged and with
 rejected drafts rolled back for free. In vLLM 0.17.1 (`vllm/exact_gdn.py`), with vLLM's batch-invariant dense ops,
-this makes Qwen3.5's decode bitwise the engine's own prefill, with n-gram speculative decoding on or off, at 1.02-1.03x
-the throughput of stock vLLM with the same dense ops (with or without speculation; 0.83x of stock with its default
-dense ops, which is the price of the batch-invariant dense ops, not of GDN) and a 3.2x smaller token pool (result 5).
+this makes Qwen3.5's decode bitwise the engine's own prefill, with n-gram speculative decoding on or off, at 1.01-1.03x
+the throughput of stock vLLM with the same dense ops (with or without speculation; 0.82x of stock with its default
+dense ops, which is the price of the batch-invariant dense ops, not of GDN), with a state pool that holds 2.5x fewer
+requests without speculation and 1.6x more with it (result 5).
 
 Numbers are from the A800-80GB box (sm_80, driver 535), Triton 3.7.1, torch 2.13 (engine venv), fla 0.5.0
 (`env/fla_pkgs`, see `VERSIONS.txt`), logs in `results/a800/gdn/`, unless marked RTX 4090 D (sm_89, same software,
@@ -59,26 +60,30 @@ remaining gap. The causal conv1d needs no change: HF's update path is already bi
 
   | batch | 1 | 8 | 32 | 64 | 128 | 256 |
   |---|---|---|---|---|---|---|
-  | fla fused_recurrent (us) | 6.3 | 30.2 | 95.5 | 172.4 | 337.2 | 666.5 |
-  | exact_decode (us) | 22.3 | 32.5 | 91.2 | 144.6 | 289.5 | 546.0 |
-  | ratio | 3.54x | 1.08x | 0.95x | 0.84x | 0.86x | 0.82x |
+  | fla fused_recurrent (us) | 6.5 | 30.4 | 95.4 | 172.0 | 337.0 | 665.9 |
+  | exact_decode (us) | 22.5 | 32.7 | 92.4 | 140.6 | 281.4 | 529.3 |
+  | ratio | 3.46x | 1.08x | 0.97x | 0.82x | 0.84x | 0.79x |
 
-  8% slower at batch 8, equal within noise at 32 (B=32 ranged 86-99 us across runs, `e8_cost4*.log`), 14-18% faster
-  at 64-256. Against the production kernel, vLLM 0.17.1's GDN decode as its Qwen3.5 model calls it (fused_recurrent
-  with the state updated in place in its pool; `bench_vllm_gdn.py`, `bench_vllm_gdn.log`, run in `env/venv-vllm17`):
-  11.3, 22.7, 96.9, 175.5, 333.1, 653.8 us, so exact decode is 1.97x, 1.43x, 0.94x, 0.82x, 0.87x, 0.84x of it. On the
-  RTX 4090 D (`results/gdn/bench_decode.log`) fla's recurrent kernel scales worse and exact decode is 0.32-0.62x of it
+  8% slower at batch 8, equal within noise at 32 (B=32 ranged 86-105 us across runs, `e8_cost4*.log` and runs of this
+  benchmark), 16-21% faster at 64-256. Against the production kernel, vLLM 0.17.1's GDN decode as its Qwen3.5 model
+  calls it (fused_recurrent with the state updated in place in its pool; `bench_vllm_gdn.py`, `bench_vllm_gdn.log`,
+  run in `env/venv-vllm17`): 11.3, 22.7, 96.9, 175.5, 333.1, 653.8 us, so exact decode is 1.99x, 1.44x, 0.95x, 0.80x,
+  0.84x, 0.81x of it. On the
+  RTX 4090 D (`results/gdn/bench_decode.log`) fla's recurrent kernel scales worse and exact decode is 0.35-0.62x of it
   at batch >= 32. Per step
   the exact kernel reads the bf16 copy of the state (32 KB/head) plus the chunk's cached rows and writes the state
   once per 64 tokens; the recurrence reads and writes 128 KB/head of fp32 every token. At batch 1 both are
   latency-bound and the exact path is two dependent kernels with barriers.
-- Memory per slot per layer (H=HV=32, K=V=128): 6.75 MiB (fp32 boundary state 2, its bf16 copy 1, chunk inputs and
-  l2norm(q) rows 1.5, (I+A)^-1 rows 0.75, u/w/v_new rows 1.5) versus 2 MiB for the recurrent state: 3.4x. Against a
-  long context's KV cache this is small (Qwen3.5-4B: 4 KV heads x 256 dims x 32K tokens, K and V in bf16, is 128 MiB
-  per attention layer). For Qwen3.5-4B (24 GDN layers) at 256 concurrent requests the GDN state is 41 GiB instead of
-  12 GiB on an 80 GB card; its 8 full-attention layers hold 32 KB of KV cache per token, so the GDN state stops
-  dominating only beyond ~3.6K tokens per request. At shorter contexts memory, not kernel time, is the cost of
-  exactness.
+- Memory per slot per layer (H=HV=32, K=V=128): 5.25 MiB (fp32 boundary state 2, its bf16 copy 1, chunk inputs 1,
+  (I+A)^-1 rows 0.75, v_new rows 0.5) versus 2 MiB for the recurrent state: 2.6x. The l2norm(q), u and w rows are read
+  only by the step that computes them, so they pass through a per-step scratch, and a fold recomputes the chunk's u
+  and w from the cached rows with recompute_w_u's arithmetic on the whole 64-row tile (bitwise the rows K1 computed:
+  test_exact's boundary states); this took the slot from 6.75 MiB to 5.25 at unchanged decode time. Against a long
+  context's KV cache this is small (Qwen3.5-4B: 4 KV heads x 256 dims x 32K tokens, K and V in bf16, is 128 MiB per
+  attention layer). For Qwen3.5-4B (24 GDN layers, H=16 and HV=32: 5.0 MiB per slot) at 256 concurrent requests the
+  GDN state is 30 GiB instead of 12 GiB on an 80 GB card; its 8 full-attention layers hold 32 KB of KV cache per token,
+  so exactness's extra 72 MiB per request equals the KV cache of ~2.3K tokens. At shorter contexts memory, not kernel
+  time, is the cost of exactness.
 - How we got there (`archive/gdn_iterations/`, `e3_cost.log`, `e6_*`, `e7_*`, `e8_*`): calling fla's chunk on the
   partial chunk costs 4.5-8.4x the recurrent kernel's GPU time, plus host preparation (~900 us of wall time at
   B <= 32); a stateless fused kernel (`exact_decode_ref.py`) 3.7x at B=256 and 10.5x at B=1 (`e6_cost_v2.log`;
@@ -120,12 +125,12 @@ its 64th row is accepted (lazily, by a small kernel at the start of the next ste
   | batch | 1 | 8 | 32 | 64 | 128 | 256 |
   |---|---|---|---|---|---|---|
   | vLLM 0.17.1 verify, 4 tokens (us) | 32.7 | 69.5 | 248.0 | 457.5 | 901.7 | 1792.4 |
-  | exact_decode window of 4 (us) | 54.2 | 78.2 | 210.1 | 353.2 | 697.3 | 1320.9 |
-  | ratio | 1.66x | 1.13x | 0.85x | 0.77x | 0.77x | 0.74x |
+  | exact_decode window of 4 (us) | 53.6 | 78.5 | 208.1 | 348.7 | 689.5 | 1302.2 |
+  | ratio | 1.64x | 1.13x | 0.84x | 0.76x | 0.76x | 0.73x |
 
-  State memory per slot and layer for 4 drafts: vLLM keeps 1 + 4 fp32 states (10 MiB), exact_decode 6.75 MiB.
+  State memory per slot and layer for 4 drafts: vLLM keeps 1 + 4 fp32 states (10 MiB), exact_decode 5.25 MiB.
   Against fla's recurrent kernel over the same 4 tokens keeping only the final state (no rollback possible), the
-  window is 1.56-1.87x at batch >= 8. If all 4 tokens are accepted a window costs 0.60x (B=8 to 256) of exact
+  window is 1.54-1.86x at batch >= 8. If all 4 tokens are accepted a window costs 0.60-0.62x (B=8 to 256) of exact
   one-token decode per token; at the 4B run's acceptance (1.24 tokens per window) it is about 2x per token.
 
 **5. In a serving engine: vLLM 0.17.1** (`vllm/exact_gdn.py`, installed by monkeypatching before the engine is built;
@@ -166,8 +171,13 @@ the host; vLLM's prefill conv without its metadata copies the sequence lengths t
   of 2-token prompts and one of 200, with 34 tokens per step, so the long prompt is prefilled a few tokens at a time
   while the others decode, including one-token chunks, one of which completes a 64-token chunk (`e0eee150bdc01ba8`,
   `6551ceabe9686fbd`; these runs set `EXACT_GDN_DEBUG=1`, whose counters in the log show every speculative window and
-  fold equal to fla's chunk program run on the slot's cached rows, and the prompt positions taken from the runner's
-  host copy equal to the device's). This is the engine's decode equal to the engine's prefill; equality with a
+  fold equal to fla's chunk program run on the slot's cached rows, the prompt positions taken from the runner's host
+  copy equal to the device's, and one-token prompt chunks completing a 64-token chunk, `one_token_chunk_ends` in the
+  speculative runs, once per GDN layer per occurrence); and requests preempted through vLLM's preemption routine (a
+  synthetic trigger: the running request with the most generated tokens, every 23rd scheduler step) and recomputed
+  in 128-token chunks,
+  with the same hash as the chunked run without preemption (the counts are in the log). This is the engine's decode
+  equal to the engine's prefill; equality with a
   trainer further needs the trainer to run the same projections, conv, gating and norms (vLLM's here) and the same fla
   setup (see "What the canonical program is"). Stock GDN with speculation stays at 311/2048 and 178/2048; its hash
   changes on the A800 (`0982c0620e6f8a64` vs `94d404da35349e42` for 0.8B, `60207f493f0ec5f8` vs `f6ffbb278027c1a6` for
@@ -181,35 +191,39 @@ the host; vLLM's prefill conv without its metadata copies the sequence lengths t
   (Qwen3-0.6B, `selfcheck_qwen3_attention_only.log`), where speculation does not: the chunk schedule is an input of
   vLLM's attention bits, not of exact GDN's.
 - Throughput (`vllm/throughput.py`, `run_throughput.sh`, `throughput.log`; Qwen3.5-4B, 256 requests submitted at once,
-  after an identical warm-up; median of three interleaved rounds, which agree within 0.6%):
+  after an identical warm-up; median of three interleaved rounds, which agree within 2%):
 
   | prompt / new tokens | | stock | exact | exact / stock | concurrency, stock / exact |
   |---|---|---|---|---|---|
-  | 200 / 256 | default dense ops | 6437 tok/s | 6619 tok/s | 1.03x | 881.25 / 274.25 |
-  | 200 / 256 | batch-invariant dense ops | 5221 tok/s | 5329 tok/s | 1.02x | 880.25 / 274.00 |
-  | 200 / 256 | n-gram speculation (piecewise graphs) | 4597 tok/s | 4741 tok/s | 1.03x | 212.88 / 270.50 |
-  | 2000 / 1 (prefill) | default dense ops | 19.45 s | 19.74 s | 0.99x | 503.57 / 219.40 |
-  | 2000 / 1 (prefill) | n-gram speculation | 21.90 s | 21.88 s | 1.00x | 179.26 / 216.40 |
-  | 16 / 256 (decode) | n-gram speculation | 5156 tok/s | 5488 tok/s | 1.06x | 212.88 / 270.50 |
+  | 200 / 256 | default dense ops | 6441 tok/s | 6572 tok/s | 1.02x | 881.25 / 354.50 |
+  | 200 / 256 | batch-invariant dense ops | 5221 tok/s | 5298 tok/s | 1.01x | 880.25 / 354.25 |
+  | 200 / 256 | n-gram speculation (piecewise graphs) | 4612 tok/s | 4762 tok/s | 1.03x | 212.88 / 348.75 |
+  | 2000 / 1 (prefill) | default dense ops | 19.44 s | 19.75 s | 0.98x | 503.57 / 283.60 |
+  | 2000 / 1 (prefill) | n-gram speculation | 21.90 s | 21.90 s | 1.00x | 179.26 / 279.00 |
+  | 16 / 256 (decode) | n-gram speculation | 5162 tok/s | 5453 tok/s | 1.06x | 212.88 / 348.75 |
 
   (Concurrency: vLLM's estimate of how many requests of the configured maximum length, 472 or 2017 tokens, its pool
   holds.) Exact GDN costs no throughput: decode and verification are faster than vLLM's kernels at these batch sizes
   (result 3), and prefill is at parity. Bitwise needs the batch-invariant dense ops, so the exact configuration runs at
-  1.02x of stock with them and 0.83x of stock's default. The cost of exactness is memory: without speculation the pool
-  holds 3.2x fewer requests of 472 tokens and 2.3x fewer of 2017; with speculation vLLM keeps 1 + 4 states per request
-  and exact GDN one, so exact GDN holds more. With 256 requests the pool does not bind in these runs; at higher load it
+  1.01x of stock with them and 0.82x of stock's default. The cost of exactness is memory: without speculation the pool
+  holds 2.5x fewer requests of 472 tokens and 1.8x fewer of 2017; with speculation vLLM keeps 1 + 4 states per request
+  and exact GDN one, so exact GDN holds 1.6x more. With 256 requests the pool does not bind in these runs; at higher load it
   caps the batch. On this text n-gram drafting slows stock vLLM too.
 - vLLM 0.17.1 issues hit on the way (found by failing self-checks and hash mismatches): the runner marks decode
   requests without drafts like prefill requests, so a batch mixing them with speculative ones kills the engine on an
   assertion, and their conv state is not rolled back by the previous window's acceptance (stock too;
-  `fix_vllm_mixed_spec_decodes` marks every request past its prompt as speculative with 0+ drafts); in a step where no
+  `fix_vllm_mixed_spec_decodes` marks every decoding request as speculative with 0+ drafts: past its prompt and with
+  only its last sampled token left to compute, since a preempted request recomputing its generated tokens in chunks
+  is a prefill, which our first version of the fix missed and a review found: with it a preempted request recomputed
+  in chunks trips a device-side assertion, `preempt_runner_fix.log`); in a step where no
   request has a draft, vLLM sends no speculative metadata and runs its plain conv update on decode requests (exact_gdn
   rolls the conv state back by the acceptance it derives from positions; `check_conv_spec.log` checks the conv orders
   this produces); with speculation the mamba block table has 1 + drafts columns, so a request's slot column is a
   strided view; a sequence whose first chunk has one token (a one-token prompt, or a longer one the token budget cuts
   that way) runs as a decode from whatever state its slot holds, as vLLM does not clear mamba slots for new requests
-  (exact_gdn clears such slots in a graph-capturable kernel; found when the one-token-chunk run failed on the RTX
-  4090, whose small pool reuses slots); and vLLM reuses torch.compile artifacts from its cache when the config hash
+  (found when the one-token-chunk run failed on the RTX 4090, whose small pool reuses slots; exact_gdn clears a new
+  sequence's slot whole, in a graph-capturable kernel for one-token first chunks, so no cache cell of another
+  sequence or layer can reach the kernels); and vLLM reuses torch.compile artifacts from its cache when the config hash
   matches, and an earlier artifact can be a different program for the dense ops (4B, same config: two hashes depending
   on the cache), so the self-check compiles afresh; and vLLM's count of accepted tokens, which its speculative conv
   update rolls back by, is stale for a request its scheduler left out of a step under token-budget pressure (found by
@@ -272,6 +286,12 @@ the host; vLLM's prefill conv without its metadata copies the sequence lengths t
   them into the dot tiles instead of reloading them, and one that selected the sub-block gates from a register vector,
   stopped being bitwise; Triton's layout and contraction choices are made for the whole kernel. `test_exact.py` is the
   arbiter after any edit, including ones that look arithmetic-neutral.
+- **Cells nobody writes.** The decode kernels read cache cells they have not written (rows past the window, blocks of
+  (I+A)^-1 right of a row's diagonal block) only where the value meets an exact zero, which is harmless for finite
+  values. Moving the fold to recompute u and w from the cached (I+A)^-1 broke that: it multiplied the unwritten blocks
+  by live rows. The tests started every slot from zeros and passed; a review found it, `test_exact.py` now also starts
+  slots from finite garbage ("dirty", which fails without the fix), the fold reads (I+A)^-1 lower-triangular as fla
+  stores it, and the engine clears a new sequence's slot whole.
 
 ## Prior art and what is (not) claimed
 
@@ -288,12 +308,12 @@ FlashInfer's MTP kernel).
 
 What this directory adds, on the evidence above: speculative verification for a hybrid model whose accepted tokens are
 bitwise the tokens and log-probabilities of one-token decode and of the trainer's stock forward, with rollback that
-needs no state snapshots; on A800 its per-layer cost is 0.74-0.85x of vLLM 0.17.1's (inexact) speculative verifier
-at batch >= 32, with less state memory, and plain exact decode is 0.82-0.94x of vLLM's decode kernel at batch >= 32.
+needs no state snapshots; on A800 its per-layer cost is 0.73-0.84x of vLLM 0.17.1's (inexact) speculative verifier
+at batch >= 32, with half the state memory, and plain exact decode is 0.80-0.95x of vLLM's decode kernel at batch >= 32.
 Both are slower at batch 1-8 (1.1-2.0x). Integrated into vLLM 0.17.1, decode is bitwise the engine's own prefill for
-Qwen3.5-0.8B and 4B with n-gram speculation on or off, chunked prefill and slot reuse, at 1.02-1.03x the throughput
-of stock vLLM with the same batch-invariant dense ops or with speculation (0.83x of stock's default dense ops), with a
-pool that holds 3.2x fewer requests without speculation and more with it.
+Qwen3.5-0.8B and 4B with n-gram speculation on or off, chunked prefill, slot reuse and preemption, at 1.01-1.03x the
+throughput of stock vLLM with the same batch-invariant dense ops or with speculation (0.82x of stock's default dense
+ops), with a pool that holds 2.5x fewer requests without speculation and 1.6x more with it.
 
 Not claimed: speed versus ReplaySSM-style or bf16-state kernels, or versus the packed/CUDA GDN decode kernels of vLLM
 releases after 0.17.1 (their wheels need CUDA 13, which driver 535 cannot run); anything on Hopper/Blackwell;

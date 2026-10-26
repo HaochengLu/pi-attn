@@ -6,17 +6,20 @@ State per (slot, value head). The fp32 state is kept only at absolute 64-token b
 fwd_h feeds to every intra-chunk dot (Hb). Every intermediate of fla's chunk program is row-causal inside a chunk, so
 the current chunk's rows are cached as fla materialises them between its kernels:
   kbuf, vbuf, gbuf, bbuf  the chunk's inputs (k after l2norm; g raw; beta in its own dtype)
-  qn                      l2norm(q) rows          sg   cumsum(g) * log2(e) (chunk_local_cumsum)
+  sg                      cumsum(g) * log2(e) (chunk_local_cumsum)
   AiF                     (I+A)^-1 rows in fp32: diagonal 16x16 blocks before the +I (as fla's forward substitution
                           holds them), off-diagonal blocks final; only the blocks later rows read are stored
-  Abf                     (I+A)^-1 rows in bf16 (fla's stored A)   Uc, Wc, VNc   u, w, v_new rows (bf16)
+  Abf                     (I+A)^-1 rows in bf16 (fla's stored A)            VNc   v_new rows (bf16)
+The l2norm(q), u and w rows are read only for the window that computes them (they go through a per-step scratch), and
+a fold recomputes the whole chunk's u, w from the cached rows.
 Rows at or beyond the window's end hold garbage (earlier chunks, rejected drafts); every consumer masks them, and all
 cached values are finite, so they contribute exact zeros. This invariant is also the rollback.
 
 A step covers chunk rows r0 .. r0 + nrows - 1 (nrows <= KT, never past the chunk's 64th row):
   K0 (windows of several tokens only; one program per V block x slot x head, exits at once unless pending): if the
-     previous step's accepted tokens completed a chunk, fold it into S/Hb (fwd_h's 64-row arithmetic from the cached
-     u, w rows) before this window overwrites its rows. Plain decode accepts every token and folds in K2 instead.
+     previous step's accepted tokens completed a chunk, fold it into S/Hb (fwd_h's 64-row arithmetic, from u, w
+     recomputed by recompute_w_u's 64-row arithmetic) before this window overwrites its rows. Plain decode accepts
+     every token and folds in K2 instead.
   K1 (one program per slot x head, never reads the state), row by row: l2norm of q, k (fla l2norm_fwd_kernel), the
      chunk-buffer row, cumsum(g), the row of (I+A)^-1 (kkt tiles, the single forward-substitution iteration for that
      row, block merge from cached final blocks) and the rows of u, w (recompute_w_u) on the 16-row tile of the row's
@@ -128,17 +131,44 @@ def _kkt3(k, ks0, kj0, nrow_s, H: tl.constexpr, K: tl.constexpr, BC: tl.constexp
 
 
 @triton.jit
+def _fold_vf(k, v, beta, Abf, sg, b_h1, b_h2, c0, H: tl.constexpr, HV: tl.constexpr, K: tl.constexpr,
+             V: tl.constexpr, BT: tl.constexpr, BVX: tl.constexpr):
+    """fwd_h's fp32 u - w bf16(S) of a completed chunk, columns c0 .. c0 + BVX (b_h1, b_h2: the bf16 state's two 64-row
+    halves of those columns), with u, w recomputed from the cached chunk inputs and (I+A)^-1 by recompute_w_u's
+    arithmetic on the whole 64-row tile: K1 computed each of these rows on a 16-row tile, and a row of an MMA tile does
+    not depend on the other rows, so these are the rows K2 used (and fla's). (I+A)^-1 is read lower-triangular: K1
+    never writes the blocks right of a row's diagonal block (they never contribute to a row), and whatever they hold
+    must not enter the fold."""
+    o_t = tl.arange(0, BT)
+    b_b = tl.load(beta + o_t * HV)
+    b_A = tl.load(Abf + o_t[:, None] * BT + o_t[None, :], mask=o_t[None, :] <= o_t[:, None], other=0.)
+    b_vin = tl.load(tl.make_block_ptr(v, (BT, V), (HV*V, 1), (0, c0), (BT, BVX), (1, 0)))
+    b_vb = (b_vin * b_b[:, None]).to(b_vin.dtype)
+    b_u = tl.dot(b_A, b_vb, allow_tf32=False).to(b_vin.dtype)
+    b_ge = tl.math.exp2(tl.load(sg + o_t))
+    b_kk = tl.load(tl.make_block_ptr(k, (BT, K), (H*K, 1), (0, 0), (BT, 64), (1, 0)))
+    b_kb = b_kk * b_b[:, None]
+    b_kb *= b_ge[:, None]
+    b_vf = tl.dot(tl.dot(b_A, b_kb.to(b_kk.dtype)).to(b_kk.dtype), b_h1)
+    if K > 64:
+        b_kk = tl.load(tl.make_block_ptr(k, (BT, K), (H*K, 1), (0, 64), (BT, 64), (1, 0)))
+        b_kb = b_kk * b_b[:, None]
+        b_kb *= b_ge[:, None]
+        b_vf += tl.dot(tl.dot(b_A, b_kb.to(b_kk.dtype)).to(b_kk.dtype), b_h2)
+    return b_u - b_vf
+
+
+@triton.jit
 def _gdn_k0(
-    pending, kbuf, Uc, Wc, sgc, S, Hb, slots,
+    pending, kbuf, vbuf, bbuf, Abf, sgc, S, Hb, slots,
     sS: tl.constexpr, sHb: tl.constexpr, skb: tl.constexpr, svb: tl.constexpr, sgb: tl.constexpr, sbb: tl.constexpr,
-    sAi: tl.constexpr, sAb: tl.constexpr, sU: tl.constexpr, sW: tl.constexpr, sVN: tl.constexpr, ssg: tl.constexpr,
-    sqn: tl.constexpr,
+    sAi: tl.constexpr, sAb: tl.constexpr, sVN: tl.constexpr, ssg: tl.constexpr,
     H: tl.constexpr, HV: tl.constexpr, K: tl.constexpr, V: tl.constexpr, BT: tl.constexpr,
 ):
     """Fold the previous chunk into the state if its 64th row was accepted (pending): fwd_h's update by one complete
-    chunk, from the cached u, w rows, on the fp32 state and its bf16 copy, for one 64-wide V block (per-element
-    identical to fla's BV split). fla updates the state from the fp32 u - w h before v_new is rounded to bf16, so it is
-    recomputed here rather than read from VNc. Runs before K1, which overwrites the chunk's rows."""
+    chunk on the fp32 state and its bf16 copy, for one 64-wide V block (per-element identical to fla's BV split), from
+    u - w h (_fold_vf: fla updates the state from the fp32 value, before v_new is rounded to bf16). Runs before K1,
+    which overwrites the chunk's rows."""
     i_v, i_nh = tl.program_id(0), tl.program_id(1)
     i_n, i_h = i_nh // HV, i_nh % HV
     slot = tl.load(slots + i_n).to(tl.int64)
@@ -147,18 +177,16 @@ def _gdn_k0(
     if tl.load(pending + slot) == 0:
         return
     k = kbuf + slot * skb + (i_h // (HV // H)) * K
-    Uc += slot * sU + i_h * BT * V
-    Wc += slot * sW + i_h * BT * K
     sg = sgc + slot * ssg + i_h * BT
     S_ = S + slot * sS + i_h * K * V
     Hb_ = Hb + slot * sHb + i_h * K * V
     o_t = tl.arange(0, BT)
     b_h1 = tl.load(tl.make_block_ptr(Hb_, (K, V), (V, 1), (0, i_v * 64), (64, 64), (1, 0)))
-    b_vf = tl.dot(tl.load(tl.make_block_ptr(Wc, (BT, K), (K, 1), (0, 0), (BT, 64), (1, 0))), b_h1)
+    b_h2 = b_h1
     if K > 64:
         b_h2 = tl.load(tl.make_block_ptr(Hb_, (K, V), (V, 1), (64, i_v * 64), (64, 64), (1, 0)))
-        b_vf += tl.dot(tl.load(tl.make_block_ptr(Wc, (BT, K), (K, 1), (0, 64), (BT, 64), (1, 0))), b_h2)
-    b_vf = tl.load(tl.make_block_ptr(Uc, (BT, V), (V, 1), (0, i_v * 64), (BT, 64), (1, 0))) - b_vf
+    b_vf = _fold_vf(k, vbuf + slot * svb + i_h * V, bbuf + slot * sbb + i_h, Abf + slot * sAb + i_h * BT * BT, sg,
+                    b_h1, b_h2, i_v * 64, H, HV, K, V, BT, 64)
     b_glast = tl.load(sg + (BT - 1)).to(tl.float32)
     b_gl = tl.load(sg + o_t).to(tl.float32)
     b_vf = b_vf * tl.where(o_t < BT, tl.math.exp2(b_glast - b_gl), 0)[:, None]
@@ -176,7 +204,7 @@ def _gdn_k0(
 
 @triton.jit
 def _k1_row(
-    r, j, xr, gr, i_h, i_hk, q_in, k_in, v_in, g_in, b_in, sqk, sv, k, v, g, beta, qn, AiF, Abf, Uc, Wc, sg,
+    r, j, xr, gr, i_h, i_hk, q_in, k_in, v_in, g_in, b_in, sqk, sv, k, v, g, beta, sq, AiF, Abf, su, sw, sg,
     gscale, eps,
     H: tl.constexpr, HV: tl.constexpr, K: tl.constexpr, V: tl.constexpr, BT: tl.constexpr, BC: tl.constexpr,
 ):
@@ -203,7 +231,7 @@ def _k1_row(
     rk = _rstd(tl.load(p_k + o_K[None, :] + o_i[:, None] * 0), eps)
     for i_k in tl.static_range(K // 64):
         b_qx = tl.load(p_q + i_k * 64 + o_64[None, :] + o_i[:, None] * 0)
-        tl.store(qn + r * K + i_k * 64 + o_64[None, :] + o_i[:, None] * 0,
+        tl.store(sq + j * K + i_k * 64 + o_64[None, :] + o_i[:, None] * 0,
                  (b_qx.to(tl.float32) * rq[:, None]).to(b_qx.dtype), mask=(o_i == 0)[:, None])
         b_kx = tl.load(p_k + i_k * 64 + o_64[None, :] + o_i[:, None] * 0)
         tl.store(k + r * (H*K) + i_k * 64 + o_64[None, :] + o_i[:, None] * 0,
@@ -284,39 +312,38 @@ def _k1_row(
                 _put_row(Abf, r, 0, BT, b_Ai30, i, BC)
     tl.debug_barrier()
 
-    # ---- recompute_w_u: rows of u, w for the token (16-row tile, row i stored) --------------------------------
+    # ---- recompute_w_u: rows of u, w for the token (16-row tile, row i stored for K2) ---------------------------
     m_rs = (o_i <= i)[:, None]
     b_b = tl.load(tl.make_block_ptr(beta, (T,), (HV,), (0,), (BT,), (0,)), boundary_check=(0,))
     b_A = tl.load(Abf + (tb + o_i)[:, None] * BT + o_t[None, :], mask=m_rs, other=0.)
     b_vin = tl.load(tl.make_block_ptr(v, (T, V), (HV*V, 1), (0, 0), (BT, V), (1, 0)), boundary_check=(0, 1))
     b_vb = (b_vin * b_b[:, None]).to(b_vin.dtype)
     b_u = tl.dot(b_A, b_vb, allow_tf32=False).to(b_vin.dtype)
-    tl.store(Uc + (tb + o_i)[:, None] * V + o_V[None, :], b_u, mask=m_row)
+    tl.store(su + j * V + o_V[None, :] + o_i[:, None] * 0, b_u, mask=m_row)
     b_ge = tl.math.exp2(tl.load(tl.make_block_ptr(sg, (T,), (1,), (0,), (BT,), (0,)), boundary_check=(0,)))
     for i_k in tl.static_range(K // 64):
         b_kk = tl.load(tl.make_block_ptr(k, (T, K), (H*K, 1), (0, i_k * 64), (BT, 64), (1, 0)), boundary_check=(0, 1))
         b_kb = b_kk * b_b[:, None]
         b_kb *= b_ge[:, None]
         b_w = tl.dot(b_A, b_kb.to(b_kk.dtype)).to(b_kk.dtype)
-        tl.store(Wc + (tb + o_i)[:, None] * K + i_k * 64 + o_64[None, :], b_w, mask=m_row)
+        tl.store(sw + j * K + i_k * 64 + o_64[None, :] + o_i[:, None] * 0, b_w, mask=m_row)
 
 
 
 
 @triton.jit
 def _gdn_k1(
-    q_in, k_in, v_in, g_in, b_in, xrow, grow, sqk, sv, pos, nrows, pending, kbuf, vbuf, gbuf, bbuf, qn, AiF, Abf, Uc,
-    Wc, sgc, slots,
+    q_in, k_in, v_in, g_in, b_in, xrow, grow, sqk, sv, pos, nrows, pending, kbuf, vbuf, gbuf, bbuf, scr_q, scr_u,
+    scr_w, AiF, Abf, sgc, slots,
     sS: tl.constexpr, sHb: tl.constexpr, skb: tl.constexpr, svb: tl.constexpr, sgb: tl.constexpr, sbb: tl.constexpr,
-    sAi: tl.constexpr, sAb: tl.constexpr, sU: tl.constexpr, sW: tl.constexpr, sVN: tl.constexpr, ssg: tl.constexpr,
-    sqn: tl.constexpr,
+    sAi: tl.constexpr, sAb: tl.constexpr, sVN: tl.constexpr, ssg: tl.constexpr,
     gscale, eps,
     H: tl.constexpr, HV: tl.constexpr, K: tl.constexpr, V: tl.constexpr, BT: tl.constexpr, BC: tl.constexpr,
-    SINGLE: tl.constexpr,
+    KT: tl.constexpr, SINGLE: tl.constexpr,
 ):
     """Rows pos % 64 .. pos % 64 + nrows - 1 of one (slot, head), the window's tokens being rows xrow .. of q, k, v
-    (row stride sqk, sv) and rows grow .. of g, beta; the slot's head-0 program then resets the fold flag (K0 has
-    run)."""
+    (row stride sqk, sv) and rows grow .. of g, beta; the window's l2norm(q), u and w rows, which only K2 reads, go to
+    the step's scratch ([n, HV, KT, K or V]); the slot's head-0 program then resets the fold flag (K0 has run)."""
     i_nh = tl.program_id(0)
     i_n, i_h = i_nh // HV, i_nh % HV
     i_hk = i_h // (HV // H)
@@ -329,21 +356,21 @@ def _gdn_k1(
     beta = bbuf + slot * sbb + i_h
     AiF += slot * sAi + i_h * BT * BT
     Abf += slot * sAb + i_h * BT * BT
-    Uc += slot * sU + i_h * BT * V
-    Wc += slot * sW + i_h * BT * K
     sg = sgc + slot * ssg + i_h * BT
-    qn += slot * sqn + i_h * BT * K
+    sq = scr_q + (i_n * HV + i_h) * KT * K
+    su = scr_u + (i_n * HV + i_h) * KT * V
+    sw = scr_w + (i_n * HV + i_h) * KT * K
     r0 = tl.load(pos + i_n) % BT
     nr = tl.load(nrows + i_n)
     xr = tl.load(xrow + i_n).to(tl.int64)
     gr = tl.load(grow + i_n).to(tl.int64)
     if SINGLE:                          # one token: no loop (a runtime loop costs registers and occupancy)
-        _k1_row(r0, 0, xr, gr, i_h, i_hk, q_in, k_in, v_in, g_in, b_in, sqk, sv, k, v, g, beta, qn, AiF, Abf, Uc,
-                Wc, sg, gscale, eps, H, HV, K, V, BT, BC)
+        _k1_row(r0, 0, xr, gr, i_h, i_hk, q_in, k_in, v_in, g_in, b_in, sqk, sv, k, v, g, beta, sq, AiF, Abf, su,
+                sw, sg, gscale, eps, H, HV, K, V, BT, BC)
     else:
         for j in range(nr):
-            _k1_row(r0 + j, j, xr, gr, i_h, i_hk, q_in, k_in, v_in, g_in, b_in, sqk, sv, k, v, g, beta, qn, AiF,
-                    Abf, Uc, Wc, sg, gscale, eps, H, HV, K, V, BT, BC)
+            _k1_row(r0 + j, j, xr, gr, i_h, i_hk, q_in, k_in, v_in, g_in, b_in, sqk, sv, k, v, g, beta, sq, AiF,
+                    Abf, su, sw, sg, gscale, eps, H, HV, K, V, BT, BC)
             tl.debug_barrier()
     if i_h == 0:
         tl.store(pending + slot, 0)                                  # K0 has run
@@ -351,12 +378,11 @@ def _gdn_k1(
 
 @triton.jit
 def _gdn_k2(
-    pos, nrows, kbuf, qn, Hb, o, orow, Uc, Wc, VNc, sgc, S, slots,
+    pos, nrows, kbuf, vbuf, bbuf, Abf, scr_q, scr_u, scr_w, Hb, o, orow, VNc, sgc, S, slots,
     sS: tl.constexpr, sHb: tl.constexpr, skb: tl.constexpr, svb: tl.constexpr, sgb: tl.constexpr, sbb: tl.constexpr,
-    sAi: tl.constexpr, sAb: tl.constexpr, sU: tl.constexpr, sW: tl.constexpr, sVN: tl.constexpr, ssg: tl.constexpr,
-    sqn: tl.constexpr,
+    sAi: tl.constexpr, sAb: tl.constexpr, sVN: tl.constexpr, ssg: tl.constexpr,
     scale, H: tl.constexpr, HV: tl.constexpr, K: tl.constexpr, V: tl.constexpr, BV: tl.constexpr,
-    BT: tl.constexpr, BC: tl.constexpr, TILE: tl.constexpr, EAGER_FOLD: tl.constexpr,
+    BT: tl.constexpr, BC: tl.constexpr, KT: tl.constexpr, TILE: tl.constexpr, EAGER_FOLD: tl.constexpr,
 ):
     """Window rows r0 .. r1 = r0 + nrows - 1 of one (V block, slot, head) on one TILE-row tile starting at r0's
     sub-block (16 rows for one token, 32 for a window of up to 16): v_new = u - w bf16(S) for the window's rows (fwd_h),
@@ -372,11 +398,11 @@ def _gdn_k2(
     if slot < 0:                        # padding entry of a CUDA-graph batch (engine's PAD_SLOT_ID)
         return
     k = kbuf + slot * skb + (i_h // (HV // H)) * K
-    Uc += slot * sU + i_h * BT * V
-    Wc += slot * sW + i_h * BT * K
     VNc += slot * sVN + i_h * BT * V
     sg = sgc + slot * ssg + i_h * BT
-    qn += slot * sqn + i_h * BT * K
+    sq = scr_q + (i_n * HV + i_h) * KT * K - r0 * K             # scratch rows by chunk row (window row j = row - r0)
+    su = scr_u + (i_n * HV + i_h) * KT * V - r0 * V
+    sw = scr_w + (i_n * HV + i_h) * KT * K - r0 * K
     Hb_ = Hb + slot * sHb + i_h * K * V
     o_i = tl.arange(0, BC)
     o_t = tl.arange(0, BT)
@@ -393,9 +419,9 @@ def _gdn_k2(
     b_o = tl.zeros([TILE, BV], dtype=tl.float32)
     b_Aq = tl.zeros([TILE, BT], dtype=tl.float32)
     for i_k in tl.static_range(K // 64):
-        b_w = tl.load(Wc + rows[:, None] * K + i_k * 64 + o_64[None, :], mask=m_win, other=0.)
+        b_w = tl.load(sw + rows[:, None] * K + i_k * 64 + o_64[None, :], mask=m_win, other=0.)
         b_h = tl.load(tl.make_block_ptr(Hb_, (K, V), (V, 1), (i_k * 64, i_v * BV), (64, BV), (1, 0)))
-        b_q = tl.load(qn + rows[:, None] * K + i_k * 64 + o_64[None, :], mask=m_win, other=0.)
+        b_q = tl.load(sq + rows[:, None] * K + i_k * 64 + o_64[None, :], mask=m_win, other=0.)
         b_kt = tl.load(tl.make_block_ptr(k, (K, T), (1, H*K), (i_k * 64, 0), (64, BT), (0, 1)), boundary_check=(0, 1))
         if i_k == 0:
             b_v = tl.dot(b_w, b_h)                                  # fwd_h: b_v = dot(w1, h1); b_v += dot(w2, h2)
@@ -405,7 +431,7 @@ def _gdn_k2(
             b_h2 = b_h
         b_o += tl.dot(b_q, b_h)                                     # chunk_fwd_kernel_o: zeros += dot over K
         b_Aq += tl.dot(b_q, b_kt)
-    b_u = tl.load(Uc + rows[:, None] * V + o_v[None, :], mask=m_win, other=0.)
+    b_u = tl.load(su + rows[:, None] * V + o_v[None, :], mask=m_win, other=0.)
     b_v = b_u.to(tl.float32) - b_v
     tl.store(VNc + rows[:, None] * V + o_v[None, :], b_v.to(VNc.dtype.element_ty), mask=m_win)
     tl.debug_barrier()
@@ -423,14 +449,14 @@ def _gdn_k2(
              b_o.to(o.dtype.element_ty),
              mask=m_win)
 
-    # ---- plain decode folds a completed chunk right away (fwd_h's 64-row arithmetic from the cached u, w rows) ------
+    # ---- plain decode folds a completed chunk right away (fwd_h's 64-row arithmetic, _fold_vf) ---------------------
     if EAGER_FOLD:
         if T == BT:
             S_ = S + slot * sS + i_h * K * V
-            b_vf = tl.dot(tl.load(tl.make_block_ptr(Wc, (BT, K), (K, 1), (0, 0), (BT, 64), (1, 0))), b_h1)
-            if K > 64:
-                b_vf += tl.dot(tl.load(tl.make_block_ptr(Wc, (BT, K), (K, 1), (0, 64), (BT, 64), (1, 0))), b_h2)
-            b_vf = tl.load(tl.make_block_ptr(Uc, (BT, V), (V, 1), (0, i_v * BV), (BT, BV), (1, 0))) - b_vf
+            if K == 64:
+                b_h2 = b_h1
+            b_vf = _fold_vf(k, vbuf + slot * svb + i_h * V, bbuf + slot * sbb + i_h, Abf + slot * sAb + i_h * BT * BT,
+                            sg, b_h1, b_h2, i_v * BV, H, HV, K, V, BT, BV)
             b_glast = tl.load(sg + (BT - 1)).to(tl.float32)
             b_gl = tl.load(sg + o_t).to(tl.float32)
             b_vf = b_vf * tl.where(m_t, tl.math.exp2(b_glast - b_gl), 0)[:, None]
@@ -451,9 +477,8 @@ def state_layout(H, HV, K, V, dtype=torch.bfloat16, beta_dtype=None):
     the slot's total size in words. One slot = one sequence of one GDN layer."""
     bufs = [('S', torch.float32, (HV, K, V)), ('Hb', dtype, (HV, K, V)), ('kbuf', dtype, (BT, H, K)),
             ('vbuf', dtype, (BT, HV, V)), ('gbuf', torch.float32, (BT, HV)), ('bbuf', beta_dtype or dtype, (BT, HV)),
-            ('AiF', torch.float32, (HV, BT, BT)), ('Abf', dtype, (HV, BT, BT)), ('Uc', dtype, (HV, BT, V)),
-            ('Wc', dtype, (HV, BT, K)), ('VNc', dtype, (HV, BT, V)), ('sg', torch.float32, (HV, BT)),
-            ('qn', dtype, (HV, BT, K))]
+            ('AiF', torch.float32, (HV, BT, BT)), ('Abf', dtype, (HV, BT, BT)), ('VNc', dtype, (HV, BT, V)),
+            ('sg', torch.float32, (HV, BT))]
     out, words = [], 0
     for name, dt, shape in bufs:
         n = 1
@@ -507,7 +532,7 @@ class GDNExactDecode:
         self._slots = torch.arange(N, device=device, dtype=torch.int32)
         # per-slot element strides of every cache, in the order the kernels take them (compile-time constants there)
         self._st = tuple(getattr(self, n).stride(0) for n in
-                         ('S', 'Hb', 'kbuf', 'vbuf', 'gbuf', 'bbuf', 'AiF', 'Abf', 'Uc', 'Wc', 'VNc', 'sg', 'qn'))
+                         ('S', 'Hb', 'kbuf', 'vbuf', 'gbuf', 'bbuf', 'AiF', 'Abf', 'VNc', 'sg'))
         self._rows = {}
 
     @staticmethod
@@ -538,15 +563,18 @@ class GDNExactDecode:
             out, rows_out = torch.empty(n * KT, HV, self.V, device=q.device, dtype=v.dtype), self._rows_of(n, KT, q.device)
         if KT > 1:
             self.fold(slots)
+        # the window's l2norm(q), u, w rows: K1 writes them, only K2 reads them
+        scr = torch.empty(n * HV * KT * (2 * self.K + self.V), device=q.device, dtype=self.kbuf.dtype)
+        scr_q, scr_w, scr_u = scr.split([n * HV * KT * self.K] * 2 + [n * HV * KT * self.V])
         _gdn_k1[(n * HV,)](
             q, k, v, g, beta, rows, rows if rows_g is None else rows_g, q.stride(0), v.stride(0), pos, nrows,
-            self.pending, self.kbuf, self.vbuf, self.gbuf, self.bbuf, self.qn, self.AiF, self.Abf, self.Uc, self.Wc,
+            self.pending, self.kbuf, self.vbuf, self.gbuf, self.bbuf, scr_q, scr_u, scr_w, self.AiF, self.Abf,
             self.sg, slots, *self._st, RCP_LN2, self.eps, H=self.H, HV=HV, K=self.K, V=self.V, BT=BT, BC=BC,
-            SINGLE=KT == 1, num_warps=self.nw1)
+            KT=KT, SINGLE=KT == 1, num_warps=self.nw1)
         _gdn_k2[(self.V // self.BV, n * HV)](
-            pos, nrows, self.kbuf, self.qn, self.Hb, out, rows_out, self.Uc, self.Wc, self.VNc, self.sg, self.S, slots,
-            *self._st, scale, H=self.H, HV=HV, K=self.K, V=self.V, BV=self.BV, BT=BT, BC=BC,
-            TILE=BC if KT == 1 else 2 * BC, EAGER_FOLD=KT == 1, num_warps=self.nw2)
+            pos, nrows, self.kbuf, self.vbuf, self.bbuf, self.Abf, scr_q, scr_u, scr_w, self.Hb, out, rows_out,
+            self.VNc, self.sg, self.S, slots, *self._st, scale, H=self.H, HV=HV, K=self.K, V=self.V, BV=self.BV,
+            BT=BT, BC=BC, KT=KT, TILE=BC if KT == 1 else 2 * BC, EAGER_FOLD=KT == 1, num_warps=self.nw2)
         return out
 
     def _check(self, q, k, v, g, beta, n, KT):
@@ -594,7 +622,7 @@ class GDNExactDecode:
         clears pending."""
         slots, = self._i32(slots)
         _gdn_k0[(self.V // 64, slots.shape[0] * self.HV)](
-            self.pending, self.kbuf, self.Uc, self.Wc, self.sg, self.S, self.Hb, slots, *self._st,
+            self.pending, self.kbuf, self.vbuf, self.bbuf, self.Abf, self.sg, self.S, self.Hb, slots, *self._st,
             H=self.H, HV=self.HV, K=self.K, V=self.V, BT=BT, num_warps=4)
 
     def commit(self, pos, accepted, slots=None):

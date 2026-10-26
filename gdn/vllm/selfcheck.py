@@ -5,7 +5,7 @@ prompt_logprobs (prefill path). Counts the generated tokens whose decode-time fp
 prefill-time one bitwise, and whose greedy token equals the prefill's argmax. Dense ops can be made batch-invariant
 with VLLM_BATCH_INVARIANT=1 (FLASH_ATTN backend); with them on, what remains is the GDN layers.
 usage: [VLLM_BATCH_INVARIANT=1] python gdn/vllm/selfcheck.py MODEL_DIR [N_PROMPTS] [NEW] [--exact] [--spec]
-       [--prefill-chunk=T] [--short] [--aligned] [--one-token-chunks]
+       [--prefill-chunk=T] [--short] [--aligned] [--one-token-chunks] [--preempt]
 (--exact installs gdn/vllm/exact_gdn.py's patch first; --spec turns on n-gram speculative decoding with 4 drafts;
 CUDAGRAPH_MODE=PIECEWISE selects vLLM's piecewise CUDA graphs, needed with --spec: stock vLLM 0.17.1 fails to capture
 full graphs for Qwen3.5 with n-gram drafts; --prefill-chunk=T caps the tokens per step at T, so prompts are prefilled
@@ -14,7 +14,10 @@ in chunks, continuing from the state a previous chunk left, and with T a multipl
 inside the first chunk take over slots that hold a finished request's state; --aligned uses prompts of 64, 128, 192, 256
 tokens, so prefill ends on a 64-token boundary and decoding starts a new chunk; --one-token-chunks uses N-1 prompts of
 2 tokens and one of 200 with N+1 tokens per step, so while the short requests decode (served first) the long prompt
-advances a few tokens per step, including one-token chunks that complete a 64-token chunk).
+advances a few tokens per step, including one-token chunks that complete a 64-token chunk; --preempt preempts the
+running request with the most generated tokens every 23rd scheduler step during generation through vLLM's preemption
+routine (a synthetic trigger and victim; the request's blocks are freed and it is recomputed from its first token,
+prompt and generated tokens as a prefill), and prints how many).
 Also prints a hash of every generated token and the bits of its log-probability, to compare runs."""
 import hashlib, os, struct, sys
 
@@ -44,6 +47,7 @@ def main():
     text = open(f'{model}/README.md').read()
     ids = tok(text).input_ids
     short, aligned, trickle = '--short' in sys.argv, '--aligned' in sys.argv, '--one-token-chunks' in sys.argv
+    preempt = {'step': 0, 'count': 0} if '--preempt' in sys.argv else None
     plen = lambda i: ((200 if i == n_prompts - 1 else 2) if trickle else 1 + 3 * i if short
                       else 64 * (1 + i % 4) if aligned else 100 + 37 * i)
     prompts = [ids[200 * i:200 * i + plen(i)] for i in range(n_prompts)]
@@ -62,8 +66,34 @@ def main():
     if short:                    # leave finished requests' state in every slot of the pool (vLLM hands out unused ones first)
         llm.generate([{'prompt_token_ids': ids[7 * i:7 * i + 300]} for i in range(400)],
                      SamplingParams(temperature=0, max_tokens=2, ignore_eos=True))
+    if preempt is not None:
+        import time
+        from vllm.v1.core.sched.interface import PauseState
+        from vllm.v1.core.sched.scheduler import Scheduler
+        orig_schedule = Scheduler.schedule
+
+        def schedule(self):
+            """As vLLM's scheduler does when it runs out of blocks: a running request is preempted (the one with the
+            most generated tokens, so its recompute runs past its prompt; vLLM's priority policy also picks any running
+            request), and no waiting request is scheduled in that step (the preempted one resumes in a later step)."""
+            preempt['step'] += 1
+            if preempt['step'] % 23 or len(self.running) < 2 or self._pause_state != PauseState.UNPAUSED:
+                return orig_schedule(self)
+            req = max(self.running, key=lambda r: r.num_output_tokens)
+            self.running.remove(req)
+            self._preempt_request(req, time.monotonic())
+            preempt['count'] += 1
+            self._pause_state = PauseState.PAUSED_NEW
+            try:
+                return orig_schedule(self)
+            finally:
+                self._pause_state = PauseState.UNPAUSED
+        Scheduler.schedule = schedule
     gen = llm.generate([{'prompt_token_ids': p} for p in prompts],
                        SamplingParams(temperature=0, max_tokens=new, logprobs=0, ignore_eos=True))
+    if preempt is not None:
+        Scheduler.schedule = orig_schedule
+        print('PREEMPTIONS', preempt['count'])
     full = [p + list(g.outputs[0].token_ids) for p, g in zip(prompts, gen)]
     sc = llm.generate([{'prompt_token_ids': f} for f in full],
                       SamplingParams(temperature=0, max_tokens=1, prompt_logprobs=0))
