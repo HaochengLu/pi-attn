@@ -12,4 +12,5 @@ spec window KT=4          H=32 HV=32 K=128 V=128: accepted rows 2933 mismatching
 spec window KT=4          H=16 HV=32 K=128 V=128: accepted rows 2933 mismatching 0; boundary states 44 mismatching 0
 spec window KT=16          H=32 HV=32 K=128 V=128: accepted rows 3173 mismatching 0; boundary states 48 mismatching 0
 spec window KT=16          H=16 HV=32 K=128 V=128: accepted rows 3173 mismatching 0; boundary states 48 mismatching 0
+fold without a following window H=16 HV=32: row 63 equal True; state at 64 equal True; rows 64..69 mismatching 0
 PASS

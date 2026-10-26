@@ -1,4 +1,4 @@
-GPU NVIDIA A800-SXM4-80GB  Triton 3.6.0  T=4096
+GPU NVIDIA A800-SXM4-80GB  Triton 3.7.1  T=4096
 fla as installed      seed 0: output elements differing fixed-length vs varlen 0 of 16777216
 fla as installed      seed 1: output elements differing fixed-length vs varlen 0 of 16777216
 fla as installed      seed 2: output elements differing fixed-length vs varlen 0 of 16777216
@@ -9,7 +9,7 @@ after pin_fla_configs seed 1: output elements differing fixed-length vs varlen 0
 after pin_fla_configs seed 2: output elements differing fixed-length vs varlen 0 of 16777216
 after pin_fla_configs seed 3: output elements differing fixed-length vs varlen 0 of 16777216
 after pin_fla_configs: fixed-length and varlen output kernels agree
-GPU NVIDIA A800-SXM4-80GB  Triton 3.7.1  T=4096
+GPU NVIDIA A800-SXM4-80GB  Triton 3.6.0  T=4096
 fla as installed      seed 0: output elements differing fixed-length vs varlen 0 of 16777216
 fla as installed      seed 1: output elements differing fixed-length vs varlen 0 of 16777216
 fla as installed      seed 2: output elements differing fixed-length vs varlen 0 of 16777216

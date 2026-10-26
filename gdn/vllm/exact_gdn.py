@@ -23,18 +23,21 @@ Unchanged: projections, conv1d (vLLM's prefill, decode and speculative conv kern
 gating, norm.
 
 vLLM 0.17.1 issues met on the way (they affect stock speculative decoding of hybrid models too; see
-fix_vllm_mixed_spec_decodes): a batch mixing decode requests with and without drafts kills the engine on an
-assertion; and in a step in which no request has a draft vLLM sends no speculative metadata and runs its plain conv on
-the decode requests (alone, or with prefill requests in the same batch), which takes the previous window's rejected
-drafts as conv history (handled here by rolling the conv state back with the acceptance derived from positions). Also,
-with speculative decoding the mamba block table has 1 + drafts columns, so a request's slot column is a strided view
-(exact_decode compacts it).
+fix_vllm_mixed_spec_decodes): decode requests without drafts are marked like prefill requests, so a batch mixing them
+with speculative ones kills the engine on an assertion and their conv state is not rolled back; in a step in which no
+request has a draft vLLM sends no speculative metadata and runs its plain conv on the decode requests (alone, or with
+prefill requests in the same batch), which takes the previous window's rejected drafts as conv history (handled here
+by rolling the conv state back with the acceptance derived from positions); with speculative decoding the mamba block
+table has 1 + drafts columns, so a request's slot column is a strided view (exact_decode compacts it); a one-token
+prompt is run as a decode from whatever state its slot holds (refused in vLLM's input validation).
 
-Not handled: one-token prompts (refused, see install), prefix caching, tensor parallelism (asserted), drafters other
-than n-gram (their drafts are not cut), and full CUDA graphs with speculative decoding (stock vLLM 0.17.1 fails to
-capture them for Qwen3.5; use PIECEWISE).
+Not handled: prefix caching, tensor parallelism (asserted), drafters other than n-gram (their drafts are not cut at
+the 64-token boundary; a window crossing it trips a device-side assertion), and full CUDA graphs with speculative
+decoding (stock vLLM 0.17.1 fails to capture them for Qwen3.5; use PIECEWISE).
 Use: VLLM_ENABLE_V1_MULTIPROCESSING=0 (the patch must live in the process that runs the model), PYTHONPATH with
 env/fla_pkgs and gdn/, mamba_ssm_cache_dtype='float32', enable_prefix_caching=False; call install() before LLM().
+Decode equals the engine's prefill bitwise only with batch-invariant dense ops as well (VLLM_BATCH_INVARIANT=1,
+attention_backend='FLASH_ATTN'); without them GDN is exact and the dense ops are not.
 EXACT_GDN_DEBUG=1 cross-checks every speculative window and every fold against fla's chunk program (slow)."""
 import os
 
@@ -50,7 +53,7 @@ def install():
     import vllm.model_executor.layers.mamba.mamba_utils as mu
     import vllm.model_executor.models.qwen3_next as qn
     from vllm.v1.spec_decode.ngram_proposer import NgramProposer
-    from vllm.v1.core.sched.scheduler import Scheduler
+    from vllm.v1.engine.input_processor import InputProcessor
     from exact_decode import state_layout, pin_fla_configs
 
     orig_shape = mu.MambaStateShapeCalculator.gated_delta_net_state_shape.__func__
@@ -92,33 +95,48 @@ def install():
 
     NgramProposer.propose = propose
 
-    orig_add = Scheduler.add_request
+    orig_validate = InputProcessor._validate_prompt_len
 
-    def add_request(self, request):
+    def _validate_prompt_len(self, prompt_len, prompt_type):
         """vLLM 0.17.1 runs a one-token prompt as a decode (query length 1), from whatever state its slot holds (mamba
-        slots are not cleared for new requests); refuse it rather than decode from a stale state."""
-        if request.num_prompt_tokens < 2:
-            raise ValueError('exact GDN: prompts of fewer than 2 tokens are not supported')
-        return orig_add(self, request)
+        slots are not cleared for new requests); the request is refused where vLLM refuses an empty prompt, so the
+        caller gets the error and the engine runs on."""
+        if prompt_len == 1 and prompt_type == 'decoder':
+            raise ValueError('exact GDN: prompts of one token are not supported (vLLM would decode them from a stale '
+                             'state slot)')
+        return orig_validate(self, prompt_len, prompt_type)
 
-    Scheduler.add_request = add_request
+    InputProcessor._validate_prompt_len = _validate_prompt_len
 
 
 def fix_vllm_mixed_spec_decodes():
-    """vLLM 0.17.1 bug fix, applied to stock and exact runs alike: with n-gram drafting some decode requests have no
-    draft in a step (no match), which makes them non-speculative decodes in a batch with speculative ones, and the GDN
-    metadata builder asserts that the two never mix (`num_decodes: x, num_spec_decodes: y`), killing the engine. The fix
-    makes a decode request without drafts a speculative request with zero drafts (so its conv state is still rolled
-    back by the previous window's acceptance) and drops the assertion for the cases that remain (a one-token chunked
-    prefill continuation). For the exact layer the metadata also keeps the
-    batch's seq_lens and query_start_loc (the runner's persistent buffers, so valid inside CUDA graphs) and, in mixed
-    batches, the batch index of every speculative and non-speculative entry: the exact layer derives each request's
-    absolute position from them instead of the accepted counts, which vLLM passes only in steps that have drafts."""
+    """vLLM 0.17.1 bug fix, applied to stock and exact runs alike. With n-gram drafting some decode requests have no
+    draft in a step (no match). The runner marks them like prefill requests (-1 in num_decode_draft_tokens), so they
+    become non-speculative decodes in a batch with speculative ones, which the GDN metadata builder asserts never
+    happens (`num_decodes: x, num_spec_decodes: y`), killing the engine; and as non-speculative decodes their conv
+    state would not be rolled back by the previous window's acceptance (the plain conv update takes the rejected drafts
+    as history). The fix: the runner marks every request past its prompt as a speculative request with 0 or more drafts
+    (it knows prompt lengths; the builder does not), and the builder's assertion is dropped for what remains, a
+    one-token chunk of a prompt (query length 1, so vLLM counts it as a decode). For the exact layer the metadata also
+    keeps the batch's seq_lens and query_start_loc (the runner's persistent buffers, so valid inside CUDA graphs) and,
+    in mixed batches, the batch index of every speculative and non-speculative entry: the exact layer derives each
+    request's absolute position from them instead of the accepted counts, which vLLM passes only in steps that have
+    drafts."""
     import inspect, textwrap
     import vllm.v1.attention.backends.gdn_attn as ga
+    import vllm.v1.worker.gpu_model_runner as gmr
     B = ga.GDNAttentionMetadataBuilder
     if getattr(B, '_exact_fixed', False):
         return
+    R = gmr.GPUModelRunner
+    src = textwrap.dedent(inspect.getsource(R._prepare_inputs))
+    old = "num_decode_draft_tokens = np.full(num_reqs, -1, dtype=np.int32)"
+    assert src.count(old) == 1, 'vLLM runner changed; re-check the fix'
+    src = src.replace(old, "num_decode_draft_tokens = np.where(self.input_batch.num_computed_tokens_cpu[:num_reqs] >= "
+                           "self.input_batch.num_prompt_tokens[:num_reqs], 0, -1).astype(np.int32)")
+    ns = {}
+    exec(compile(src, gmr.__file__, 'exec'), gmr.__dict__, ns)
+    R._prepare_inputs = ns['_prepare_inputs']
     src = textwrap.dedent(inspect.getsource(B.build))
     old_assert = """    assert not (num_decodes > 0 and num_spec_decodes > 0), (
         f"num_decodes: {num_decodes}, num_spec_decodes: {num_spec_decodes}"
@@ -126,26 +144,17 @@ def fix_vllm_mixed_spec_decodes():
 """
     assert old_assert in src, 'vLLM GDN builder changed; re-check the fix'
     src = src.replace(old_assert, "")
-    # decode requests without drafts become speculative requests with zero drafts, so their conv state is rolled back
-    # by the previous window's acceptance (the non-speculative conv update would treat rejected drafts as history),
-    # and a batch whose decode requests all have zero drafts stays on the speculative path
+    # a batch whose decode requests all have zero drafts stays on the speculative path
     import re
     src, n_sum = re.subn(r"num_decode_draft_tokens_cpu\[num_decode_draft_tokens_cpu >= 0\]\s*\.sum\(\)\s*\.item\(\)\s*== 0",
                          "(num_decode_draft_tokens_cpu >= 0).sum().item() == 0", src)
     assert n_sum == 1, 'vLLM GDN builder changed; re-check the fix'
-    src = src.replace("    m = common_attn_metadata\n", """    m = common_attn_metadata
-    if num_decode_draft_tokens_cpu is not None:
-        _ql = m.query_start_loc_cpu[1:m.num_reqs + 1] - m.query_start_loc_cpu[:m.num_reqs]
-        _nc = m.compute_num_computed_tokens()[:m.num_reqs].cpu()
-        num_decode_draft_tokens_cpu = num_decode_draft_tokens_cpu.clone()
-        _d = num_decode_draft_tokens_cpu[:m.num_reqs]
-        _d[(_d < 0) & (_ql == 1) & (_nc > 0)] = 0
-""", 1)
     src = src.replace("    return attn_metadata\n", """    attn_metadata.seq_lens_all = m.seq_lens
     attn_metadata.qsl_all = m.query_start_loc
     mixed = spec_sequence_masks is not None and (num_prefills > 0 or num_decodes > 0)
-    attn_metadata.spec_req_idx = torch.nonzero(spec_sequence_masks[:m.num_reqs]).flatten() if mixed else None
-    attn_metadata.non_spec_req_idx = torch.nonzero(~spec_sequence_masks[:m.num_reqs]).flatten() if mixed else None
+    _dev = m.query_start_loc.device
+    attn_metadata.spec_req_idx = torch.nonzero(spec_sequence_masks_cpu[:m.num_reqs]).flatten().to(_dev) if mixed else None
+    attn_metadata.non_spec_req_idx = torch.nonzero(~spec_sequence_masks_cpu[:m.num_reqs]).flatten().to(_dev) if mixed else None
     return attn_metadata
 """)
     ns = {}
@@ -163,6 +172,7 @@ def _decoders(layer, storage, num_spec):
     if st is None or st['one'].storage.data_ptr() != storage.data_ptr():
         assert storage.dtype == torch.float32, 'exact GDN needs mamba_ssm_cache_dtype=float32'
         n, dev = storage.shape[0], storage.device
+        assert 1 + num_spec <= 16, 'exact GDN: windows of at most 16 tokens (num_speculative_tokens <= 15)'
         mk = lambda KT: GDNExactDecode(n, layer.num_k_heads, layer.num_v_heads, layer.head_k_dim, layer.head_v_dim,
                                        dev, KT=KT, BV=128, nw1=2, nw2=4, storage=storage)
         st = {'one': mk(1), 'ws': torch.zeros(n + 1, device=dev, dtype=torch.int32),
@@ -282,7 +292,9 @@ def _spec_windows(self, st, md, x, g, beta, scale):
     pos = _positions(md, md.spec_req_idx, nsd)
     acc = torch.where(wn[idx] > 0, pos - ws[idx], 0)              # tokens of the previous window that were kept
     dec.commit(ws[idx], acc, slots=slots)
-    nrows = torch.minimum(nrows, (BT - pos % BT).to(torch.int32))  # a window never runs past the chunk's 64th row
+    # a window never runs past its chunk's 64th row: the n-gram proposer is cut to that (install); a drafter that is
+    # not would get rows the kernels do not compute, so fail loudly (device-side, no host sync)
+    torch._assert_async(((nrows <= BT - pos % BT) | (slots < 0)).all())
     L = q.shape[1]
     gather = (qsl[:-1, None] + torch.arange(KT, device=q.device)[None, :]).clamp(max=max(L - 1, 0)).long()
     pick = lambda t: t[gather].contiguous()                          # [nsd, KT, ...]
@@ -347,6 +359,14 @@ def _prefill(self, st, md, q, k, v, g, beta, scale, out, nd, npf):
     init_d = md.has_initial_state[nd:nd + npf]
     qsl = md.non_spec_query_start_loc[nd:nd + npf + 1]
     sl_l = slots_d.long()
+    if 'win' in st:
+        # speculative engine: a one-token chunk of a prompt runs as a one-token window (vLLM counts it as a decode),
+        # whose acceptance would be committed at the slot's next window; commit it here (all of it, prompt tokens) and
+        # fold the chunk it may have completed before reading the boundary state
+        st['win'].commit(ws[sl_l], torch.where(init_d, wn[sl_l], 0), slots=slots_d)
+        if DEBUG:
+            DEBUG_STATS['prefill_folds'] = DEBUG_STATS.get('prefill_folds', 0) + int((dec.pending[sl_l] * init_d).sum())
+        dec.fold(slots_d)
     p0_d = torch.where(init_d, ws[sl_l] + wn[sl_l], 0)
     s0, e0, slot, p0, init = torch.stack([qsl[:-1], qsl[1:], slots_d, p0_d.to(slots_d.dtype),
                                           init_d.to(slots_d.dtype)]).cpu().numpy().astype(np.int64)  # host sync

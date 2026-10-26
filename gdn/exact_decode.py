@@ -60,12 +60,12 @@ O_FORM = tl.constexpr(_O_EPILOGUE_FORM[triton.__version__])
 _VALIDATED_GPUS = {(8, 0), (8, 9)}                    # A800, RTX 4090 D
 
 # fla autotune configs whose bits differ from the other configs of the same kernel, and from this file's kernels
-# (e4_autotune*.log; test_exact.py with each config pinned). fla tunes per shape (l2norm's key includes the row count,
+# (e4_autotune*.log, at the Qwen3.5-4B GDN shape; e14b_o_config_pins.log: test_exact.py with each config pinned). fla tunes per shape (l2norm's key includes the row count,
 # and the varlen and fixed-length variants of a kernel are tuned separately), so with them in the list one forward
 # can run two programs: e10 (alone vs packed rows differ on the RTX 4090) and e14 (varlen vs fixed-length).
 _FLA_ODD_CONFIGS = {
     'l2norm_fwd_kernel': lambda c, cap, tv: (c.kwargs['BT'], c.num_warps) in ((8, 8), (8, 16), (16, 16)),
-    'chunk_fwd_kernel_o': lambda c, cap, tv: (cap, tv) == ((8, 9), '3.6.0') and (c.kwargs['BK'], c.kwargs['BV']) == (64, 64),
+    'chunk_fwd_kernel_o': lambda c, cap, tv: tv == '3.6.0' and (c.kwargs['BK'], c.kwargs['BV']) == (64, 64),
 }
 
 
@@ -512,9 +512,7 @@ class GDNExactDecode:
         st = (slots, *self._strides())
         o = torch.empty(ns, KT, HV, self.V, device=q.device, dtype=v.dtype)
         if KT > 1:
-            _gdn_k0[(self.V // 64, ns * HV)](
-                self.pending, self.kbuf, self.Uc, self.Wc, self.sg, self.S, self.Hb, *st,
-                H=self.H, HV=HV, K=self.K, V=self.V, BT=BT, num_warps=4)
+            self.fold(slots)
         _gdn_k1[(ns * HV,)](
             q, k, v, g, beta, pos, nrows, self.pending, self.kbuf, self.vbuf, self.gbuf, self.bbuf,
             self.qn, self.AiF, self.Abf, self.Uc, self.Wc, self.sg, *st,
@@ -541,6 +539,15 @@ class GDNExactDecode:
         assert self.KT > 1, 'KT == 1: use decode()'
         self._check(q, k, v, g, beta, slots.shape[0], self.KT)
         return self._launch(slots, q, k, v, g, beta, pos, nrows, scale, self.KT)
+
+    def fold(self, slots):
+        """Fold the completed chunk of every slot marked pending into its state now (K0; normally the start of the slot's
+        next window). For a slot whose next step is not a window, e.g. an engine's prefill continuing it. The caller
+        clears pending."""
+        slots = slots.to(torch.int32).contiguous()
+        _gdn_k0[(self.V // 64, slots.shape[0] * self.HV)](
+            self.pending, self.kbuf, self.Uc, self.Wc, self.sg, self.S, self.Hb, slots, *self._strides(),
+            H=self.H, HV=self.HV, K=self.K, V=self.V, BT=BT, num_warps=4)
 
     def commit(self, pos, accepted, slots=None):
         """accepted [n] int32 (0..nrows) tokens of the window just stepped are kept; the caller then sets

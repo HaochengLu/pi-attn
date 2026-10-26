@@ -13,6 +13,7 @@ spec window KT=4          H=32 HV=32 K=128 V=128: accepted rows 2933 mismatching
 spec window KT=4          H=16 HV=32 K=128 V=128: accepted rows 2933 mismatching 0; boundary states 44 mismatching 0
 spec window KT=16          H=32 HV=32 K=128 V=128: accepted rows 3173 mismatching 0; boundary states 48 mismatching 0
 spec window KT=16          H=16 HV=32 K=128 V=128: accepted rows 3173 mismatching 0; boundary states 48 mismatching 0
+fold without a following window H=16 HV=32: row 63 equal True; state at 64 equal True; rows 64..69 mismatching 0
 PASS
 chunk_fwd_kernel_o pinned to config 1: {'BK': 64, 'BV': 64} num_warps 4
 exact_decode 2:4:64      H=32 HV=32 K=128 V=128 beta bfloat16: rows 2936 mismatching 140; boundary states 42 mismatching 0
@@ -29,6 +30,7 @@ spec window KT=4          H=32 HV=32 K=128 V=128: accepted rows 2933 mismatching
 spec window KT=4          H=16 HV=32 K=128 V=128: accepted rows 2933 mismatching 154; boundary states 44 mismatching 0
 spec window KT=16          H=32 HV=32 K=128 V=128: accepted rows 3173 mismatching 154; boundary states 48 mismatching 0
 spec window KT=16          H=16 HV=32 K=128 V=128: accepted rows 3173 mismatching 160; boundary states 48 mismatching 0
+fold without a following window H=16 HV=32: row 63 equal True; state at 64 equal True; rows 64..69 mismatching 0
 FAIL
 chunk_fwd_kernel_o pinned to config 2: {'BK': 32, 'BV': 32} num_warps 2
 exact_decode 2:4:64      H=32 HV=32 K=128 V=128 beta bfloat16: rows 2936 mismatching 0; boundary states 42 mismatching 0
@@ -45,4 +47,5 @@ spec window KT=4          H=32 HV=32 K=128 V=128: accepted rows 2933 mismatching
 spec window KT=4          H=16 HV=32 K=128 V=128: accepted rows 2933 mismatching 0; boundary states 44 mismatching 0
 spec window KT=16          H=32 HV=32 K=128 V=128: accepted rows 3173 mismatching 0; boundary states 48 mismatching 0
 spec window KT=16          H=16 HV=32 K=128 V=128: accepted rows 3173 mismatching 0; boundary states 48 mismatching 0
+fold without a following window H=16 HV=32: row 63 equal True; state at 64 equal True; rows 64..69 mismatching 0
 PASS

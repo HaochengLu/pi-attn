@@ -121,6 +121,35 @@ def run_spec(H, HV, KT=4, K=128, V=128):
     return bad_rows == 0 and bad_states == 0
 
 
+def run_fold(H=16, HV=32, KT=5, K=128, V=128):
+    """A one-token window completes a chunk and the slot's next step is not a window (exact_gdn: a prompt cut into a
+    one-token chunk, then prefill continuing it): commit + fold() must give fla's state at the boundary, and decoding
+    on from it the trainer's rows."""
+    q, k, v, g, beta = seq(0, H, HV, K, V)
+    ref_o = chunk(q, k, v, g, beta)[0]
+    scale = K ** -0.5
+    dec = GDNExactDecode(2, H, HV, K, V, dev, KT=KT)
+    dec.load(0, torch.zeros(HV, K, V, device=dev), 0, q[0, :63], k[0, :63], v[0, :63], g[0, :63], beta[0, :63])
+    slots, pos = torch.tensor([0], device=dev, dtype=torch.int32), torch.tensor([63], device=dev, dtype=torch.int32)
+    pad = lambda t: torch.cat([t[:, 63:64], t[:, 63:64].new_zeros(1, KT - 1, *t.shape[2:])], 1).contiguous()
+    o = dec.step(pad(q), pad(k), pad(v), pad(g), pad(beta), pos, torch.ones_like(pos), scale, slots=slots)
+    dec.commit(pos, torch.ones_like(pos), slots=slots)
+    dec.fold(slots)
+    dec.pending.zero_()
+    S64 = chunk(q[:, :64], k[:, :64], v[:, :64], g[:, :64], beta[:, :64])[1][0]
+    ok_row, ok_state = torch.equal(o[0, 0], ref_o[0, 63]), torch.equal(dec.S[0], S64)
+    one = GDNExactDecode(2, H, HV, K, V, dev, KT=1, storage=dec.storage)
+    one.pending = dec.pending
+    bad = 0
+    for t in range(64, 70):
+        o1 = one.decode(q[:, t], k[:, t], v[:, t], g[:, t], beta[:, t], torch.tensor([t], device=dev, dtype=torch.int32),
+                        scale, slots=slots)
+        bad += int(not torch.equal(o1[0], ref_o[0, t]))
+    print(f'fold without a following window H={H:2d} HV={HV:2d}: row 63 equal {ok_row}; state at 64 equal {ok_state}; '
+          f'rows 64..69 mismatching {bad}')
+    return ok_row and ok_state and bad == 0
+
+
 if __name__ == '__main__':
     cases = [('exact_decode', dict(H=H, HV=HV, cfg=cfg)) for cfg in ((2, 4, 64), (2, 4, 128))
              for H, HV in ((32, 32), (16, 16), (16, 32))]
@@ -128,5 +157,6 @@ if __name__ == '__main__':
     cases += [('exact_decode_ref', dict(H=H, HV=HV)) for H, HV in ((32, 32), (16, 32))]
     ok = all([run(impl, **kw) for impl, kw in cases])
     ok = all([run_spec(H, HV, KT) for H, HV, KT in ((32, 32, 4), (16, 32, 4), (32, 32, 16), (16, 32, 16))]) and ok
+    ok = run_fold() and ok
     print('PASS' if ok else 'FAIL')
     sys.exit(0 if ok else 1)

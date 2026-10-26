@@ -1,0 +1,2 @@
+speculative conv windows: accepted rows 298, rows differing from the prefill conv 0
+prefill, two one-token speculative updates, prefill: rows differing from the full prefill conv 0 of 40
