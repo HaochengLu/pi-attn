@@ -11,6 +11,7 @@ any of those optimizations off.
 |---|---|
 | `llm_infer_rust/` (branch `pi-attn`) | Engine with `--deterministic`; kernels in `src/kernels/pi/`, docs in `docs/deterministic-mode.md` |
 | `kernels/` | PyTorch bindings, invariance tests (`test_invariance.py`, `test_matrix.py`, `test_directed.py`, `test_gemm.py`) and microbenchmarks for the kernels (sources, including the GEMM id table `gemm_dispatch.cuh`, symlinked from the engine) |
+| `gdn/` | Exact Gated DeltaNet decode for hybrid models: decode bitwise equal to fla's chunked training forward (`exact_decode.py`), its test, benchmark and experiments; findings in `gdn/README.md` |
 | `detcheck/detcheck.py` | Black-box determinism checker for any OpenAI-compatible server |
 | `eval/` | Serving benchmark (`loadgen.py`), cross-configuration check (`crossconfig.sh`), end-to-end matrices (`e2e_matrix.sh`, `e2e_extended.sh`), same-GPU SGLang/vLLM baselines (`baselines.sh`), GSM8K reproducibility (`accuracy.sh`, `compare_accuracy.py`), fp32 agreement (`fp32_agreement.sh`), kernel benchmarks (`kernel_benches.sh`), and table generators (`summarize_*.py`) |
 | `results/` | Results of the latest `eval/run_all.sh`; `results/README.md` maps each paper table to its files and script |

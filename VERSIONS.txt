@@ -18,3 +18,5 @@ vllm venv: vllm 0.11.2 torch 2.9.0 flashinfer-python 0.5.2 transformers 4.57.6
 full package lists: requirements/{engine,sglang,vllm}.txt
 engine commits: RTX 4090 D results = fdc184b (component ablation 870c171); A800 results = 38c32da (results/a800/ENV.txt)
 nsys: Nsight Systems 2024.5.1 (env/cuda-12.6/nsight-systems-2024.5.1); scripts/nsys_decode.sh uses --cuda-flush-interval=100 since 2026-10-25
+fla (env/fla_pkgs, --no-deps, PYTHONPATH over the engine venv; 2026-10-25, A800): fla-core 0.5.0 flash-linear-attention 0.5.0
+uv on the A800 host (2026-10-25): astral.sh unreachable, uv 0.12.3 taken from the PyPI wheel (setup_env.sh uv_from_wheel)

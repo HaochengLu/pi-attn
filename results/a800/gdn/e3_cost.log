@@ -1,0 +1,21 @@
+   B |   recurrent wall/kern us |    replay wall/kern us | kern ratio
+USDT:2026-10-26 01:32:33 2008967:2008967 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-26 01:32:33 2008967:2008967 SyncActivityProfilerHandler.cpp:59] profiler_stop
+USDT:2026-10-26 01:33:10 2008967:2008967 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-26 01:33:10 2008967:2008967 SyncActivityProfilerHandler.cpp:59] profiler_stop
+   1 |      101.1 /       5.8 |     943.1 /      49.0 |   8.38x
+USDT:2026-10-26 01:33:10 2008967:2008967 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-26 01:33:10 2008967:2008967 SyncActivityProfilerHandler.cpp:59] profiler_stop
+USDT:2026-10-26 01:33:10 2008967:2008967 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-26 01:33:10 2008967:2008967 SyncActivityProfilerHandler.cpp:59] profiler_stop
+   8 |      108.7 /      24.9 |     898.1 /     118.0 |   4.74x
+USDT:2026-10-26 01:33:10 2008967:2008967 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-26 01:33:10 2008967:2008967 SyncActivityProfilerHandler.cpp:59] profiler_stop
+USDT:2026-10-26 01:33:10 2008967:2008967 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-26 01:33:11 2008967:2008967 SyncActivityProfilerHandler.cpp:59] profiler_stop
+  32 |      111.8 /      81.4 |     905.3 /     371.7 |   4.56x
+USDT:2026-10-26 01:33:11 2008967:2008967 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-26 01:33:11 2008967:2008967 SyncActivityProfilerHandler.cpp:59] profiler_stop
+USDT:2026-10-26 01:33:21 2008967:2008967 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-26 01:33:21 2008967:2008967 SyncActivityProfilerHandler.cpp:59] profiler_stop
+ 128 |      338.8 /     315.3 |    1411.1 /    1408.6 |   4.47x

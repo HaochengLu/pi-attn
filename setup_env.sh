@@ -70,8 +70,26 @@ fi
 #    Pins that are not arbitrary: lm-eval 0.4.13 (0.4.9.1 breaks with transformers 5);
 #    sglang 0.5.5.post3 (has --enable-deterministic-inference; 0.5.3 pins a yanked
 #    transformers); vllm 0.11.2 (VLLM_BATCH_INVARIANT first ships after 0.11.0).
+#    Where astral.sh is unreachable (the A800 box), uv's binary is taken from the uv==$UV_VER wheel on $PYPI_INDEX.
+uv_from_wheel() {
+  local url
+  url=$(python3 - "$PYPI_INDEX" "$UV_VER" <<'PY'
+import re, sys, urllib.parse, urllib.request
+index, ver = sys.argv[1].rstrip('/') + '/uv/', sys.argv[2]
+page = urllib.request.urlopen(index, timeout=60).read().decode()
+href = next(h for h in re.findall(r'href="([^"]+)"', page)
+            if f'uv-{ver}-py3-none-manylinux_2_17_x86_64' in h and '.whl' in h)
+print(urllib.parse.urljoin(index, href.split('#')[0]))
+PY
+  )
+  curl -fsSL "$url" -o $ENV/downloads/uv-$UV_VER.whl
+  python3 -c "import zipfile, sys; open(sys.argv[2], 'wb').write(zipfile.ZipFile(sys.argv[1]).read('uv-$UV_VER.data/scripts/uv'))" \
+    $ENV/downloads/uv-$UV_VER.whl $ENV/bin/uv
+  chmod +x $ENV/bin/uv
+}
 if ! uv --version 2>/dev/null | grep -q "^uv $UV_VER"; then
-  curl -LsSf https://astral.sh/uv/$UV_VER/install.sh | env UV_INSTALL_DIR=$ENV/bin UV_NO_MODIFY_PATH=1 sh
+  curl -LsSf --max-time 120 https://astral.sh/uv/$UV_VER/install.sh | env UV_INSTALL_DIR=$ENV/bin UV_NO_MODIFY_PATH=1 sh \
+    || uv_from_wheel
 fi
 export UV_PYTHON_INSTALL_DIR=$ENV/python UV_CACHE_DIR=$ENV/uv-cache UV_PYTHON_INSTALL_MIRROR
 for v in venv:engine:cu126 venv-sglang:sglang:cu128 venv-vllm:vllm:cu128; do
@@ -81,6 +99,13 @@ for v in venv:engine:cu126 venv-sglang:sglang:cu128 venv-vllm:vllm:cu128; do
     --extra-index-url https://pypi.org/simple --extra-index-url https://download.pytorch.org/whl/$cu \
     --index-strategy unsafe-best-match -r $ROOT/requirements/$lock.txt
 done
+
+# 3a. flash-linear-attention 0.5.0 for the exact GDN decode work (gdn/): installed without dependencies into
+#     env/fla_pkgs and used through PYTHONPATH on top of the engine venv (whose torch/triton/transformers/einops
+#     satisfy it), so the engine venv's package set is unchanged. Its kernels are the reference program that
+#     gdn/exact_decode.py reproduces bitwise; the version is part of that contract.
+[[ -d $ENV/fla_pkgs/fla ]] || uv pip install --python $ENV/venv/bin/python --target $ENV/fla_pkgs --no-deps \
+  --index-url $PYPI_INDEX fla-core==0.5.0 flash-linear-attention==0.5.0
 
 # 3b. nvcc wrapper for FlashInfer JIT: drops fatbin compression flags
 #     (--compress-mode=size), whose output driver 535 rejects as an invalid image.
@@ -146,6 +171,7 @@ py() { $ENV/$1/bin/python -c "import importlib.metadata as m; print(' '.join(p +
   echo "engine venv ($($ENV/venv/bin/python --version)): $(py venv 'torch flashinfer-python transformers lm-eval')"
   echo "sglang venv: $(py venv-sglang 'sglang torch flashinfer-python sgl-kernel transformers')"
   echo "vllm venv: $(py venv-vllm 'vllm torch flashinfer-python transformers')"
+  echo "fla (env/fla_pkgs, --no-deps, PYTHONPATH over the engine venv): $(PYTHONPATH=$ENV/fla_pkgs py venv 'fla-core flash-linear-attention')"
   echo "full package lists: requirements/{engine,sglang,vllm}.txt"
 } > $ROOT/VERSIONS.txt
 cat $ROOT/VERSIONS.txt

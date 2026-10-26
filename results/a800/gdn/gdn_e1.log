@@ -1,0 +1,6 @@
+prefix  mismatching L: none
+resume  mismatching (c, L): none
+decode  mismatching L: none | state fold equal: True
+pack    mismatching seqs: none
+recur   nan in output: False | nan in state: False
+recur   fused_recurrent == chunk: False, max |diff| 4.883e-04, rel l2 4.676e-03, rows differing 100.0%

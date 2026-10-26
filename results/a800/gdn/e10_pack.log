@@ -1,0 +1,6 @@
+seed 1: l2norm picks (NB: (BT, warps)) {'1': (8, 2), '20': (16, 8)}  rows differing alone-vs-packed 0.0%
+seed 2: l2norm picks (NB: (BT, warps)) {'1': (16, 4), '20': (16, 8)}  rows differing alone-vs-packed 0.0%
+seed 3: l2norm picks (NB: (BT, warps)) {'1': (32, 8), '20': (16, 8)}  rows differing alone-vs-packed 0.0%
+seed 4: l2norm picks (NB: (BT, warps)) {'1': (16, 4), '20': (16, 8)}  rows differing alone-vs-packed 0.0%
+seed 5: l2norm picks (NB: (BT, warps)) {'1': (16, 4), '20': (16, 8)}  rows differing alone-vs-packed 0.0%
+seed 6: l2norm picks (NB: (BT, warps)) {'1': (16, 4), '20': (16, 8)}  rows differing alone-vs-packed 0.0%
