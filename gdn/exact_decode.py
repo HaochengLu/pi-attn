@@ -28,7 +28,8 @@ fla's fused_recurrent reads and writes the fp32 state every token; here the stat
 
 Why bitwise: every expression mirrors the fla source it is named after, with the same operand dtypes, the same
 tl.dot shapes per row (a row of an MMA tile does not depend on the other rows) and the same accumulation forms.
-Pinned on the way: fla's chunk_fwd_kernel_o epilogue is compiled with an fma contraction, written out here; and the
+Pinned on the way: fla's chunk_fwd_kernel_o epilogue is compiled with an fma contraction whose form depends on the
+Triton version, written out here per version (_O_EPILOGUE_FORM); and the
 token's rows reach the dots through memory (a restructuring that spliced them in from registers changed the bits).
 Triton's layout choices are global to a kernel, so even "pure data movement" edits can change bits: test_exact.py
 is the arbiter after any edit. Verified on A800 (sm_80), Triton 3.7.1, fla 0.5.0, for the configurations it tests.
@@ -42,6 +43,26 @@ import triton.language as tl
 
 BT, BC = 64, 16
 RCP_LN2 = 1.4426950216                       # fla.ops.utils.constant.RCP_LN2 (fla scales the cumsum by it)
+
+# fla's chunk_fwd_kernel_o computes `b_o * scale + tl.dot(b_A, b_v) * scale`, and LLVM contracts one of the two
+# products into an fma; which one depends on the Triton version (read off fla's compiled PTX):
+#   Triton 3.7.1: fma(dot, scale, b_o * scale)        Triton 3.6.0: fma(b_o, scale, dot * scale)
+# The epilogue below is written out in the matching form. Other versions are refused until test_exact.py has been
+# run under them and this table extended.
+_O_EPILOGUE_FORM = {'3.7.1': 0, '3.6.0': 1}
+if triton.__version__ not in _O_EPILOGUE_FORM:
+    raise RuntimeError(f'exact GDN decode: Triton {triton.__version__} unverified; run gdn/test_exact.py, then add '
+                       f'its chunk_fwd_kernel_o epilogue form to _O_EPILOGUE_FORM')
+O_FORM = tl.constexpr(_O_EPILOGUE_FORM[triton.__version__])
+
+
+@triton.jit
+def _o_epilogue(b_o, b_dot, scale, FORM: tl.constexpr):
+    """fla's `b_o * scale + dot * scale` with the fp-contraction fla gets under the installed Triton (O_FORM)."""
+    if FORM == 0:
+        return tl.fma(b_dot, scale, b_o * scale)
+    else:
+        return tl.fma(b_o, scale, b_dot * scale)
 
 
 @triton.jit
@@ -346,7 +367,7 @@ def _gdn_k2(
     m_A = (rows[:, None] >= o_t[None, :]) & (m_ts[:, None] & m_t)
     b_Aq = tl.where(m_A, b_Aq, 0)
     b_vn = tl.load(tl.make_block_ptr(VNc, (T, V), (V, 1), (0, i_v * BV), (BT, BV), (1, 0)), boundary_check=(0, 1))
-    b_o = tl.fma(tl.dot(b_Aq.to(b_vn.dtype), b_vn), scale, b_o * scale)      # = fla's PTX for its epilogue
+    b_o = _o_epilogue(b_o, tl.dot(b_Aq.to(b_vn.dtype), b_vn), scale, O_FORM)
     tl.store(o + ((i_n * KT + (rows - r0)) * HV + i_h)[:, None] * V + o_v[None, :], b_o.to(o.dtype.element_ty),
              mask=m_win)
 
@@ -441,7 +462,7 @@ class GDNExactDecode:
     def commit(self, pos, accepted):
         """accepted [N] int32 (0..nrows) tokens of the window just stepped are kept; the caller then sets
         pos += accepted. Marks a fold for the next step when the window's acceptance completed a chunk."""
-        self.pending |= ((accepted > 0) & (pos % BT + accepted == BT)).to(torch.int32)
+        self.pending |= (pos % BT + accepted == BT).to(torch.int32)
 
     def decode(self, q, k, v, g, beta, pos, scale):
         """Plain one-token decode (needs KT == 1): q, k [N,H,K], v [N,HV,V], g, beta [N,HV]; returns o [N,HV,V].

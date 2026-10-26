@@ -1,0 +1,3 @@
+H=16 HV=32 T=1000: o equal False (max |d| 4.88e-04), state equal False (max |d| 4.77e-03)
+H=32 HV=32 T=517: o equal False (max |d| 4.88e-04), state equal False (max |d| 2.69e-03)
+H=16 HV=16 T=64: o equal False (max |d| 4.88e-04), state equal False (max |d| 2.68e-03)

@@ -5,8 +5,8 @@ different rows of their chunks, including boundaries); the prefill is fla's chun
 plus the partial chunk [b, P) loaded into the decoder; then all slots decode token by token to T together.
 Checked: every decoded row against the full forward's row, and the fp32 state at every 64-token boundary against
 fla's final state of the prefix. Both implementations: exact_decode (fast) and exact_decode_ref (stateless).
-Speculative mode (exact_decode): windows of up to 4 tokens per step, a random number of them accepted per slot;
-rejected positions carry random (wrong-draft) inputs. Accepted rows must equal the trainer's rows bitwise and the
+Speculative mode (exact_decode): windows of up to 4 or 16 tokens per step, a random number of them accepted per slot,
+one random slot idle per step; rejected positions carry wrong-draft inputs. Accepted rows must equal the trainer's rows bitwise and the
 rejected drafts must leave no trace in later rows or states.
 
 usage: PYTHONPATH=<fla> python gdn/test_exact.py            (exit status 1 on any mismatch)"""
@@ -77,7 +77,8 @@ def run(impl, H, HV, K=128, V=128, cfg=(2, 4, 64), beta_dtype=torch.bfloat16):
 
 def run_spec(H, HV, KT=4, K=128, V=128):
     """Speculative windows: KT tokens per slot per step, the first `acc` of them the true next tokens, the rest
-    wrong drafts (the same positions of another slot's sequence); acc is random in 1..window."""
+    wrong drafts (the same positions of another slot's sequence); acc is random in 1..window. Each step one random
+    slot is idle (nrows = 0, nothing accepted), as in a batch where it has nothing to verify."""
     N, scale = len(PS), K ** -0.5
     seqs = [seq(i, H, HV, K, V) for i in range(N)]
     ref = [chunk(*s) for s in seqs]
@@ -94,6 +95,9 @@ def run_spec(H, HV, KT=4, K=128, V=128):
         folding = [n for n in range(N) if int(dec.pending[n])]          # folded at the start of this step
         nrows = GDNExactDecode.window(pos, KT)
         acc = torch.minimum(torch.randint(1, KT + 1, (N,), device=dev, generator=gen).int(), nrows)
+        idle = int(torch.randint(0, N, (1,), device=dev, generator=gen))
+        nrows[idle] = 0
+        acc[idle] = 0
         keep = torch.arange(KT, device=dev)[None, :] < acc[:, None]      # [N, KT]
         win = []
         for x in range(5):                                               # q, k, v, g, beta
@@ -122,6 +126,6 @@ if __name__ == '__main__':
     cases += [('exact_decode', dict(H=16, HV=16, K=64, V=64)), ('exact_decode', dict(H=16, HV=32, beta_dtype=torch.float32))]
     cases += [('exact_decode_ref', dict(H=H, HV=HV)) for H, HV in ((32, 32), (16, 32))]
     ok = all([run(impl, **kw) for impl, kw in cases])
-    ok = all([run_spec(H, HV) for H, HV in ((32, 32), (16, 32))]) and ok
+    ok = all([run_spec(H, HV, KT) for H, HV, KT in ((32, 32, 4), (16, 32, 4), (32, 32, 16))]) and ok
     print('PASS' if ok else 'FAIL')
     sys.exit(0 if ok else 1)

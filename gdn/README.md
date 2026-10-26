@@ -8,8 +8,9 @@ decode execute the trainer's own program: every decoded token, one per step or v
 gets, bitwise, the row fla 0.5.0's chunked forward produces for it, with the trainer's kernel unchanged and with
 rejected drafts rolled back for free.
 
-All numbers are from the A800-80GB box (sm_80, driver 535), Triton 3.7.1, torch 2.13 (engine venv), fla 0.5.0
-(`env/fla_pkgs`, see `VERSIONS.txt`); logs in `results/a800/gdn/`.
+Numbers are from the A800-80GB box (sm_80, driver 535), Triton 3.7.1, torch 2.13 (engine venv), fla 0.5.0
+(`env/fla_pkgs`, see `VERSIONS.txt`), logs in `results/a800/gdn/`, unless marked RTX 4090 D (sm_89, same software,
+logs in `results/gdn/`).
 
 ## Results
 
@@ -39,9 +40,12 @@ remaining gap. The causal conv1d needs no change: HF's update path is already bi
 
 - Bitwise (`test_exact.py`, `test_exact.log`): every case passes, 2936 decode rows and 42 boundary states each:
   kernel configs 2:4:64 and 2:4:128 (num_warps of K1:K2, V block), head layouts H=HV=32, H=HV=16, H=16/HV=32, K=V=64,
-  fp32 beta, and the stateless reference implementation `exact_decode_ref.py`.
+  fp32 beta, and the stateless reference implementation `exact_decode_ref.py`. The same suite passes on the RTX 4090 D
+  (`results/gdn/test_exact.log`) and under Triton 3.6.0 in the vLLM venv (`test_exact_triton360.log`), the latter only
+  after matching fla's version-dependent output epilogue (see "What the canonical program is").
 - End to end (`experiments/e9_qwen35_exact.py`, `e9_qwen35_exact.log`): Qwen3.5-0.8B and 4B with row-invariant dense
-  ops and `exact_decode` in every GDN layer produce logits equal to the trainer forward on all 724 scored positions.
+  ops and `exact_decode` in every GDN layer produce logits equal to the trainer forward on all 724 scored positions;
+  also on the RTX 4090 D (`results/gdn/e9_qwen35_exact.log`).
 - Cost per layer per step, CUDA graphs, Qwen3.5-4B shape, config 2:4:128 (`bench_decode.py`, `bench_decode.log`;
   baseline: fla 0.5.0 `fused_recurrent_gated_delta_rule`, fla's generic recurrent kernel, state read and written once):
 
@@ -61,8 +65,10 @@ remaining gap. The causal conv1d needs no change: HF's update path is already bi
 - Memory per slot per layer (H=HV=32, K=V=128): 6.75 MiB (fp32 boundary state 2, its bf16 copy 1, chunk inputs and
   l2norm(q) rows 1.5, (I+A)^-1 rows 0.75, u/w/v_new rows 1.5) versus 2 MiB for the recurrent state: 3.4x. Against a
   long context's KV cache this is small (Qwen3.5-4B: 4 KV heads x 256 dims x 32K tokens, K and V in bf16, is 128 MiB
-  per attention layer); it
-  matters for short-context, high-batch serving.
+  per attention layer). For Qwen3.5-4B (24 GDN layers) at 256 concurrent requests the GDN state is 41 GiB instead of
+  12 GiB on an 80 GB card; its 8 full-attention layers hold 32 KB of KV cache per token, so the GDN state stops
+  dominating only beyond ~3.6K tokens per request. At shorter contexts memory, not kernel time, is the cost of
+  exactness.
 - How we got there (`archive/gdn_iterations/`, `e3_cost.log`, `e6_*`, `e7_*`, `e8_*`): calling fla's chunk on the
   partial chunk costs 4.5-8.4x the recurrent kernel's GPU time, plus host preparation (~900 us of wall time at
   B <= 32); a stateless fused kernel (`exact_decode_ref.py`) 3.7x at B=256 and 10.5x at B=1 (`e6_cost_v2.log`;
@@ -78,16 +84,21 @@ of the same chunk program. Rejection costs nothing: rows past the accepted ones 
 consumer masks them) and are overwritten by the next window, and a completed chunk is folded into the state only after
 its 64th row is accepted (lazily, by a small kernel at the start of the next step). No per-draft state checkpoints.
 
-- Bitwise with random acceptance and wrong drafts (`test_exact.log`, "spec window"): windows of 4, 1-4 tokens
-  accepted per slot per step, rejected positions fed with another sequence's tokens; 2889 accepted rows and 42
-  boundary states equal to the trainer's, for H=HV=32 and H=16/HV=32.
-- End to end (`experiments/e12_qwen35_spec.py`, `e12_qwen35_spec.log`): greedy generation of 300 tokens after a
-  200-token prompt with prompt-lookup drafting (up to 4 drafts) gives the same tokens and bitwise the same fp32
-  log-probability for every generated token as one-token decode and as the trainer's teacher-forced forward, on
-  Qwen3.5-0.8B (221 of 241 drafts accepted, 3.80 tokens per target forward) and 4B (32 of 126 accepted, so mostly
-  rollbacks, 1.12 tokens per forward). The status quo for contrast (`experiments/e12b_hf_default_spec.py`, same log):
+- Bitwise with random acceptance and wrong drafts (`test_exact.log`, "spec window"): windows of 4 (H=HV=32 and
+  H=16/HV=32) and of 16 (two sub-blocks per tile), 1..window tokens accepted per slot per step, one random slot idle
+  (nothing to verify) per step, rejected positions fed with another sequence's tokens: 2933, 2933 and 3173 accepted
+  rows and 44, 44 and 48 boundary states equal to the trainer's.
+- End to end (`experiments/e12_qwen35_spec.py`, `results/gdn/e12_qwen35_spec.log`, RTX 4090 D): greedy generation of
+  300 tokens after a 200-token prompt with prompt-lookup drafting (up to 4 drafts) gives the same tokens and bitwise
+  the same fp32 log-probability for every generated token as one-token decode (`exact_decode.decode`) and as the
+  teacher-forced forward (HF with the row-invariant stand-in and fla's chunk: the reference program, not a training
+  framework), on Qwen3.5-0.8B (209 of 270 drafts accepted, 3.30 tokens per target forward) and 4B (58 of 125
+  accepted, so mostly rollbacks, 1.24 tokens per forward). An earlier A800 run (`results/a800/gdn/e12_qwen35_spec.log`,
+  plain path through one-token windows instead of `decode`) also matched bitwise; its texts differ from the 4090's
+  because the stand-in dense ops are not cross-GPU invariant. The status quo for contrast (`experiments/e12b_hf_default_spec.py`, same log):
   stock HF/fla re-scoring the same tokens in verification windows of 5 instead of one at a time gives bitwise-equal
-  log-probabilities for 24/300 (0.8B) and 4/300 (4B) tokens, mean |dlogp| 2.9e-3 / 8.8e-3, max 0.085 / 0.127.
+  log-probabilities for 17/300 (0.8B) and 2/300 (4B) tokens on the 4090, mean |dlogp| 2.7e-3 / 8.4e-3, max 0.108 /
+  0.096 (A800: 24/300 and 4/300). The gap includes cuBLAS and attention batch-shape effects, not only GDN.
 - Cost of a 4-token window per layer against vLLM 0.17.1's speculative path, which writes the state after every
   draft token into its own pool slot (that is its rollback) and starts from the accepted one (`bench_vllm_gdn.log`,
   `bench_decode.log`, config 2:4:128):
@@ -100,8 +111,8 @@ its 64th row is accepted (lazily, by a small kernel at the start of the next ste
 
   State memory per slot and layer for 4 drafts: vLLM keeps 1 + 4 fp32 states (10 MiB), exact_decode 6.75 MiB.
   Against fla's recurrent kernel over the same 4 tokens keeping only the final state (no rollback possible), the
-  window is 1.59-1.88x at batch >= 8. Per verified token it costs 0.63x (B=256) to 0.66x (B=8) of exact one-token
-  decode.
+  window is 1.59-1.88x at batch >= 8. If all 4 tokens are accepted a window costs 0.63x (B=256) to 0.66x (B=8) of
+  exact one-token decode per token; at the 4B run's acceptance (1.24 tokens per window) it is about 2x per token.
 
 ## What the canonical program is
 
@@ -117,14 +128,22 @@ its 64th row is accepted (lazily, by a small kernel at the start of the next ste
   one more config) produce different bits (`e4_autotune.log`). In 6 fresh processes the picks differed between NB=1
   and NB=20 yet the outputs agreed (`e4b_l2pick.log`, `e10_pack.log`), so this is a latent risk, not an observed
   mismatch: pin the config. Every other autotuned kernel on the forward path is config-independent (`e4_autotune.log`).
-- Triton version and GPU architecture: the kernels reproduce fla's compiled arithmetic (MMA shapes, fp-contraction);
-  validated on sm_80 with Triton 3.7.1 only. Hopper's wgmma is a different instruction and is not covered.
+- Triton version and GPU architecture. fla's own bits depend on the Triton version: its chunk_fwd_kernel_o epilogue
+  `b_o * scale + dot * scale` is compiled to `fma(dot, scale, b_o * scale)` by Triton 3.7.1 and to
+  `fma(b_o, scale, dot * scale)` by Triton 3.6.0 (read off fla's PTX), so `exact_decode` keys the form on the installed
+  version and refuses unverified ones. Validated: sm_80 (A800) with Triton 3.7.1 and 3.6.0, sm_89 (RTX 4090 D) with
+  3.7.1. Hopper's wgmma is a different instruction and is not covered.
+- The fla version, and with it the serving engine's own copy. vLLM 0.17.1 vendors an older fla whose
+  `chunk_gated_delta_rule` differs from fla 0.5.0 on the same inputs in the same process (outputs by up to 4.9e-4,
+  final states by up to 4.8e-3; `experiments/e13_vllm_vendored_fla.py`, `e13_vllm_vendored_fla.log`): a vLLM
+  prefill is not a fla-0.5.0 trainer's forward unless the engine is pointed at the trainer's fla.
 
 ## Traps found while reproducing a Triton program bitwise
 
 - **fp-contraction.** fla's `chunk_fwd_kernel_o` computes `b_o * scale + dot(A, v) * scale`; its PTX is
   `fma(scale, dot, b_o * scale)`. The same source in another kernel was contracted differently, which changed a few
-  percent of output rows by up to ~1e-4. `exact_decode` writes the fma out.
+  percent of output rows by up to ~1e-4, and which product gets contracted differs between Triton 3.6 and 3.7.1.
+  `exact_decode` writes the fma out, per Triton version.
 - **Restructuring that only moves data can change bits.** A variant that kept the token's rows in registers and spliced
   them into the dot tiles instead of reloading them, and one that selected the sub-block gates from a register vector,
   stopped being bitwise; Triton's layout and contraction choices are made for the whole kernel. `test_exact.py` is the

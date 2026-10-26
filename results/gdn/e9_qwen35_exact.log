@@ -1,0 +1,4 @@
+model Qwen3.5-0.8B  T=1024 P=300  GDN layers=18
+E9 exact_decode vs trainer forward: {"eq_rows": 1.0, "mean_abs_dlogp": 0.0, "max_abs_dlogp": 0.0, "mean_kl": 0.0, "argmax_flip": 0.0}
+model Qwen3.5-4B  T=1024 P=300  GDN layers=24
+E9 exact_decode vs trainer forward: {"eq_rows": 1.0, "mean_abs_dlogp": 0.0, "max_abs_dlogp": 0.0, "mean_kl": 0.0, "argmax_flip": 0.0}

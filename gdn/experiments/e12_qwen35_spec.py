@@ -29,7 +29,8 @@ full_attn = [i for i, t in enumerate(model.config.text_config.layer_types if has
 
 def gdn_forward(self, hidden_states, cache_params=None, attention_mask=None, **kw):
     """Qwen3_5GatedDeltaNet.forward with the core replaced: prefill = fla's chunk program over the prompt; afterwards
-    every call is a window of n tokens at position st['t'] through exact_decode (KT = 1 + D)."""
+    every call is one token through exact_decode.decode (KT = 1) or a window of n tokens through exact_decode.step
+    (KT = 1 + D)."""
     st = self._ex
     bsz, n, _ = hidden_states.shape
     x = self.in_proj_qkv(hidden_states).transpose(1, 2)
@@ -54,6 +55,10 @@ def gdn_forward(self, hidden_states, cache_params=None, attention_mask=None, **k
         st['dec'] = GDNExactDecode(1, q.shape[2], self.num_v_heads, self.head_k_dim, self.head_v_dim, q.device,
                                    KT=st['KT'], BV=128)
         st['dec'].load(0, Sb, b, q[0, b:n], k[0, b:n], v[0, b:n], g[0, b:n], beta[0, b:n])
+    elif st['KT'] == 1:                                           # plain decode: exact_decode.decode
+        pos = torch.tensor([t0], device=q.device, dtype=torch.int32)
+        core = st['dec'].decode(q[:, 0].contiguous(), k[:, 0].contiguous(), v[:, 0].contiguous(), g[:, 0].contiguous(),
+                                beta[:, 0].contiguous(), pos, self.head_k_dim ** -0.5)[None]
     else:
         KT = st['KT']
         pad = lambda u: torch.cat([u, u.new_zeros(u.shape[0], KT - n, *u.shape[2:])], 1).contiguous()
@@ -67,7 +72,7 @@ def gdn_forward(self, hidden_states, cache_params=None, attention_mask=None, **k
 
 def generate(spec):
     """Greedy generation of NEW tokens after the P-token prompt. Returns tokens, per-token fp32 log-probs, forwards."""
-    KT = 1 + D if spec else 2                     # plain decode uses windows of one token (KT >= 2 selects step())
+    KT = 1 + D if spec else 1                     # plain: exact_decode.decode; spec: exact_decode.step windows
     for m in gdn:
         m._ex = {'x': None, 't': 0, 'dec': None, 'KT': KT}
     saved, M.Qwen3_5GatedDeltaNet.forward = M.Qwen3_5GatedDeltaNet.forward, gdn_forward
@@ -101,8 +106,9 @@ def generate(spec):
                 cur = int(L[a - 1].argmax()); toks.append(cur); lps.append(float(L[a - 1][cur])); seq.append(cur)
             for m in gdn:                               # roll back what was not accepted
                 st = m._ex
-                st['dec'].commit(torch.tensor([t], device=dev, dtype=torch.int32),
-                                 torch.tensor([a], device=dev, dtype=torch.int32))
+                if spec:
+                    st['dec'].commit(torch.tensor([t], device=dev, dtype=torch.int32),
+                                     torch.tensor([a], device=dev, dtype=torch.int32))
                 st['t'] = t + a
                 st['x'] = st['x'][..., :t + a]
             if a < len(win):

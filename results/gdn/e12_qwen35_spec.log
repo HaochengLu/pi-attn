@@ -1,0 +1,8 @@
+model Qwen3.5-0.8B (stock HF): window 5 verification vs one-token decode, 300 tokens: log-probs bitwise equal 17/300; mean |dlogp| 2.668e-03, max 1.082e-01
+model Qwen3.5-0.8B  prompt 200  new 300  drafts <= 4
+tokens plain == spec: True   log-probs plain == spec (bitwise): True   plain == trainer forward (tokens and log-probs, bitwise): True
+target forwards: plain 300, spec 91; drafts accepted 209/270; tokens per spec forward 3.30
+model Qwen3.5-4B (stock HF): window 5 verification vs one-token decode, 300 tokens: log-probs bitwise equal 2/300; mean |dlogp| 8.395e-03, max 9.648e-02
+model Qwen3.5-4B  prompt 200  new 300  drafts <= 4
+tokens plain == spec: True   log-probs plain == spec (bitwise): True   plain == trainer forward (tokens and log-probs, bitwise): True
+target forwards: plain 300, spec 242; drafts accepted 58/125; tokens per spec forward 1.24

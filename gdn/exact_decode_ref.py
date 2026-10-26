@@ -17,6 +17,8 @@ import torch
 import triton
 import triton.language as tl
 
+from exact_decode import _o_epilogue, O_FORM
+
 BT, BC = 64, 16
 RCP_LN2 = 1.4426950216                       # fla.ops.utils.constant.RCP_LN2 (asserted equal at import below)
 
@@ -221,7 +223,7 @@ def _gdn_exact_decode_kernel(
     b_Aq = tl.where(m_A, b_Aq, 0)
     # fla's PTX for `b_o * scale + tl.dot(b_A, b_v) * scale` (LLVM fp-contraction): fma(scale, dot, b_o * scale).
     # Written out so this kernel's contraction cannot drift with the surrounding code.
-    b_o = tl.fma(tl.dot(b_Aq.to(b_vnew.dtype), b_vnew), scale, b_o * scale)
+    b_o = _o_epilogue(b_o, tl.dot(b_Aq.to(b_vnew.dtype), b_vnew), scale, O_FORM)
     b_orow = tl.sum(tl.where(is_row[:, None], b_o, 0.), 0)
     o_v = i_v * BV + tl.arange(0, BV)
     tl.store(o + (i_n * HV + i_h) * V + o_v, b_orow.to(o.dtype.element_ty))
