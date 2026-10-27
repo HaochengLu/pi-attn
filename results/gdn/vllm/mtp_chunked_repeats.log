@@ -1,0 +1,19 @@
+# RTX 4090 D, Qwen3.5-0.8B, selfcheck --exact --mtp=K --prefill-chunk=T, batch-invariant dense ops, PIECEWISE (each line its own process).
+# A debugging sequence (async scheduling default/off, K=1/3, T=128/256), then 12 repetitions of T=256:
+def --exact --mtp=3 --prefill-chunk=128 | bitwise for 848/2048 sha256 586e6a6d6104a293
+0 --exact --mtp=3 --prefill-chunk=128 | bitwise for 848/2048 sha256 586e6a6d6104a293
+def --exact --mtp=1 --prefill-chunk=128 | bitwise for 848/2048 sha256 586e6a6d6104a293
+def --exact --mtp=3 --prefill-chunk=256 | bitwise for 0/2048 sha256 950e5006c28a0f75
+def --mtp=3 --prefill-chunk=128 | bitwise for 129/2048 sha256 2685d180e114e192
+mtp=1 run 1 sha256 586e6a6d6104a293
+mtp=3 run 1 sha256 586e6a6d6104a293
+mtp=1 run 2 sha256 586e6a6d6104a293
+mtp=3 run 2 sha256 586e6a6d6104a293
+mtp=1 run 3 sha256 586e6a6d6104a293
+mtp=3 run 3 sha256 586e6a6d6104a293
+mtp=1 run 4 sha256 586e6a6d6104a293
+mtp=3 run 4 sha256 586e6a6d6104a293
+mtp=1 run 5 sha256 586e6a6d6104a293
+mtp=3 run 5 sha256 586e6a6d6104a293
+mtp=1 run 6 sha256 586e6a6d6104a293
+mtp=3 run 6 sha256 586e6a6d6104a293

@@ -12,11 +12,12 @@ Per GDN layer:
   * decode: exact_decode (bitwise the row fla's chunked forward gives that token), in decode-only and mixed batches
     alike (stock vLLM uses its recurrent kernel for decode-only batches and its chunk kernel for mixed ones). Its
     kernels read q, k, v from the conv output and write the layer output in place (step_rows).
-  * speculative decoding (n-gram drafter): each request's window [last token, drafts...] goes through an exact_decode
-    window, so every accepted token gets the bits it gets in plain decode. The previous window's acceptance is
-    committed at the start of the next step (rows past it are overwritten later; a chunk is folded into the state only
-    once its 64th row is accepted). The proposer is patched to cut drafts at the next 64-token boundary, which a window
-    never crosses. One-token entries (no draft metadata in the step, or a one-token prompt chunk) are plain decodes,
+  * speculative decoding (any drafter: n-gram, MTP, ...): each request's window [last token, drafts...] goes through
+    an exact_decode window, so every accepted token gets the bits it gets in plain decode. The previous window's
+    acceptance is committed at the start of the next step (rows past it are overwritten later; a chunk is folded into
+    the state only once its 64th row is accepted). A window's rows stop at its chunk's 64th row: a request's tokens
+    past its chunk's boundary are dropped after rejection sampling (install), so a step never emits a token from a row
+    it did not compute. One-token entries (no draft metadata in the step, or a one-token prompt chunk) are plain decodes,
     after a fold their slot's last window may have left.
   * memory: one state block per request also with speculative decoding (vLLM allocates 1 + drafts, a state per draft
     to roll back to; the request's slot is column 0 of its block table either way).
@@ -39,11 +40,11 @@ table has 1 + drafts columns, so a request's slot column is a strided view (exac
 whose first chunk has one token (a one-token prompt, or a prompt the token budget cuts that way) is run as a decode
 from whatever state its slot holds (such slots are cleared here); vLLM's count of
 accepted tokens is stale for a request its scheduler left out of a step, so the speculative conv update is rolled back
-by the acceptance derived from positions here, as GDN is.
+by the acceptance derived from positions here, as GDN is; an EAGLE/MTP drafter computes its KV slots with the logical
+attention block size on a block table of kernel block ids, writing out of bounds into other layers' memory
+(fix_vllm_drafter_slot_mapping).
 
-Not handled: prefix caching, tensor parallelism (asserted), drafters other than n-gram (their drafts are not cut at
-the 64-token boundary; a window crossing it trips a device-side assertion), and full CUDA graphs with speculative
-decoding (stock vLLM 0.17.1 fails to capture them for Qwen3.5; use PIECEWISE).
+Not handled: prefix caching, tensor parallelism (asserted), tree-structured drafts (the boundary cut assumes a chain).
 Use: VLLM_ENABLE_V1_MULTIPROCESSING=0 (the patch must live in the process that runs the model), PYTHONPATH with
 env/fla_pkgs and gdn/, mamba_ssm_cache_dtype='float32', enable_prefix_caching=False; call install() before LLM().
 Decode equals the engine's prefill bitwise only with batch-invariant dense ops as well (VLLM_BATCH_INVARIANT=1,
@@ -65,7 +66,7 @@ def install():
     import numpy as np
     import vllm.model_executor.layers.mamba.mamba_utils as mu
     import vllm.model_executor.models.qwen3_next as qn
-    from vllm.v1.spec_decode.ngram_proposer import NgramProposer
+    import vllm.v1.worker.gpu_model_runner as gmr
     from exact_decode import state_layout, pin_fla_configs
 
     orig_shape = mu.MambaStateShapeCalculator.gated_delta_net_state_shape.__func__
@@ -93,23 +94,77 @@ def install():
     fix_vllm_mixed_spec_decodes()
     qn.Qwen3NextGatedDeltaNet._forward_core = _forward_core_exact
 
-    orig_propose = NgramProposer.propose
+    from vllm.v1.sample.rejection_sampler import PLACEHOLDER_TOKEN_ID, RejectionSampler
+    orig_calc = gmr.GPUModelRunner._calc_spec_decode_metadata
+    orig_reject = RejectionSampler.forward
 
-    def propose(self, sampled_token_ids, num_tokens_no_spec, token_ids_cpu, slot_mappings=None):
-        """Drafts for request i verify in a window starting at its last sampled token, position
-        num_tokens_no_spec[i] - 1; cut them so the window ends at or before the 64-token boundary."""
-        drafts = orig_propose(self, sampled_token_ids, num_tokens_no_spec, token_ids_cpu, slot_mappings)
-        for i, d in enumerate(drafts):
-            room = BT - 1 - (int(num_tokens_no_spec[i]) - 1) % BT
-            if len(d) > room:
-                drafts[i] = d[:room]
-        return drafts
+    def _calc_spec_decode_metadata(self, num_draft_tokens, cu_num_scheduled_tokens):
+        """Records how many tokens each request may emit this step: a window's rows stop at its chunk's 64th row (the
+        next chunk needs the state folded from this one, which only acceptance decides), and the token emitted at
+        position q comes from row q - 1, so a request whose window starts at position p (its computed tokens, as the
+        runner's positions have it, with or without async scheduling) emits at most 64 - p % 64 tokens."""
+        md = orig_calc(self, num_draft_tokens, cu_num_scheduled_tokens)
+        p0 = self.input_batch.num_computed_tokens_cpu[:len(num_draft_tokens)].astype(np.int64)
+        md.exact_max_out = _h2d({'m': BT - p0 % BT}, md.draft_token_ids.device)['m']
+        return md
 
-    NgramProposer.propose = propose
+    def forward(self, metadata, draft_probs, logits, sampling_metadata):
+        """vLLM's rejection sampling, then each request's tokens past its chunk's boundary dropped (as if its drafts
+        stopped there): the token at the boundary is the accepted draft or the resampled token from the chunk's last
+        row, a valid sample either way (greedy: the target's argmax, as plain decode), and nothing comes from a row the
+        window did not compute. Any drafter (n-gram, MTP, ...), any sampling."""
+        out = orig_reject(self, metadata, draft_probs, logits, sampling_metadata)
+        m = getattr(metadata, 'exact_max_out', None)
+        if m is not None:
+            ids = out.sampled_token_ids
+            ids.masked_fill_(torch.arange(ids.shape[1], device=ids.device)[None, :] >= m[:ids.shape[0], None],
+                             PLACEHOLDER_TOKEN_ID)
+        return out
+
+    gmr.GPUModelRunner._calc_spec_decode_metadata = _calc_spec_decode_metadata
+    RejectionSampler.forward = forward
+
+
+def fix_vllm_drafter_slot_mapping():
+    """vLLM 0.17.1 bug fix, applied to stock and exact runs alike. An EAGLE/MTP drafter computes the KV slots of its
+    draft tokens as (block-table entry) x (its attention group's block size). In a hybrid model the attention block is
+    sized to the mamba page (e.g. 1392 tokens) and split into kernel blocks of a size the attention kernel supports
+    (16); the runner's block table then holds kernel block ids, so the drafter's slots overshoot by the split factor
+    and its KV writes land outside its own cache, in other layers' memory (here: a GDN slot of a running request,
+    found as a fold that did not match fla's; stock vLLM writes to the same wrong places). The fix computes them with
+    the kernel block size the runner hands the drafter."""
+    import inspect, sys as _sys, textwrap
+    from vllm.v1.spec_decode.eagle import SpecDecodeBaseProposer as E          # EAGLE's and MTP's base
+    if getattr(E, '_exact_fixed', False):
+        return
+    old = 'block_size = self.draft_attn_groups[0].kv_cache_spec.block_size'
+    patched = 0
+    for name, fn in list(vars(E).items()):
+        if inspect.isfunction(fn) and old in inspect.getsource(fn):
+            src = textwrap.dedent(inspect.getsource(fn)).replace(
+                old, 'block_size = self._exact_kernel_block_size or self.draft_attn_groups[0].kv_cache_spec.block_size')
+            ns = {}
+            exec(compile(src, inspect.getsourcefile(E), 'exec'), _sys.modules[E.__module__].__dict__, ns)
+            setattr(E, name, ns[name])
+            patched += 1
+    assert patched == 2, 'vLLM drafter changed; re-check the fix'
+    orig_init = E.initialize_attn_backend
+
+    def initialize_attn_backend(self, kv_cache_config, kernel_block_sizes=None):
+        assert all(getattr(type(self), m) is getattr(E, m) for m in ('propose', 'set_inputs_first_pass')), \
+            'this drafter overrides a method fix_vllm_drafter_slot_mapping patches; re-check the fix'
+        orig_init(self, kv_cache_config, kernel_block_sizes)
+        self._exact_kernel_block_size = (kernel_block_sizes[self.kv_cache_gid] if kernel_block_sizes
+                                         and self.kv_cache_gid < len(kernel_block_sizes) else None)
+
+    E.initialize_attn_backend = initialize_attn_backend
+    E._exact_kernel_block_size = None
+    E._exact_fixed = True
 
 
 def fix_vllm_mixed_spec_decodes():
-    """vLLM 0.17.1 bug fix, applied to stock and exact runs alike. With n-gram drafting some decode requests have no
+    """vLLM 0.17.1 bug fixes for speculative decoding of hybrid models, applied to stock and exact runs alike (also
+    fix_vllm_drafter_slot_mapping). With n-gram drafting some decode requests have no
     draft in a step (no match). The runner marks them like prefill requests (-1 in num_decode_draft_tokens), so they
     become non-speculative decodes in a batch with speculative ones, which the GDN metadata builder asserts never
     happens (`num_decodes: x, num_spec_decodes: y`), killing the engine; and as non-speculative decodes their conv
@@ -127,6 +182,7 @@ def fix_vllm_mixed_spec_decodes():
     import vllm.v1.attention.backends.gdn_attn as ga
     import vllm.v1.worker.gpu_model_runner as gmr
     B = ga.GDNAttentionMetadataBuilder
+    fix_vllm_drafter_slot_mapping()
     if getattr(B, '_exact_fixed', False):
         return
     R = gmr.GPUModelRunner
@@ -261,6 +317,10 @@ def _forward_core_exact(self, mixed_qkv, b, a, core_attn_out):
     #    a sequence; prompt chunks (_prefill)
     if spec:
         sp = _spec_plan(md, not only_spec)
+        if DEBUG and not torch.cuda.is_current_stream_capturing():   # accepted past a window's last row: never
+            sl = sp['slots'].long()
+            over = (st['wn'][sl] > 0) & (sp['pos'] > 0) & (sp['pos'] - st['ws'][sl] > st['wn'][sl]) & (sl >= 0)
+            DEBUG_STATS['over_accepted'] = DEBUG_STATS.get('over_accepted', 0) + int(over.sum())
         acc_s = _advance(st, sp['slots'], sp['pos'], sp['nrows'], False)
     x_non = None if only_spec else (mixed_qkv if not spec else mixed_qkv.index_select(0, md.non_spec_token_indx))
     ns = _split_non_spec(md, self.num_spec) if x_non is not None and md.num_decodes + md.num_prefills > 0 else None
@@ -335,9 +395,9 @@ def _spec_plan(md, mixed):
     qsl = md.spec_query_start_loc[:nsd + 1]
     nrows = (qsl[1:] - qsl[:-1]).to(torch.int32)
     pos = _positions(md, md.spec_req_idx, nsd)
-    # a window never runs past its chunk's 64th row: the n-gram proposer is cut to that (install); a drafter that is
-    # not would get rows the kernels do not compute, so fail loudly (device-side, no host sync)
-    torch._assert_async(((nrows <= BT - pos % BT) | (slots < 0)).all())
+    # a window's rows stop at its chunk's 64th row: the tokens they would give are dropped after rejection sampling
+    # (install), and the rows of the next chunk are left uncomputed (zero in the layer output, never used)
+    nrows = torch.minimum(nrows, BT - pos % BT)
     rows = qsl[:-1].to(torch.int32)
     sp = {'slots': slots, 'pos': pos, 'nrows': nrows, 'rows': rows,
           'rows_b': md.qsl_all[md.spec_req_idx].to(torch.int32) if mixed else rows}

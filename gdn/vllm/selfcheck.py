@@ -5,8 +5,10 @@ prompt_logprobs (prefill path). Counts the generated tokens whose decode-time fp
 prefill-time one bitwise, and whose greedy token equals the prefill's argmax. Dense ops can be made batch-invariant
 with VLLM_BATCH_INVARIANT=1 (FLASH_ATTN backend); with them on, what remains is the GDN layers.
 usage: [VLLM_BATCH_INVARIANT=1] python gdn/vllm/selfcheck.py MODEL_DIR [N_PROMPTS] [NEW] [--exact] [--spec]
-       [--prefill-chunk=T] [--short] [--aligned] [--one-token-chunks] [--preempt]
-(--exact installs gdn/vllm/exact_gdn.py's patch first; --spec turns on n-gram speculative decoding with 4 drafts;
+       [--mtp=K] [--temperature=T] [--prefill-chunk=T] [--short] [--aligned] [--one-token-chunks] [--preempt]
+(--exact installs gdn/vllm/exact_gdn.py's patch first; --spec turns on n-gram speculative decoding with 4 drafts,
+--mtp=K speculative decoding with the model's MTP head drafting K tokens (vLLM's async scheduling on); --temperature=T
+samples (seeded per request) instead of greedy decoding;
 CUDAGRAPH_MODE=PIECEWISE selects vLLM's piecewise CUDA graphs, needed with --spec: stock vLLM 0.17.1 fails to capture
 full graphs for Qwen3.5 with n-gram drafts; --prefill-chunk=T caps the tokens per step at T, so prompts are prefilled
 in chunks, continuing from the state a previous chunk left, and with T a multiple of 64 chunks end on chunk boundaries;
@@ -27,7 +29,9 @@ def main():
     n_prompts = int(sys.argv[2]) if len(sys.argv) > 2 else 16
     new = int(sys.argv[3]) if len(sys.argv) > 3 else 128
     exact = '--exact' in sys.argv
-    spec = '--spec' in sys.argv
+    mtp = next((int(a.split('=')[1]) for a in sys.argv if a.startswith('--mtp=')), None)
+    temp = next((float(a.split('=')[1]) for a in sys.argv if a.startswith('--temperature=')), 0.0)
+    spec = '--spec' in sys.argv or mtp is not None
     chunk = next((int(a.split('=')[1]) for a in sys.argv if a.startswith('--prefill-chunk=')), None)
     os.environ['VLLM_ENABLE_V1_MULTIPROCESSING'] = '0'               # patches must live in the model's process
     # vLLM reuses torch.compile artifacts from its cache when the config hash matches; an artifact compiled earlier can
@@ -54,7 +58,9 @@ def main():
     if trickle:
         chunk = n_prompts + 1
     kw = {'attention_backend': 'FLASH_ATTN'} if os.environ.get('VLLM_BATCH_INVARIANT') == '1' else {}
-    if spec:
+    if mtp is not None:
+        kw['speculative_config'] = {'method': 'mtp', 'num_speculative_tokens': mtp}
+    elif spec:
         kw['speculative_config'] = {'method': 'ngram', 'num_speculative_tokens': 4, 'prompt_lookup_max': 3,
                                     'prompt_lookup_min': 2}
     if chunk:
@@ -90,7 +96,8 @@ def main():
                 self._pause_state = PauseState.UNPAUSED
         Scheduler.schedule = schedule
     gen = llm.generate([{'prompt_token_ids': p} for p in prompts],
-                       SamplingParams(temperature=0, max_tokens=new, logprobs=0, ignore_eos=True))
+                       [SamplingParams(temperature=temp, max_tokens=new, logprobs=0, ignore_eos=True, seed=1000 + i)
+                        for i in range(len(prompts))])
     if preempt is not None:
         Scheduler.schedule = orig_schedule
         print('PREEMPTIONS', preempt['count'])

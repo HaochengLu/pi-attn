@@ -1,0 +1,4 @@
+stock GDN, whole prefill: prompt log-probs equal without and with MTP drafting at 8088/8088 positions
+stock GDN, chunked (256) prefill: prompt log-probs equal without and with MTP drafting at 16/8088 positions
+exact GDN, whole prefill: prompt log-probs equal without and with MTP drafting at 8088/8088 positions
+exact GDN, chunked (256) prefill: prompt log-probs equal without and with MTP drafting at 16/8088 positions

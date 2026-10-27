@@ -3,8 +3,9 @@
 # off and on; with them on: plain and n-gram speculative, whole and 128-token-chunked prefill, short prompts on reused
 # slots, prompts ending on a 64-token boundary; and 33 requests with a token budget that cuts the long prompt into
 # chunks of a few tokens, run with EXACT_GDN_DEBUG=1, whose counters show the one-token-chunk cases occurred; and
-# requests preempted and recomputed in chunks, stock with speculation and exact), the pure-attention control
-# (Qwen3-0.6B) and the conv checks.
+# requests preempted and recomputed in chunks, stock with speculation and exact; and MTP drafting, stock and exact,
+# with the same prompt sets, preemption and EXACT_GDN_DEBUG=1; and sampling at temperature 0.8), the pure-attention control
+# (Qwen3-0.6B), the conv checks and the check of vLLM's prompt log-probabilities under MTP drafting.
 # usage: gdn/vllm/run_vllm_checks.sh RESULTS_DIR [GRAPH_MODE]   (e.g. results/a800/gdn/vllm; from the repo root)
 # GRAPH_MODE applies to the non-speculative runs (default: vLLM's); speculative runs use PIECEWISE (see selfcheck.py).
 set -u
@@ -30,6 +31,19 @@ for m in $M/Qwen3.5-0.8B $M/Qwen3.5-4B; do
     [ -n "$ex" ] && VLLM_BATCH_INVARIANT=1 CUDAGRAPH_MODE=$GM run $m $ex --preempt --prefill-chunk=128 >> $OUT/selfcheck.log
     VLLM_BATCH_INVARIANT=1 CUDAGRAPH_MODE=PIECEWISE run $m --spec $ex --preempt --prefill-chunk=128 >> $OUT/selfcheck.log
   done
+  # MTP drafting (3 drafts, vLLM's async scheduling): stock, exact under the same prompt sets, preemption, debug checks
+  VLLM_BATCH_INVARIANT=1 CUDAGRAPH_MODE=$GM run $m --mtp=3 >> $OUT/selfcheck.log
+  for opt in "" --prefill-chunk=128 --short --aligned "--preempt --prefill-chunk=128"; do
+    VLLM_BATCH_INVARIANT=1 CUDAGRAPH_MODE=$GM run $m --exact --mtp=3 $opt >> $OUT/selfcheck.log
+  done
+  VLLM_BATCH_INVARIANT=1 CUDAGRAPH_MODE=$GM run $m --mtp=3 --preempt --prefill-chunk=128 >> $OUT/selfcheck.log
+  EXACT_GDN_DEBUG=1 VLLM_BATCH_INVARIANT=1 CUDAGRAPH_MODE=PIECEWISE run $m --exact --mtp=3 >> $OUT/selfcheck.log
+  # sampling (temperature 0.8, seeded): stock and exact, MTP and n-gram drafting, the exact ones with the debug checks
+  VLLM_BATCH_INVARIANT=1 CUDAGRAPH_MODE=$GM run $m --mtp=3 --temperature=0.8 >> $OUT/selfcheck.log
+  VLLM_BATCH_INVARIANT=1 CUDAGRAPH_MODE=$GM run $m --exact --temperature=0.8 >> $OUT/selfcheck.log
+  for sp in --mtp=3 --spec; do
+    EXACT_GDN_DEBUG=1 VLLM_BATCH_INVARIANT=1 CUDAGRAPH_MODE=PIECEWISE run $m --exact $sp --temperature=0.8 >> $OUT/selfcheck.log
+  done
 done
 rm -f $OUT/selfcheck_qwen3_attention_only.log
 for opt in "" --prefill-chunk=128; do
@@ -37,4 +51,5 @@ for opt in "" --prefill-chunk=128; do
   VLLM_BATCH_INVARIANT=1 CUDAGRAPH_MODE=PIECEWISE run ../../models/Qwen3-0.6B --spec $opt >> $OUT/selfcheck_qwen3_attention_only.log
 done
 for f in check_conv check_conv_spec; do $PY $f.py 2>&1 | grep -v -i warn > $OUT/$f.log; done
+$PY check_mtp_prompt_logprobs.py $M/Qwen3.5-0.8B 2>&1 | grep -v -i warn > $OUT/check_mtp_prompt_logprobs.log
 rm -f $TMP

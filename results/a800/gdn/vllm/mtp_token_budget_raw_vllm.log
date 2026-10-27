@@ -1,0 +1,7 @@
+# selfcheck.py Qwen3.5-0.8B 33 128 --mtp=3 --one-token-chunks, batch-invariant dense ops, PIECEWISE (A800): vLLM 0.17.1 with none
+# of exact_gdn's patches (logs/mtp/nofix: fix_vllm_mixed_spec_decodes not called) fails the same way as stock and exact runs:
+# MTP drafting with a token budget below the batch's requests x (1 + drafts) is outside what vLLM 0.17.1 runs.
+Processed prompts:   0%|          | 0/33 [00:00<?, ?it/s, est. speed input: 0.00 toks/s, output: 0.00 toks/s]Processed prompts:   3%|▎         | 1/33 [00:13<07:00, 13.15s/it, est. speed input: 0.15 toks/s, output: 9.
+/pytorch/aten/src/ATen/native/cuda/IndexKernelUtils.cu:16: vectorized_gather_kernel: block: [5,0,0], thread: [97,0,0] Assertion `ind >=0 && ind < ind_dim_size && "vectorized gather kernel index out of bounds"` failed.
+/pytorch/aten/src/ATen/native/cuda/IndexKernelUtils.cu:16: vectorized_gather_kernel: block: [5,0,0], thread: [98,0,0] Assertion `ind >=0 && ind < ind_dim_size && "vectorized gather kernel index out of bounds"` failed.
+[rank0]: torch.AcceleratorError: CUDA error: device-side assert triggered

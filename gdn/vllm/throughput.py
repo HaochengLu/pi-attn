@@ -4,7 +4,8 @@ N requests, each a P-token slice of the model README, greedy, NEW output tokens 
 (max_num_seqs = N); reports the wall time of llm.generate after an identical warm-up generate, and output
 tokens/s.
 usage: [VLLM_BATCH_INVARIANT=1] [CUDAGRAPH_MODE=PIECEWISE] python gdn/vllm/throughput.py MODEL_DIR [N] [P] [NEW]
-       [--exact] [--spec]   (--spec: n-gram drafting, 4 drafts, with the vLLM fix fix_vllm_mixed_spec_decodes)"""
+       [--exact] [--spec] [--mtp=K]   (--spec: n-gram drafting, 4 drafts; --mtp=K: the model's MTP head drafting K
+       tokens, with vLLM's async scheduling; both with the vLLM fixes of fix_vllm_mixed_spec_decodes)"""
 import os, sys, time
 
 
@@ -14,7 +15,8 @@ def main():
     P = int(sys.argv[3]) if len(sys.argv) > 3 else 200
     NEW = int(sys.argv[4]) if len(sys.argv) > 4 else 256
     exact = '--exact' in sys.argv
-    spec = '--spec' in sys.argv
+    mtp = next((int(a.split('=')[1]) for a in sys.argv if a.startswith('--mtp=')), None)
+    spec = '--spec' in sys.argv or mtp is not None
     os.environ['VLLM_ENABLE_V1_MULTIPROCESSING'] = '0'               # patches must live in the model's process
     here = os.path.dirname(os.path.abspath(__file__))
     sys.path[:0] = [here, os.path.dirname(here)]                     # gdn/vllm (exact_gdn), gdn (exact_decode)
@@ -29,7 +31,9 @@ def main():
     ids = tok(open(f'{model}/README.md').read()).input_ids
     prompts = [{'prompt_token_ids': ids[(7 * i) % (len(ids) - P):(7 * i) % (len(ids) - P) + P]} for i in range(N)]
     kw = {'attention_backend': 'FLASH_ATTN'} if os.environ.get('VLLM_BATCH_INVARIANT') == '1' else {}
-    if spec:
+    if mtp is not None:
+        kw['speculative_config'] = {'method': 'mtp', 'num_speculative_tokens': mtp}
+    elif spec:
         kw['speculative_config'] = {'method': 'ngram', 'num_speculative_tokens': 4, 'prompt_lookup_max': 3,
                                     'prompt_lookup_min': 2}
     if os.environ.get('CUDAGRAPH_MODE'):
@@ -43,7 +47,7 @@ def main():
     out = llm.generate(prompts, sp)
     dt = time.time() - t
     n_out = sum(len(o.outputs[0].token_ids) for o in out)
-    print(f'RESULT exact={exact} spec={spec} batch_invariant={os.environ.get("VLLM_BATCH_INVARIANT", "0")} N={N} P={P} NEW={NEW}: '
+    print(f'RESULT exact={exact} spec={"mtp" + str(mtp) if mtp is not None else spec} batch_invariant={os.environ.get("VLLM_BATCH_INVARIANT", "0")} N={N} P={P} NEW={NEW}: '
           f'{dt:.2f} s, {n_out / dt:.1f} output tok/s')
 
 

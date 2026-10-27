@@ -1,0 +1,3 @@
+  4096 tokens per request: stock 310.27 requests, exact 196.14 (exact / stock 0.63)
+ 32768 tokens per request: stock 51.71 requests, exact 49.04 (exact / stock 0.95)
+131072 tokens per request: stock 13.54 requests, exact 13.33 (exact / stock 0.98)
