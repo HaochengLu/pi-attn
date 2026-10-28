@@ -10,7 +10,7 @@ any of those optimizations off.
 | Path | What |
 |---|---|
 | `llm_infer_rust/` (branch `pi-attn`) | Engine with `--deterministic`; kernels in `src/kernels/pi/`, docs in `docs/deterministic-mode.md` |
-| `kernels/` | PyTorch bindings, invariance tests (`test_invariance.py`, `test_matrix.py`, `test_directed.py`, `test_gemm.py`) and microbenchmarks for the kernels (sources, including the GEMM id table `gemm_dispatch.cuh`, symlinked from the engine) |
+| `kernels/` | PyTorch bindings, invariance tests (`test_invariance.py`, `test_matrix.py`, `test_directed.py`, `test_gemm.py`) microbenchmarks for the kernels, and the GEMM as vLLM's batch-invariant dense ops (`pi_vllm.py`, used by `gdn/vllm/`) (sources, including the GEMM id table `gemm_dispatch.cuh`, symlinked from the engine) |
 | `gdn/` | Exact Gated DeltaNet decode for hybrid models: decode bitwise equal to fla's chunked training forward (`exact_decode.py`), its test, benchmark and experiments, and its vLLM 0.17.1 integration (`gdn/vllm/`: decode bitwise the engine's prefill, speculation on or off); findings in `gdn/README.md` |
 | `detcheck/detcheck.py` | Black-box determinism checker for any OpenAI-compatible server |
 | `eval/` | Serving benchmark (`loadgen.py`), cross-configuration check (`crossconfig.sh`), end-to-end matrices (`e2e_matrix.sh`, `e2e_extended.sh`), same-GPU SGLang/vLLM baselines (`baselines.sh`), GSM8K reproducibility (`accuracy.sh`, `compare_accuracy.py`), fp32 agreement (`fp32_agreement.sh`), kernel benchmarks (`kernel_benches.sh`), and table generators (`summarize_*.py`) |

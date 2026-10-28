@@ -718,26 +718,22 @@ def _prefill(self, st, md, qkv, g, beta, scale, out, ns):
         Qh = torch.where(new[:, None, None], qn[gi], 0.)[None].contiguous()   # cached rows: outputs unused
         _, oH, _, SH, _, _ = chunk_gated_delta_rule_fwd(
             Qh, sel(kn, dec.kbuf), sel(vv, dec.vbuf), sel(g, dec.gbuf), sel(beta, dec.bbuf), scale,
-            dec.S[pf['h_slot']].contiguous(), True, cu_seqlens=pf['h_cu'], chunk_indices=pf['h_ci'])
+            dec.get_states(pf['h_slot']), True, cu_seqlens=pf['h_cu'], chunk_indices=pf['h_ci'])
     if pf['nb']:
         init = torch.zeros(pf['nseq'], HV, K, V, device=qn.device, dtype=torch.float32)
         if pf['bs_seq'] is not None:
-            init.index_copy_(0, pf['bs_seq'], dec.S[pf['bs_slot']])
+            init.index_copy_(0, pf['bs_seq'], dec.get_states(pf['bs_slot']))
         if pf['bh_seq'] is not None:
             init.index_copy_(0, pf['bh_seq'], SH[pf['bh_h']])
         _, oB, _, SB, _, _ = chunk_gated_delta_rule_fwd(
             qn[None], kn[None], vv[None], g[None], beta[None], scale, init, True, cu_seqlens=pf['b_cu'],
             chunk_indices=pf['b_ci'])
         out.copy_(oB[0])                 # the body rows; the other rows are overwritten below and after
-        SB = SB[pf['b_seq']]
-        dec.S[pf['b_slot']] = SB
-        dec.Hb[pf['b_slot']] = SB.to(dec.Hb.dtype)
+        dec.put_states(pf['b_slot'], SB[pf['b_seq']])
     if pf['nh']:
         out.index_copy_(0, pf['h_od'], oH[0, pf['h_oi']].to(out.dtype))
         if pf['ho_slot'] is not None:    # no body chunks after the head: its final state is the state at b1
-            SH = SH[pf['ho_h']]
-            dec.S[pf['ho_slot']] = SH
-            dec.Hb[pf['ho_slot']] = SH.to(dec.Hb.dtype)
+            dec.put_states(pf['ho_slot'], SH[pf['ho_h']])
     for w in range(pf['nwin']):                                      # rows read and written in place
         dec.step_rows(*qkv, g, beta, pf['r_row'][w], pf['r_row'][w], pf['r_pos'][w], pf['r_nr'][w], scale,
                       pf['r_slot'], out, pf['r_row'][w], KT=16)
@@ -751,7 +747,7 @@ def _debug_fold_refs(dec, slots, scale):
         if sl >= 0 and int(dec.pending[sl]):
             c = lambda t: t[sl][None].contiguous()
             _, S1 = chunk_gated_delta_rule(torch.zeros_like(c(dec.kbuf)), c(dec.kbuf), c(dec.vbuf), c(dec.gbuf),
-                                           c(dec.bbuf), scale=scale, initial_state=dec.S[sl][None].clone(),
+                                           c(dec.bbuf), scale=scale, initial_state=dec.get_states([sl]),
                                            output_final_state=True, use_qk_l2norm_in_kernel=False)
             refs[sl] = S1[0]
     return refs
@@ -765,7 +761,7 @@ def _debug_check(dec, slots, pos, nrows, xs, scale, o, folds):
     count = lambda key, bad: DEBUG_STATS.update({key: DEBUG_STATS.get(key, 0) + 1,
                                                  key + '_bad': DEBUG_STATS.get(key + '_bad', 0) + bad})
     for sl, S1 in folds.items():
-        count('folds', not torch.equal(dec.S[sl], S1))
+        count('folds', not torch.equal(dec.get_states([sl])[0], S1))
     for i, sl in enumerate(slots.tolist()):
         if sl < 0:
             continue
@@ -777,6 +773,6 @@ def _debug_check(dec, slots, pos, nrows, xs, scale, o, folds):
         ref, _ = chunk_gated_delta_rule(cat(qn.new_zeros(r, *qn.shape[1:]), qn), cat(dec.kbuf[sl, :r], kn),
                                         cat(dec.vbuf[sl, :r], vi), cat(dec.gbuf[sl, :r], gi),
                                         cat(dec.bbuf[sl, :r], bi), scale=scale,
-                                        initial_state=dec.S[sl][None].clone(), output_final_state=True,
+                                        initial_state=dec.get_states([sl]), output_final_state=True,
                                         use_qk_l2norm_in_kernel=False)
         count('windows', not torch.equal(ref[0, r:], o[i, :n]))

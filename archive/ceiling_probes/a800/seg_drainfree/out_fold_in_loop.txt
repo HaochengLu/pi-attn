@@ -1,0 +1,17 @@
+4B o     M=  512 cublas     56.7us | base     81.6us k50 | s2_old     91.2us k13 | s2_new     72.7us k13
+4B o     M= 1024 cublas    107.4us | base    106.8us k10 | s2_old    122.7us k10 | s2_new    136.6us k13
+4B o     M= 2048 cublas    214.0us | base    191.8us k11 | s2_old    206.8us k11 | s2_new    278.3us k12
+4B o     M= 4096 cublas    346.6us | base    324.5us k10 | s2_old    399.7us k10 | s2_new    508.2us k12
+4B down  M=  512 cublas    138.6us | base    157.9us k11 | s2_old    165.5us k11 | s2_new    167.8us k13
+4B down  M= 1024 cublas    220.4us | base    252.0us k10 | s2_old    271.1us k10 | s2_new    322.8us k13
+4B down  M= 2048 cublas    422.9us | base    440.4us k11 | s2_old    454.2us k11 | s2_new    632.0us k12
+4B down  M= 4096 cublas    792.5us | base    808.6us k10 | s2_old    848.1us k10 | s2_new   1288.9us k12
+8B o     M=  512 cublas     93.8us | base    115.6us k50 | s2_old    118.1us k15 | s2_new    116.8us k15
+8B o     M= 1024 cublas    213.3us | base    179.4us k11 | s2_old    200.1us k11 | s2_new    217.8us k13
+8B o     M= 2048 cublas    328.5us | base    293.3us k11 | s2_old    339.5us k11 | s2_new    402.3us k12
+8B o     M= 4096 cublas    573.3us | base    559.2us k10 | s2_old    646.3us k10 | s2_new    816.1us k12
+8B down  M=  512 cublas    232.8us | base    326.1us k10 | s2_old    325.9us k10 | s2_new    354.2us k15
+8B down  M= 1024 cublas    449.6us | base    515.1us k11 | s2_old    539.5us k11 | s2_new    695.4us k15
+8B down  M= 2048 cublas    857.4us | base    920.2us k11 | s2_old    955.4us k11 | s2_new   1283.2us k12
+8B down  M= 4096 cublas   1642.2us | base   1726.3us k10 | s2_old   1747.5us k10 | s2_new   2759.8us k12
+EXIT 0

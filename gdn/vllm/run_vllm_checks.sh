@@ -4,7 +4,8 @@
 # slots, prompts ending on a 64-token boundary; and 33 requests with a token budget that cuts the long prompt into
 # chunks of a few tokens, run with EXACT_GDN_DEBUG=1, whose counters show the one-token-chunk cases occurred; and
 # requests preempted and recomputed in chunks, stock with speculation and exact; and MTP drafting, stock and exact,
-# with the same prompt sets, preemption and EXACT_GDN_DEBUG=1; and sampling at temperature 0.8), the pure-attention control
+# with the same prompt sets, preemption and EXACT_GDN_DEBUG=1; and sampling at temperature 0.8; and exact GDN with
+# every dense projection on PI-Attn's GEMM (--pi-gemm) under the same transformations), the pure-attention control
 # (Qwen3-0.6B), the conv checks and the check of vLLM's prompt log-probabilities under MTP drafting.
 # usage: gdn/vllm/run_vllm_checks.sh RESULTS_DIR [GRAPH_MODE]   (e.g. results/a800/gdn/vllm; from the repo root)
 # GRAPH_MODE applies to the non-speculative runs (default: vLLM's); speculative runs use PIECEWISE (see selfcheck.py).
@@ -13,7 +14,7 @@ cd "$(dirname "$0")/../.." && source env.sh && OUT=$PWD/$1 && GM=${2:-} && cd gd
 PY=../../env/venv-vllm17/bin/python; export PYTHONPATH=../../env/fla_pkgs
 TMP=$(mktemp); M=../../../models
 run() { path=$1; shift; $PY selfcheck.py $path ${NP:-16} 128 "$@" > $TMP 2>&1
-        echo "$(basename $path) $* | $(grep RESULT $TMP || tail -2 $TMP) $(grep '^DEBUG\|^PREEMPTIONS' $TMP)"; }
+        echo "$(basename $path) $* | $(grep RESULT $TMP || tail -2 $TMP) $(grep '^DEBUG\|^PREEMPTIONS\|^PI_GEMM' $TMP)"; }
 rm -f $OUT/selfcheck.log
 for m in $M/Qwen3.5-0.8B $M/Qwen3.5-4B; do
   for ex in "" --exact; do VLLM_BATCH_INVARIANT=0 CUDAGRAPH_MODE=$GM run $m $ex >> $OUT/selfcheck.log; done
@@ -44,6 +45,16 @@ for m in $M/Qwen3.5-0.8B $M/Qwen3.5-4B; do
   for sp in --mtp=3 --spec; do
     EXACT_GDN_DEBUG=1 VLLM_BATCH_INVARIANT=1 CUDAGRAPH_MODE=PIECEWISE run $m --exact $sp --temperature=0.8 >> $OUT/selfcheck.log
   done
+  # every dense projection on PI-Attn's GEMM (kernels/pi_vllm.py) instead of vLLM's batch-invariant kernel
+  for opt in "" --prefill-chunk=128 --short --aligned "--preempt --prefill-chunk=128" --temperature=0.8; do
+    VLLM_BATCH_INVARIANT=1 CUDAGRAPH_MODE=$GM run $m --exact --pi-gemm $opt >> $OUT/selfcheck.log
+  done
+  for opt in "" --prefill-chunk=128 "--preempt --prefill-chunk=128" --temperature=0.8; do
+    VLLM_BATCH_INVARIANT=1 CUDAGRAPH_MODE=$GM run $m --exact --pi-gemm --mtp=3 $opt >> $OUT/selfcheck.log
+    VLLM_BATCH_INVARIANT=1 CUDAGRAPH_MODE=PIECEWISE run $m --exact --pi-gemm --spec $opt >> $OUT/selfcheck.log
+  done
+  NP=33 EXACT_GDN_DEBUG=1 VLLM_BATCH_INVARIANT=1 CUDAGRAPH_MODE=PIECEWISE run $m --spec --exact --pi-gemm \
+    --one-token-chunks >> $OUT/selfcheck.log
 done
 rm -f $OUT/selfcheck_qwen3_attention_only.log
 for opt in "" --prefill-chunk=128; do

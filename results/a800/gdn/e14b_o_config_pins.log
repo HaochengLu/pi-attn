@@ -1,4 +1,6 @@
 chunk_fwd_kernel_o pinned to config 0: {'BK': 128, 'BV': 128} num_warps 8
+state codec HV=4 K=128 V=128: 131072 fp32 words round-trip True
+state codec HV=2 K=64 V=64: 16384 fp32 words round-trip True
 exact_decode 2:4:64      H=32 HV=32 K=128 V=128 beta bfloat16: rows 2936 mismatching 0; boundary states 42 mismatching 0
 exact_decode 2:4:64      H=16 HV=16 K=128 V=128 beta bfloat16: rows 2936 mismatching 0; boundary states 42 mismatching 0
 exact_decode 2:4:64      H=16 HV=32 K=128 V=128 beta bfloat16: rows 2936 mismatching 0; boundary states 42 mismatching 0
@@ -22,6 +24,8 @@ spec window KT=16 dirty   H=16 HV=32 K=128 V=128: accepted rows 3173 mismatching
 fold without a following window H=16 HV=32: row 63 equal True; state at 64 equal True; rows 64..69 mismatching 0
 PASS
 chunk_fwd_kernel_o pinned to config 1: {'BK': 64, 'BV': 64} num_warps 4
+state codec HV=4 K=128 V=128: 131072 fp32 words round-trip True
+state codec HV=2 K=64 V=64: 16384 fp32 words round-trip True
 exact_decode 2:4:64      H=32 HV=32 K=128 V=128 beta bfloat16: rows 2936 mismatching 144; boundary states 42 mismatching 0
 exact_decode 2:4:64      H=16 HV=16 K=128 V=128 beta bfloat16: rows 2936 mismatching 80; boundary states 42 mismatching 0
 exact_decode 2:4:64      H=16 HV=32 K=128 V=128 beta bfloat16: rows 2936 mismatching 149; boundary states 42 mismatching 0
@@ -45,6 +49,8 @@ spec window KT=16 dirty   H=16 HV=32 K=128 V=128: accepted rows 3173 mismatching
 fold without a following window H=16 HV=32: row 63 equal True; state at 64 equal True; rows 64..69 mismatching 2
 FAIL
 chunk_fwd_kernel_o pinned to config 2: {'BK': 32, 'BV': 32} num_warps 2
+state codec HV=4 K=128 V=128: 131072 fp32 words round-trip True
+state codec HV=2 K=64 V=64: 16384 fp32 words round-trip True
 exact_decode 2:4:64      H=32 HV=32 K=128 V=128 beta bfloat16: rows 2936 mismatching 0; boundary states 42 mismatching 0
 exact_decode 2:4:64      H=16 HV=16 K=128 V=128 beta bfloat16: rows 2936 mismatching 0; boundary states 42 mismatching 0
 exact_decode 2:4:64      H=16 HV=32 K=128 V=128 beta bfloat16: rows 2936 mismatching 0; boundary states 42 mismatching 0

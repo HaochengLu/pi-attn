@@ -219,3 +219,27 @@ Fable's third review checked the scheduling-only levers that remain, against the
 and the code, and found none with a credible engine-level gain:
 - the prefill grid and wave quantisation;
 - the GEMM grids and the merge kernels.
+
+## Dimension-raising review (2026-10-27): segments at prefill M (`seg_drainfree/`)
+
+The review's first GEMM lever: K segments looked expensive at prefill M (probe 3: 1-5% on the
+4090) because `SegmentedKernel` ran the CUTLASS mainloop once per segment, draining and
+refilling the cp.async pipeline at every boundary; a mainloop that keeps streaming across the
+boundary and only restarts the accumulator would make segments free, so S could grow (narrow
+mid-M shapes; a K-block tree for TP-degree invariance).
+
+- `gemm_cutlass_drainfree.cuh`: `SegmentedMma`, one mainloop over K, the accumulator folded
+  into the running total and cleared every `seg_iters` k tiles. Bitwise as the shipped kernel
+  (`test_gemm.py`: 0 invariance failures, `test_gemm_tail.txt`).
+- `seg_probe.py`: Qwen3 4B/8B o and down, M = 512-4096, best large-M kernel id, three builds:
+  base (these shapes S = 1), s2_old (S = 2, shipped kernel), s2_new (S = 2, drain-free).
+  - Fold inside the k loop (`out_fold_in_loop.txt`): the 128-row tiles spill, 1.6x slower.
+  - Fold after a per-segment inner loop (`out.txt`): s2_new = s2_old within +-3%
+    (8B o M = 4096: base 557.5, s2_old 637.2, s2_new 649.5 us; 8B down 1714.6 / 1746.2 / 1768.1).
+
+Refuted: the segment cost is not the pipeline drain. A segment boundary needs a second fp32
+tile (the running total) live beside the accumulator; the 128x256 / 128x128 tiles that win at
+prefill already hold their accumulator in registers, and the total does not fit in shared
+memory beside the pipeline. So S > 1 costs 2-15% on these shapes at prefill M whatever the
+mainloop, and a canonical K-block tree over t_max blocks (TP-degree invariance at TP = 1)
+would cost at least this on row-parallel projections. The shipped kernel is kept.

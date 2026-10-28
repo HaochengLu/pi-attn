@@ -4,7 +4,8 @@ N requests, each a P-token slice of the model README, greedy, NEW output tokens 
 (max_num_seqs = N); reports the wall time of llm.generate after an identical warm-up generate, and output
 tokens/s.
 usage: [VLLM_BATCH_INVARIANT=1] [CUDAGRAPH_MODE=PIECEWISE] python gdn/vllm/throughput.py MODEL_DIR [N] [P] [NEW]
-       [--exact] [--spec] [--mtp=K]   (--spec: n-gram drafting, 4 drafts; --mtp=K: the model's MTP head drafting K
+       [--exact] [--spec] [--mtp=K] [--pi-gemm]   (--pi-gemm: dense projections on PI-Attn's GEMM, kernels/pi_vllm.py,
+       with VLLM_BATCH_INVARIANT=1; --spec: n-gram drafting, 4 drafts; --mtp=K: the model's MTP head drafting K
        tokens, with vLLM's async scheduling; both with the vLLM fixes of fix_vllm_mixed_spec_decodes)"""
 import os, sys, time
 
@@ -21,6 +22,11 @@ def main():
     here = os.path.dirname(os.path.abspath(__file__))
     sys.path[:0] = [here, os.path.dirname(here)]                     # gdn/vllm (exact_gdn), gdn (exact_decode)
     import exact_gdn
+    pi_gemm = '--pi-gemm' in sys.argv
+    if pi_gemm:                                                      # PI-Attn's GEMM as the batch-invariant dense ops
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(here)), 'kernels'))
+        import pi_vllm
+        pi_vllm.install()
     if exact:
         exact_gdn.install()
     elif spec:
@@ -47,8 +53,11 @@ def main():
     out = llm.generate(prompts, sp)
     dt = time.time() - t
     n_out = sum(len(o.outputs[0].token_ids) for o in out)
-    print(f'RESULT exact={exact} spec={"mtp" + str(mtp) if mtp is not None else spec} batch_invariant={os.environ.get("VLLM_BATCH_INVARIANT", "0")} N={N} P={P} NEW={NEW}: '
+    print(f'RESULT exact={exact} spec={"mtp" + str(mtp) if mtp is not None else spec} batch_invariant={os.environ.get("VLLM_BATCH_INVARIANT", "0")}{" pi_gemm" if pi_gemm else ""} N={N} P={P} NEW={NEW}: '
           f'{dt:.2f} s, {n_out / dt:.1f} output tok/s')
+    if pi_gemm:
+        print('PI_GEMM eager calls', pi_vllm.STATS, 'weights (N, K)', pi_vllm.shapes(), 'untuned tiles captured',
+              pi_vllm.ext().heuristic_calls())
 
 
 if __name__ == '__main__':

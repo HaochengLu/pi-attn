@@ -19,14 +19,18 @@ ext = load(name=f"pi_gemm_sm{major}{minor}", sources=[os.path.join(HERE, "gemm_t
            build_directory=os.environ.get("PI_ATTN_BUILD_DIR"))
 dev = "cuda"
 torch.manual_seed(0)
-SHAPES = {  # name: (N, K), every projection of Qwen3 0.6B/1.7B/4B/8B
+SHAPES = {  # name: (N, K), every projection of Qwen3 0.6B/1.7B/4B/8B, and Qwen3.5-4B's
     "0.6B qkv": (4096, 1024), "0.6B o": (1024, 2048), "0.6B gateup": (6144, 1024), "0.6B down": (1024, 3072),
     "0.6B lm_head": (151936, 1024), "1.7B qkv": (4096, 2048), "1.7B o": (2048, 2048),
     "1.7B gateup": (12288, 2048), "1.7B down": (2048, 6144), "1.7B lm_head": (151936, 2048),
     "4B qkv": (6144, 2560), "4B o": (2560, 4096), "4B gateup": (19456, 2560), "4B down": (2560, 9728),
     "4B lm_head": (151936, 2560),
     "8B qkv": (6144, 4096), "8B o": (4096, 4096), "8B gateup": (24576, 4096), "8B down": (4096, 12288),
-    "8B lm_head": (151936, 4096)}
+    "8B lm_head": (151936, 4096),
+    # Qwen3.5-4B (vLLM, kernels/pi_vllm.py): GDN in_proj_qkvz, in_proj_ba, out_proj; attention qkv; MLP; LM head
+    "3.5-4B qkvz": (12288, 2560), "3.5-4B ba": (64, 2560), "3.5-4B gdn out": (2560, 4096),
+    "3.5-4B attn qkv": (10240, 2560), "3.5-4B gateup": (18432, 2560), "3.5-4B down": (2560, 9216),
+    "3.5-4B lm_head": (248320, 2560)}
 KERNELS = tuple(ext.small_kernels()) + tuple(ext.large_kernels())  # the engine's candidates
 SMALL = set(ext.small_kernels())
 

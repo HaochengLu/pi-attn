@@ -16,7 +16,7 @@ dev, H, HV, K, V = 'cuda', 32, 32, 128, 128
 def fill(dec, gen):
     dec.kbuf.copy_(F.normalize(torch.randn_like(dec.kbuf.float()), dim=-1).bfloat16()); dec.vbuf.normal_()
     dec.gbuf.copy_(F.logsigmoid(torch.randn_like(dec.gbuf) + 3)); dec.bbuf.uniform_(0, 1)
-    dec.S.normal_(0, 0.1); dec.Hb.copy_(dec.S)
+    dec.put_states(torch.arange(dec.N, device=dev, dtype=torch.int32), torch.randn(dec.N, HV, K, V, device=dev) * 0.1)
 
 
 def inputs(B, T, gen):

@@ -1,3 +1,5 @@
+state codec HV=4 K=128 V=128: 131072 fp32 words round-trip True
+state codec HV=2 K=64 V=64: 16384 fp32 words round-trip True
 exact_decode 2:4:64      H=32 HV=32 K=128 V=128 beta bfloat16: rows 2936 mismatching 0; boundary states 42 mismatching 0
 exact_decode 2:4:64      H=16 HV=16 K=128 V=128 beta bfloat16: rows 2936 mismatching 0; boundary states 42 mismatching 0
 exact_decode 2:4:64      H=16 HV=32 K=128 V=128 beta bfloat16: rows 2936 mismatching 0; boundary states 42 mismatching 0

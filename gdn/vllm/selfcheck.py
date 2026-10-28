@@ -6,7 +6,8 @@ prefill-time one bitwise, and whose greedy token equals the prefill's argmax. De
 with VLLM_BATCH_INVARIANT=1 (FLASH_ATTN backend); with them on, what remains is the GDN layers.
 usage: [VLLM_BATCH_INVARIANT=1] python gdn/vllm/selfcheck.py MODEL_DIR [N_PROMPTS] [NEW] [--exact] [--spec]
        [--mtp=K] [--temperature=T] [--prefill-chunk=T] [--short] [--aligned] [--one-token-chunks] [--preempt]
-(--exact installs gdn/vllm/exact_gdn.py's patch first; --spec turns on n-gram speculative decoding with 4 drafts,
+       [--pi-gemm]
+(--pi-gemm runs the dense projections on PI-Attn's GEMM (kernels/pi_vllm.py; needs VLLM_BATCH_INVARIANT=1); --exact installs gdn/vllm/exact_gdn.py's patch first; --spec turns on n-gram speculative decoding with 4 drafts,
 --mtp=K speculative decoding with the model's MTP head drafting K tokens (vLLM's async scheduling on); --temperature=T
 samples (seeded per request) instead of greedy decoding;
 CUDAGRAPH_MODE=PIECEWISE selects vLLM's piecewise CUDA graphs, needed with --spec: stock vLLM 0.17.1 fails to capture
@@ -41,6 +42,11 @@ def main():
     here = os.path.dirname(os.path.abspath(__file__))
     sys.path[:0] = [here, os.path.dirname(here)]                     # gdn/vllm (exact_gdn), gdn (exact_decode)
     import exact_gdn
+    pi_gemm = '--pi-gemm' in sys.argv
+    if pi_gemm:                                                      # PI-Attn's GEMM as the batch-invariant dense ops
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(here)), 'kernels'))
+        import pi_vllm
+        pi_vllm.install()
     if exact:
         exact_gdn.install()
     elif spec:
@@ -118,9 +124,13 @@ def main():
             eq += d == pf
             arg_eq += max(pl.values(), key=lambda x: x.logprob) is pl[t] or pl[t].rank == 1
             tot += 1
-    print(f'RESULT exact={exact} spec={spec} batch_invariant={os.environ.get("VLLM_BATCH_INVARIANT", "0")}: decode '
+    print(f'RESULT exact={exact} spec={spec} batch_invariant={os.environ.get("VLLM_BATCH_INVARIANT", "0")}'
+          f'{" pi_gemm" if pi_gemm else ""}: decode '
           f'log-prob == prefill log-prob bitwise for {eq}/{tot} generated tokens; greedy token is prefill argmax for '
           f'{arg_eq}/{tot}; tokens+log-probs sha256 {h.hexdigest()[:16]}')
+    if pi_gemm:
+        print('PI_GEMM eager calls', pi_vllm.STATS, 'weights (N, K)', pi_vllm.shapes(), 'untuned tiles captured',
+              pi_vllm.ext().heuristic_calls())
     if exact and exact_gdn.DEBUG:
         print('DEBUG', exact_gdn.DEBUG_STATS)
 

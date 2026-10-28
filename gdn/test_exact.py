@@ -38,6 +38,37 @@ def chunk(q, k, v, g, beta):
     return chunk_gated_delta_rule(q, k, v, g, beta, output_final_state=True, use_qk_l2norm_in_kernel=True)
 
 
+def state(dec, n):
+    """Slot n's fp32 boundary state (exact_decode stores it as bf16 copy + rest; exact_decode_ref as S)."""
+    if isinstance(dec, GDNExactDecodeRef):
+        return dec.S[n]
+    return dec.get_states(torch.tensor([n], device=dev, dtype=torch.int32))[0]
+
+
+def run_state_codec(HV=4, K=128, V=128):
+    """put_states then get_states returns every fp32 bit pattern unchanged, and the stored bf16 copy is bf16(S):
+    random finite words, plus the cases the code is about (bf16 ties, rounding up across a power of two, zeros,
+    subnormals, the largest finite values)."""
+    gen = torch.Generator(device=dev).manual_seed(7)
+    w = torch.randint(-2**31, 2**31, (2, HV, K, V), device=dev, generator=gen, dtype=torch.int64).to(torch.int32)
+    w = torch.where(((w >> 23) & 0xFF) == 0xFF, w & ~(1 << 30), w)                       # finite only
+    special = torch.tensor([0, -2**31, 0x00008000, 0x00018000, 0x3F808000, 0x3F818000, 0x3F7FFFFF, 0x3F7F8000,
+                            -0x40808000, -0x40818000, 0x00000001, 0x007FFFFF, 0x7F7FFFFF, -0x00808001, 0x7F7F8000],
+                           device=dev, dtype=torch.int64).to(torch.int32)
+    w.view(-1)[:special.numel()] = special
+    w.view(-1)[special.numel():2 * special.numel()] = special
+    S = w.view(torch.float32)
+    dec = GDNExactDecode(3, HV, HV, K, V, dev)
+    dec.storage.copy_(dirty(dec.storage))
+    slots = torch.tensor([2, 0], device=dev, dtype=torch.int32)
+    dec.put_states(slots, S)
+    back = dec.get_states(slots)
+    ok = torch.equal(back.view(torch.int32), w) and torch.equal(dec.Hb[slots.long()].view(torch.int16),
+                                                                 S.to(torch.bfloat16).view(torch.int16))
+    print(f'state codec HV={HV} K={K} V={V}: {S.numel()} fp32 words round-trip {ok}')
+    return ok
+
+
 def dirty(storage):
     """A slot storage full of finite garbage, as words other code left behind (finite read as bf16 or as fp32: every
     bf16 half is a normal sample). The kernels read cache cells they did not write only where the value meets an exact
@@ -107,7 +138,7 @@ def run(impl, H, HV, K=128, V=128, cfg=(2, 4, 64), beta_dtype=torch.bfloat16, in
             if b % BT == 0 and b > PS[n]:
                 q, k, v, g, beta = seqs[n]
                 Sref = chunk(q[:, :b], k[:, :b], v[:, :b], g[:, :b], beta[:, :b])[1][0]
-                bad_states += int(not torch.equal(dec.S[n], Sref)); states += 1
+                bad_states += int(not torch.equal(state(dec, n), Sref)); states += 1
     tag = f'{impl} {nw1}:{nw2}:{BV}{" rows" if inplace else " dirty" if garbage else ""}' if impl == 'exact_decode' else impl
     print(f'{tag:24s} H={H:2d} HV={HV:2d} K={K:3d} V={V:3d} beta {str(beta_dtype)[6:]:8s}: rows {rows} mismatching {bad_rows}; '
           f'boundary states {states} mismatching {bad_states}')
@@ -153,7 +184,7 @@ def run_spec(H, HV, KT=4, K=128, V=128, inplace=False, garbage=False):
             b = BT * (int(pos[n]) // BT)
             q, k, v, g, beta = seqs[n]
             Sref = chunk(q[:, :b], k[:, :b], v[:, :b], g[:, :b], beta[:, :b])[1][0]
-            bad_states += int(not torch.equal(dec.S[n], Sref)); states += 1
+            bad_states += int(not torch.equal(state(dec, n), Sref)); states += 1
         dec.commit(pos, acc)
         pos = pos + acc
     print(f'spec window KT={KT:<2d}{" rows" if inplace else " dirty" if garbage else "     "}   H={H:2d} HV={HV:2d} K={K:3d} V={V:3d}: accepted rows {rows} mismatching {bad_rows}; '
@@ -177,7 +208,7 @@ def run_fold(H=16, HV=32, KT=5, K=128, V=128):
     dec.fold(slots)
     dec.pending.zero_()
     S64 = chunk(q[:, :64], k[:, :64], v[:, :64], g[:, :64], beta[:, :64])[1][0]
-    ok_row, ok_state = torch.equal(o[0, 0], ref_o[0, 63]), torch.equal(dec.S[0], S64)
+    ok_row, ok_state = torch.equal(o[0, 0], ref_o[0, 63]), torch.equal(state(dec, 0), S64)
     one = GDNExactDecode(2, H, HV, K, V, dev, KT=1, storage=dec.storage)
     one.pending = dec.pending
     bad = 0
@@ -196,7 +227,8 @@ if __name__ == '__main__':
     cases += [('exact_decode', dict(H=16, HV=16, K=64, V=64)), ('exact_decode', dict(H=16, HV=32, beta_dtype=torch.float32))]
     cases += [('exact_decode', dict(H=16, HV=32, inplace=True)), ('exact_decode', dict(H=16, HV=32, garbage=True))]
     cases += [('exact_decode_ref', dict(H=H, HV=HV)) for H, HV in ((32, 32), (16, 32))]
-    ok = all([run(impl, **kw) for impl, kw in cases])
+    ok = run_state_codec() and run_state_codec(HV=2, K=64, V=64)
+    ok = all([run(impl, **kw) for impl, kw in cases]) and ok
     ok = all([run_spec(H, HV, KT) for H, HV, KT in ((32, 32, 4), (16, 32, 4), (32, 32, 16), (16, 32, 16))]) and ok
     ok = all([run_spec(16, 32, KT, inplace=True) for KT in (5, 16)]) and ok
     ok = all([run_spec(16, 32, KT, garbage=True) for KT in (5, 16)]) and ok
