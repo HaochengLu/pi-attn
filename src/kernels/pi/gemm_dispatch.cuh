@@ -7,7 +7,7 @@
 // M <= 16, 32 M <= 32, 33 M <= 64), 40..43, 51 and 53 stream-K (M <= 8; 51 and 53
 // stream 512- and 1024-column stages, for long K), 60..62 stream-K over pairs of n8
 // tiles (M <= 8; the pair shares each X fragment, for M = 8 of long-K projections), 10..15
-// CUTLASS tiles, 44..47 and 50 stream-K over CUTLASS tiles (S = 1 shapes), 48/49
+// CUTLASS tiles, 16 = 10 with CTAs swizzled 8 tiles wide (L2 reuse at M >= 8192), 44..47 and 50 stream-K over CUTLASS tiles (S = 1 shapes), 48/49
 // segment-parallel CUTLASS tiles (S > 1 shapes), 54/55 segment-split (M <= 16, S > 1
 // shapes: one CTA per n8 tile, one warp per segment). All realise the same k order; an id that
 // cannot run a shape returns an error before launching and is then not tuned.
@@ -32,7 +32,7 @@ inline const std::vector<int>& small_kernels() {
 }
 // Candidates for every M bucket.
 inline const std::vector<int>& large_kernels() {
-  static const std::vector<int> v{10, 11, 12, 13, 14, 15, 44, 45, 46, 47, 48, 49, 50};
+  static const std::vector<int> v{10, 11, 12, 13, 14, 15, 16, 44, 45, 46, 47, 48, 49, 50};
   return v;
 }
 inline bool is_small_kernel(int k) { return k < 10 || (k >= 20 && k <= 43) || k == 51 || (k >= 53 && k <= 55) || (k >= 60 && k <= 62); }
@@ -120,6 +120,7 @@ cudaError_t run_gemm(int k, const void* x, int64_t ldx, const void* w, OutT* y, 
     case 13: return CutlassGemm<OutT, 64, 64, 32, 32, 32, 5>::run(x, ldx, w, y, ldy, M, N, K, st);
     case 14: return CutlassGemm<OutT, 32, 64, 64, 16, 32, 5>::run(x, ldx, w, y, ldy, M, N, K, st);
     case 15: return CutlassGemm<OutT, 64, 64, 64, 32, 32, 4>::run(x, ldx, w, y, ldy, M, N, K, st);
+    case 16: return CutlassGemm<OutT, 128, 256, 32, 64, 64, 3, 8>::run(x, ldx, w, y, ldy, M, N, K, st);
     case 44: return CutlassGemm<OutT, 32, 64, 64, 16, 32, 5>::run_streamk(x, ldx, w, y, ldy, M, N, K, dev.sms, 1, st);
     case 45: return CutlassGemm<OutT, 32, 64, 64, 16, 32, 4>::run_streamk(x, ldx, w, y, ldy, M, N, K, dev.sms, 2, st);
     case 46: return CutlassGemm<OutT, 64, 64, 64, 32, 32, 4>::run_streamk(x, ldx, w, y, ldy, M, N, K, dev.sms, 1, st);

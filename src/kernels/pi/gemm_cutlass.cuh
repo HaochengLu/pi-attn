@@ -239,7 +239,9 @@ __global__ void __launch_bounds__(Kernel::kThreadCount) tiles_kernel(typename Ke
   op.run(params, *reinterpret_cast<typename Kernel::SharedStorage*>(tiles_smem), arg);
 }
 
-template <typename OutT, int TBM, int TBN, int TBK, int WM, int WN, int STAGES>
+// SWZ: CUTLASS's threadblock swizzle, the order CTAs walk the output tiles (L2 reuse of
+// weight columns at large M); it changes no element's k chain.
+template <typename OutT, int TBM, int TBN, int TBK, int WM, int WN, int STAGES, int SWZ = 1>
 struct CutlassGemm {
   using Element = cutlass::bfloat16_t;
   using OutElement = std::conditional_t<sizeof(OutT) == 2, cutlass::bfloat16_t, float>;
@@ -253,7 +255,7 @@ struct CutlassGemm {
       cutlass::gemm::GemmShape<16, 8, 16>,
       cutlass::epilogue::thread::LinearCombination<OutElement, 128 / cutlass::sizeof_bits<OutElement>::value,
                                                    float, float>,
-      cutlass::gemm::threadblock::GemmIdentityThreadblockSwizzle<>, STAGES, 8, 8,
+      cutlass::gemm::threadblock::GemmIdentityThreadblockSwizzle<SWZ>, STAGES, 8, 8,
       /*SplitKSerial=*/false>;
   using Segmented = SegmentedKernel<typename Gemm::GemmKernel>;
   using StreamK = StreamKKernel<typename Gemm::GemmKernel>;
