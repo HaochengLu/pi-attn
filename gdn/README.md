@@ -86,8 +86,9 @@ remaining gap. The causal conv1d needs no change: HF's update path is already bi
   - The fp32 state is not stored beside its bf16 copy: bf16(S) is S's upper 16 bits rounded to nearest, i.e. those
     bits or the next value up, so S = (Hb's bits - up) << 16 | lo with lo S's lower 16 bits and up one bit. Steps
     read only Hb, as before; folds decode S from the Hb tile they already load and encode the new S
-    (`_state_tile`, `_state_put`). The codec is checked on every fp32 bit pattern class (ties, carries across a power
-    of two, zeros, subnormals, the largest values: test_exact's state codec cases). 5.25 -> 4.33 MiB.
+    (`_state_tile`, `_state_put`). The codec is checked on every finite fp32 bit pattern class and on infinities (ties, carries across a
+    power of two, zeros of both signs, subnormals, the largest values: test_exact's state codec cases); a NaN state
+    decodes to a NaN of another payload (the GPU's bf16 conversion canonicalises NaNs). 5.25 -> 4.33 MiB.
   Tried and dropped: deriving bf16 (I+A)^-1 from the fp32 rows instead of caching it (0.25 MiB less) made K1 16%
   slower at batch 256 (loading the fp32 rows and converting them for the dot costs more than the bf16 load).
   Against a long context's KV cache the state is small (Qwen3.5-4B: 4 KV heads x 256 dims x 32K tokens, K and V in
@@ -236,14 +237,18 @@ the host; vLLM's prefill conv without its metadata copies the sequence lengths t
   128x128 tiles for every projection) cost the most where the batch is small: with them the bitwise configuration
   runs 38.0 tok/s at one request (0.27x of stock), 290.2 at 8 (0.31x), 5336 at 256 (0.83x) and 4573 with MTP (0.87x).
   With PI-Attn's GEMM in their place it is at parity or better except on prefill-bound work (0.96x), where the GEMM
-  at M = 16384 is 0.99-1.03x of cuBLAS per shape (`kernels/test_gemm.py`; tile 16, 128x256 with an 8-wide CTA
-  swizzle for L2 reuse, closed most of a 9-13% gap on the large-N shapes: 20.84 -> 20.26 s); the remaining 3% was
-  not traced. The cost of exactness is memory, a fixed amount
+  at M = 16384 takes 1.00-1.05x cuBLAS's time per shape (`kernels/test_gemm.py --bench`,
+  `results/a800/kernels/test_gemm_qwen35.log`; tile 16, 128x256 with an 8-wide CTA swizzle for L2 reuse, is the
+  tuner's pick there and took this workload from 20.84 s, `throughput_before_tile16.log`, to 20.26 s); the rest of
+  the gap was not traced. The cost of exactness is memory, a fixed amount
   per request (4.33 MiB per GDN layer, result 2): without speculation the pool holds 2.0x fewer requests of 472
   tokens, 1.45x fewer of 2017 and 1.3x fewer of 4K, but 0.96x as many of 32K and 0.99x of 128K (`pool_capacity.py`,
   `pool_capacity.log`), where the attention KV cache dominates; with speculation vLLM keeps 1 + drafts fp32 states per
-  request and exact GDN one, so exact GDN holds 1.6-2.0x more. With 256 requests the pool does not bind in these runs;
-  at higher load it caps the batch. On this text n-gram drafting slows stock vLLM too.
+  request and exact GDN one, so exact GDN holds 1.6-2.0x more. With 256 requests the pool does not bind. With 1024
+  requests (`throughput_pool.log`) it does, 853 concurrent requests for stock against 420 (exact) and 413 (bitwise),
+  and costs no throughput: stock 6415 tok/s, exact 6579 (1.03x), bitwise 6415 (1.00x); decode throughput has
+  saturated by a batch of about 400 on this GPU (stock gets the same 6.4K tok/s at 256). On a GPU or model where it
+  has not, the smaller pool would cost throughput. On this text n-gram drafting slows stock vLLM too.
 - PI-Attn's GEMM in vLLM (`kernels/pi_vllm.py`, `kernels/pi_vllm_torch.cu`). With `VLLM_BATCH_INVARIANT=1` on sm_80/89
   vLLM routes aten::mm/addmm/matmul/linear to `batch_invariant.matmul_persistent`; `pi_vllm.install()` replaces that
   function, so a bf16 projection x W^T (W contiguous, K % 64 == 0, N % 32 == 0, no bias) runs the engine's GEMM
@@ -252,12 +257,13 @@ the host; vLLM's prefill conv without its metadata copies the sequence lengths t
   (ported from `pi.rs`; buckets first seen during graph capture keep a fixed tile), gives the same bits. It is a
   torch custom op (`pi_attn::linear`) with a fake implementation, so torch.compile and CUDA graphs keep it as one
   opaque call. In the self-checks every Qwen3.5 weight (13 shapes for 4B, all of the model's projections and the LM
-  head) ran on it and no untuned tile was captured; the bits differ from vLLM's kernel's (another, equally
+  head, and a 14th, the MTP head's input projection, with MTP drafting) ran on it and no untuned tile was captured; the bits differ from vLLM's kernel's (another, equally
   batch-invariant k order), so the hashes change (4B `db04bae5f0c5a486` whole and `0d7b61afc56f5915` chunked, 0.8B
   `da208e7007aa98c7` and `302a1aaca9611d8f`) and every run, with or without n-gram or MTP speculation, preemption or
-  sampling, is 2048/2048 decode-equals-prefill with the unspeculated run's hash (`selfcheck.log`, the `pi_gemm`
-  rows). Whether these hashes are equal across GPUs (the engine's GEMM is, `kernels/test_gemm.py`) was not run: the
-  RTX 4090 D was unreachable.
+  sampling, has the unspeculated run's hash (`selfcheck.log`, the `pi_gemm` rows). Every run is 2048/2048
+  decode-equals-prefill except MTP drafting with chunked prefill (23/2048 for 4B, 0/2048 for 0.8B, with or without
+  preemption), the vLLM prompt-logprob issue described above for the runs without PI-Attn's GEMM. Whether these
+  hashes are equal across GPUs was not run: the RTX 4090 D was unreachable.
 - vLLM 0.17.1 issues hit on the way (found by failing self-checks and hash mismatches): the runner marks decode
   requests without drafts like prefill requests, so a batch mixing them with speculative ones kills the engine on an
   assertion, and their conv state is not rolled back by the previous window's acceptance (stock too;
@@ -374,7 +380,7 @@ at batch >= 32, with half the state memory, and plain exact decode is 0.79-0.99x
 Both are slower at batch 1-8 (1.1-2.0x). Integrated into vLLM 0.17.1, decode is bitwise the engine's own prefill for
 Qwen3.5-0.8B and 4B with n-gram or MTP speculation on or off, greedy or sampled, chunked prefill, slot reuse and
 preemption, and, with PI-Attn's GEMM as the batch-invariant dense ops, at 0.96-1.08x of stock vLLM's throughput with
-its default (not batch-invariant) dense ops from one request to 256, with a pool that holds 2.0x fewer short requests
+its default (not batch-invariant) dense ops from one request to 1024 (where the pool binds), with a pool that holds 2.0x fewer short requests
 without speculation (0.96x as many at 32K tokens) and more with it.
 
 Not claimed: speed versus ReplaySSM-style or bf16-state kernels, or versus the packed/CUDA GDN decode kernels of vLLM

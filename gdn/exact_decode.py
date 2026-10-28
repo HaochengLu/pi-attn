@@ -644,6 +644,15 @@ class GDNExactDecode:
         # fla's bits depend on these dtypes (beta enters recompute_w_u unconverted; g must be the fp32 log-gate)
         assert beta.dtype == self.bbuf.dtype and g.dtype == torch.float32 and k.dtype == self.kbuf.dtype
 
+    def _state_slots(self, slots, distinct):
+        """slots as contiguous int32, checked on the device without a host sync: in range and, for a store,
+        distinct (two programs storing one slot would race on its packed Sup words)."""
+        slots, = self._i32(torch.as_tensor(slots, device=self.Hb.device))
+        if slots.numel():
+            s = slots.sort().values
+            torch._assert_async((s[0] >= 0) & (s[-1] < self.Hb.shape[0]) & ((s[1:] != s[:-1]).all() | (not distinct)))
+        return slots
+
     @staticmethod
     def _i32(*ts):
         return [t if t.dtype == torch.int32 and t.is_contiguous() else t.to(torch.int32).contiguous() for t in ts]
@@ -703,7 +712,7 @@ class GDNExactDecode:
 
     def get_states(self, slots):
         """The fp32 boundary states [n, HV, K, V] of slots ([n]; the stored form is Hb, Slo, Sup)."""
-        slots, = self._i32(torch.as_tensor(slots, device=self.Hb.device))
+        slots = self._state_slots(slots, False)
         S = torch.empty(slots.shape[0], self.HV, self.K, self.V, device=self.Hb.device, dtype=torch.float32)
         _gdn_state_io[(slots.shape[0] * self.HV, self.K // 64)](S, self.Hb, self.Slo, self.Sup, slots, *self._st[:3],
                                                                 HV=self.HV, K=self.K, V=self.V, PUT=False)
@@ -711,7 +720,7 @@ class GDNExactDecode:
 
     def put_states(self, slots, S):
         """Store the fp32 boundary states S [n, HV, K, V] into slots ([n], distinct)."""
-        slots, = self._i32(torch.as_tensor(slots, device=self.Hb.device))
+        slots = self._state_slots(slots, True)
         assert S.dtype == torch.float32 and tuple(S.shape) == (slots.shape[0], self.HV, self.K, self.V)
         _gdn_state_io[(slots.shape[0] * self.HV, self.K // 64)](S.contiguous(), self.Hb, self.Slo, self.Sup, slots,
                                                                 *self._st[:3], HV=self.HV, K=self.K, V=self.V,

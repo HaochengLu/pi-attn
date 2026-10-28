@@ -90,7 +90,7 @@ def main(bench):
     fails = []
     for name, (N, K) in SHAPES.items():
         W = (torch.randn(N, K, device=dev) * 0.02).bfloat16()
-        X = torch.randn(4096, K, device=dev).bfloat16()
+        X = torch.randn(16384 if bench else 4096, K, device=dev).bfloat16()
         ref = ext.linear(X[:1].contiguous(), W, 1, False)[0]
         for M in [1, 2, 7, 8, 9, 16, 17, 32, 33, 64, 65, 200, 1000, 4096]:
             Xm = X[:M].clone()
@@ -124,7 +124,7 @@ def main(bench):
         line = f"{name:13s} N={N:6d} K={K:5d}: max|err| pi(fp32 out) {e_pi:.2e} pi(bf16) {e_pi_b:.2e} cublas(bf16) {e_cb:.2e}"
         if bench:
             ts = []
-            for M in [1, 8, 32, 64, 128, 256, 1024, 4096]:
+            for M in [1, 8, 32, 64, 128, 256, 1024, 4096, 16384]:  # 16384: vLLM's prefill token budget
                 Xm = X[:M].contiguous()
                 tc = timeit(lambda: torch.matmul(Xm, W.T))
                 best = min((timeit(lambda: ext.linear(Xm, W, kk, False)), kk) for kk in candidates(M, N, K))

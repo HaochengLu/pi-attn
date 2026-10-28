@@ -12,7 +12,7 @@
 set -u
 cd "$(dirname "$0")/../.." && source env.sh && OUT=$PWD/$1 && GM=${2:-} && cd gdn/vllm && mkdir -p $OUT
 PY=../../env/venv-vllm17/bin/python; export PYTHONPATH=../../env/fla_pkgs
-TMP=$(mktemp); M=../../../models
+TMP=$OUT/run.tmp; M=../../../models
 run() { path=$1; shift; $PY selfcheck.py $path ${NP:-16} 128 "$@" > $TMP 2>&1
         echo "$(basename $path) $* | $(grep RESULT $TMP || tail -2 $TMP) $(grep '^DEBUG\|^PREEMPTIONS\|^PI_GEMM' $TMP)"; }
 rm -f $OUT/selfcheck.log

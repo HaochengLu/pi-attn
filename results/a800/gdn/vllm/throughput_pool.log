@@ -1,0 +1,9 @@
+Qwen3.5-4B RESULT exact=False spec=False batch_invariant=0 N=1024 P=200 NEW=256: 40.87 s, 6414.4 output tok/s | GPU KV cache size: 402,616 tokens Maximum concurrency for 472 tokens per request: 853.25x 
+Qwen3.5-4B RESULT exact=True spec=False batch_invariant=0 N=1024 P=200 NEW=256: 39.86 s, 6577.3 output tok/s | GPU KV cache size: 198,240 tokens Maximum concurrency for 472 tokens per request: 420.25x 
+Qwen3.5-4B RESULT exact=True spec=False batch_invariant=1 pi_gemm N=1024 P=200 NEW=256: 40.86 s, 6414.9 output tok/s | GPU KV cache size: 194,936 tokens Maximum concurrency for 472 tokens per request: 413.00x 
+Qwen3.5-4B RESULT exact=False spec=False batch_invariant=0 N=1024 P=200 NEW=256: 40.87 s, 6414.6 output tok/s | GPU KV cache size: 402,616 tokens Maximum concurrency for 472 tokens per request: 853.25x 
+Qwen3.5-4B RESULT exact=True spec=False batch_invariant=0 N=1024 P=200 NEW=256: 39.84 s, 6579.5 output tok/s | GPU KV cache size: 198,240 tokens Maximum concurrency for 472 tokens per request: 420.25x 
+Qwen3.5-4B RESULT exact=True spec=False batch_invariant=1 pi_gemm N=1024 P=200 NEW=256: 41.05 s, 6386.2 output tok/s | GPU KV cache size: 194,936 tokens Maximum concurrency for 472 tokens per request: 413.00x 
+Qwen3.5-4B RESULT exact=False spec=False batch_invariant=0 N=1024 P=200 NEW=256: 40.85 s, 6417.5 output tok/s | GPU KV cache size: 402,616 tokens Maximum concurrency for 472 tokens per request: 853.25x 
+Qwen3.5-4B RESULT exact=True spec=False batch_invariant=0 N=1024 P=200 NEW=256: 39.84 s, 6579.9 output tok/s | GPU KV cache size: 198,240 tokens Maximum concurrency for 472 tokens per request: 420.25x 
+Qwen3.5-4B RESULT exact=True spec=False batch_invariant=1 pi_gemm N=1024 P=200 NEW=256: 40.86 s, 6415.6 output tok/s | GPU KV cache size: 194,936 tokens Maximum concurrency for 472 tokens per request: 413.00x 
