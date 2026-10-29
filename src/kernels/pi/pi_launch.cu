@@ -287,8 +287,14 @@ const char* pi_linear(const void* x, int64_t ldx, const void* w, void* y, int M,
     if (it != tuned.end()) k = it->second;
   }
   if (k < 0 || M > kernel_max_m(k) || K % kernel_bk(k)) k = heuristic_kernel(M, K);
-  const cudaError_t err = out_fp32 ? run_gemm(k, x, ldx, w, (float*)y, N, M, N, K, gemm_segments(N, K), gemm_device(), st)
-                                   : run_gemm(k, x, ldx, w, (__nv_bfloat16*)y, N, M, N, K, gemm_segments(N, K), gemm_device(), st);
+  auto run = [&](int id) {
+    return out_fp32 ? run_gemm(id, x, ldx, w, (float*)y, N, M, N, K, gemm_segments(N, K), gemm_device(), st)
+                    : run_gemm(id, x, ldx, w, (__nv_bfloat16*)y, N, M, N, K, gemm_segments(N, K), gemm_device(), st);
+  };
+  cudaError_t err = run(k);
+  // A tuned id refuses a launch whose scratch would have to grow during capture (gemm_workspace);
+  // every id gives the same bits, so the heuristic kernel, which needs no scratch, replaces it.
+  if (err == cudaErrorInvalidValue && k != heuristic_kernel(M, K)) err = run(heuristic_kernel(M, K));
   if (err != cudaSuccess) return fail(std::string("PI linear: ") + cudaGetErrorString(err));
   return nullptr;
 }

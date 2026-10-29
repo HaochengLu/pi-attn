@@ -393,7 +393,7 @@ __global__ void gemm_segsplit_kernel(const __nv_bfloat16* __restrict__ x, int64_
   }
 }
 
-// ------------------------------------------------------------- stream-K, M <= 8 ----
+// ------------------------------------------------------------ stream-K, M <= 16 ----
 // Decode GEMMs whose n8 tiles divide unevenly over the SMs (8B down: 512 tiles on 114
 // SMs; 0.6B o and down: 256 (tile, segment) chains on 108) leave the busiest SMs
 // streaming one chain more than the average. Here the work is the k-tile steps of all
@@ -407,21 +407,27 @@ __global__ void gemm_segsplit_kernel(const __nv_bfloat16* __restrict__ x, int64_
 // of an S = 1 shape is the output; with S > 1 it is a segment partial, folded as
 // gemm_balanced_kernel does (g_seg_ws, arrival count, the last to arrive folds the S
 // partials in ascending order), which never waits. Workers have their own cp.async
-// rings (8 X rows, 8 W rows; rows 8..15 of the MMA's A operand are zero, as the
-// zero-filled rows of the other kernels). The handoff state is per device and per
+// rings of XR X rows and 8 TN W rows. XR = 8 (M <= 8): rows 8..15 of the MMA's A operand
+// are zero, as the zero-filled rows of the other kernels; XR = 16 (M <= 16): the whole A
+// operand, at the same cost per weight byte (narrow weights at M = 9..16, e.g.
+// tensor-parallel column shards, where tile kernels leave SMs idle). More X rows per warp
+// lose: each warp re-reads them from L2 for its 8 TN columns (PI-Attn
+// archive/ceiling_probes/a800/narrow/). The handoff state is per device and per
 // translation unit, as g_seg_ws.
 constexpr int kSkMaxWorkers = 2048, kSkMaxTN = 2;
 static __device__ float g_sk_acc[kSkMaxWorkers * kSkMaxTN * 128];
 static __device__ int g_sk_flag[kSkMaxWorkers];
 
 // TN n8 tiles per chain: the worker's MMAs on the TN tiles share each X fragment, so
-// at M = 8 the X rows it re-reads from L2 per weight byte fall to 1 / TN.
-template <typename OutT, int BK, int STAGES, int TN>
+// the X rows it re-reads from L2 per weight byte fall to 1 / TN.
+template <typename OutT, int BK, int STAGES, int TN, int XR = 8>
 __global__ void gemm_streamk_kernel(const __nv_bfloat16* __restrict__ x, int64_t ldx,
                                     const __nv_bfloat16* __restrict__ w, OutT* __restrict__ y,
                                     int64_t ldy, int M, int N, int K, int segs, int workers) {
   static_assert(TN >= 1 && TN <= kSkMaxTN, "handoff buffer holds kSkMaxTN tiles per worker");
-  constexpr int kStride = BK + 8, kRows = 8 + 8 * TN, kStage = kRows * kStride;
+  static_assert(XR == 8 || XR == 16, "X rows: 8 (A rows 8..15 zero) or 16");
+  constexpr int kStride = BK + 8, kRows = XR + 8 * TN, kStage = kRows * kStride;
+  constexpr int kHalves = XR / 8;  // accumulator rows g and g + 8 (XR = 8: the second is padding)
   extern __shared__ __align__(16) __nv_bfloat16 smem[];
   const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
   const int wid = blockIdx.x * (blockDim.x >> 5) + warp;
@@ -443,7 +449,7 @@ __global__ void gemm_streamk_kernel(const __nv_bfloat16* __restrict__ x, int64_t
 #pragma unroll
       for (int i = lane; i < kRows * kVec; i += 32) {
         const int r = i / kVec, v = i % kVec, kc = sg * seg_k + kt * BK + v * 8;
-        if (r >= 8) cp_async16(st + r * kStride + v * 8, w + ((int64_t)u * 8 * TN + r - 8) * K + kc, 16);
+        if (r >= XR) cp_async16(st + r * kStride + v * 8, w + ((int64_t)u * 8 * TN + r - XR) * K + kc, 16);
         else if (r < M) cp_async16(st + r * kStride + v * 8, x + (int64_t)r * ldx + kc, 16);
         else cp_async16(st + r * kStride + v * 8, x, 0);
       }
@@ -474,7 +480,7 @@ __global__ void gemm_streamk_kernel(const __nv_bfloat16* __restrict__ x, int64_t
       if (kt + STAGES - 1 < kb) issue(kt + STAGES - 1);
       cp_async_commit();
       const __nv_bfloat16* sx = ring + (kt % STAGES) * kStage;
-      const __nv_bfloat16* sw = sx + 8 * kStride;
+      const __nv_bfloat16* sw = sx + XR * kStride;
 #pragma unroll
       for (int ks = 0; ks < BK / 16; ks += 2) {
         uint32_t b[TN][4];
@@ -483,8 +489,12 @@ __global__ void gemm_streamk_kernel(const __nv_bfloat16* __restrict__ x, int64_t
 #pragma unroll
         for (int kk = 0; kk < 2; ++kk) {
           uint32_t a[4];
-          ldmatrix_x4(a, sx + r8 * kStride + (ks + kk) * 16 + (mat >> 1) * 8);
-          a[1] = a[3] = 0u;
+          if constexpr (XR == 8) {
+            ldmatrix_x4(a, sx + r8 * kStride + (ks + kk) * 16 + (mat >> 1) * 8);
+            a[1] = a[3] = 0u;
+          } else {
+            ldmatrix_x4(a, sx + ((mat & 1) * 8 + r8) * kStride + (ks + kk) * 16 + (mat >> 1) * 8);
+          }
 #pragma unroll
           for (int j = 0; j < TN; ++j) mma_bf16(acc[j], a, b[j][2 * kk], b[j][2 * kk + 1]);
         }
@@ -505,10 +515,12 @@ __global__ void gemm_streamk_kernel(const __nv_bfloat16* __restrict__ x, int64_t
     }
     if (segs > 1) {
 #pragma unroll
-      for (int j = 0; j < TN; ++j) {
-        const int n = (u * TN + j) * 8 + t * 2;
-        if (g < M) *reinterpret_cast<float2*>(g_seg_ws + ((int64_t)sg * M + g) * N + n) = make_float2(acc[j][0], acc[j][1]);
-      }
+      for (int j = 0; j < TN; ++j)
+#pragma unroll
+        for (int h = 0; h < kHalves; ++h) {
+          const int m = g + h * 8, n = (u * TN + j) * 8 + t * 2;
+          if (m < M) *reinterpret_cast<float2*>(g_seg_ws + ((int64_t)sg * M + m) * N + n) = make_float2(acc[j][2 * h], acc[j][2 * h + 1]);
+        }
       __threadfence();
       __syncwarp();
       int last = 0;
@@ -519,30 +531,33 @@ __global__ void gemm_streamk_kernel(const __nv_bfloat16* __restrict__ x, int64_t
       if (!__shfl_sync(0xffffffffu, last, 0)) return;
       __threadfence();
 #pragma unroll
-      for (int j = 0; j < TN; ++j) {
-        const int n = (u * TN + j) * 8 + t * 2;
-        if (g >= M) continue;
-        float2 tot = make_float2(0.f, 0.f);
-        for (int q = 0; q < segs; ++q) {
-          const float2 p = __ldcg(reinterpret_cast<const float2*>(g_seg_ws + ((int64_t)q * M + g) * N + n));
-          tot.x = add(tot.x, p.x);
-          tot.y = add(tot.y, p.y);
-        }
-        acc[j][0] = tot.x;
-        acc[j][1] = tot.y;
-      }
-    }
-    if (g < M) {
+      for (int j = 0; j < TN; ++j)
 #pragma unroll
-      for (int j = 0; j < TN; ++j) {
-        const int n = (u * TN + j) * 8 + t * 2;
+        for (int h = 0; h < kHalves; ++h) {
+          const int m = g + h * 8, n = (u * TN + j) * 8 + t * 2;
+          if (m >= M) continue;
+          float2 tot = make_float2(0.f, 0.f);
+          for (int q = 0; q < segs; ++q) {
+            const float2 p = __ldcg(reinterpret_cast<const float2*>(g_seg_ws + ((int64_t)q * M + m) * N + n));
+            tot.x = add(tot.x, p.x);
+            tot.y = add(tot.y, p.y);
+          }
+          acc[j][2 * h] = tot.x;
+          acc[j][2 * h + 1] = tot.y;
+        }
+    }
+#pragma unroll
+    for (int j = 0; j < TN; ++j)
+#pragma unroll
+      for (int h = 0; h < kHalves; ++h) {
+        const int m = g + h * 8, n = (u * TN + j) * 8 + t * 2;
+        if (m >= M) continue;
         if constexpr (sizeof(OutT) == 2) {
-          *reinterpret_cast<__nv_bfloat162*>(y + (int64_t)g * ldy + n) = __floats2bfloat162_rn(acc[j][0], acc[j][1]);
+          *reinterpret_cast<__nv_bfloat162*>(y + (int64_t)m * ldy + n) = __floats2bfloat162_rn(acc[j][2 * h], acc[j][2 * h + 1]);
         } else {
-          *reinterpret_cast<float2*>(y + (int64_t)g * ldy + n) = make_float2(acc[j][0], acc[j][1]);
+          *reinterpret_cast<float2*>(y + (int64_t)m * ldy + n) = make_float2(acc[j][2 * h], acc[j][2 * h + 1]);
         }
       }
-    }
   };
 
   const int64_t h_end = min(s1, (s0 + kt_n - 1) / kt_n * kt_n);  // end of the continuation
@@ -553,16 +568,17 @@ __global__ void gemm_streamk_kernel(const __nv_bfloat16* __restrict__ x, int64_t
 }
 
 // Launch: `warps` workers per SM, one CTA per SM; at most one worker per chain, so a
-// chain is cut at most once.
-template <typename OutT, int BK, int STAGES, int TN = 1>
+// chain is cut at most once. Refuses M > XR and rings that do not fit in shared memory.
+template <typename OutT, int BK, int STAGES, int TN = 1, int XR = 8>
 cudaError_t run_streamk(const void* x, int64_t ldx, const void* w, OutT* y, int64_t ldy, int M, int N,
-                        int K, int segs, int warps, int sms, cudaStream_t st) {
-  if (M > 8 || (K / segs) % BK || N % (8 * TN) || !seg_ws_fits(segs, M, N)) return cudaErrorInvalidValue;
+                        int K, int segs, int warps, int sms, int max_smem, cudaStream_t st) {
+  if (M > XR || (K / segs) % BK || N % (8 * TN) || !seg_ws_fits(segs, M, N)) return cudaErrorInvalidValue;
   const int workers = min(min(N / (8 * TN) * segs, sms * warps), kSkMaxWorkers);
-  const size_t smem = (size_t)warps * STAGES * (8 + 8 * TN) * (BK + 8) * sizeof(__nv_bfloat16);
-  cudaFuncSetAttribute(gemm_streamk_kernel<OutT, BK, STAGES, TN>, cudaFuncAttributeMaxDynamicSharedMemorySize,
+  const size_t smem = (size_t)warps * STAGES * (XR + 8 * TN) * (BK + 8) * sizeof(__nv_bfloat16);
+  if (smem > (size_t)max_smem) return cudaErrorInvalidValue;
+  cudaFuncSetAttribute(gemm_streamk_kernel<OutT, BK, STAGES, TN, XR>, cudaFuncAttributeMaxDynamicSharedMemorySize,
                        (int)smem);
-  gemm_streamk_kernel<OutT, BK, STAGES, TN><<<(workers + warps - 1) / warps, warps * 32, smem, st>>>(
+  gemm_streamk_kernel<OutT, BK, STAGES, TN, XR><<<(workers + warps - 1) / warps, warps * 32, smem, st>>>(
       (const __nv_bfloat16*)x, ldx, (const __nv_bfloat16*)w, y, ldy, M, N, K, segs, workers);
   return cudaGetLastError();
 }
