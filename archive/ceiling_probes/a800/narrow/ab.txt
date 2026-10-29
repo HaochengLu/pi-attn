@@ -1,0 +1,7 @@
+70B down t8 M=8 rep0: k43 old 73.6 new 73.0 k51 old 70.7 new 67.6 k61 old 59.8 new 59.4 k62 old 63.9 new 70.3
+70B down t8 M=8 rep1: k43 old 73.2 new 72.8 k51 old 70.4 new 67.2 k61 old 59.8 new 59.3 k62 old 64.0 new 70.3
+8B down t8 M=8 rep0: k43 old 21.8 new 21.4 k51 old 23.9 new 23.1 k61 old 19.6 new 19.5 k62 old 19.7 new 21.3
+8B down t8 M=8 rep1: k43 old 21.8 new 21.5 k51 old 23.9 new 23.2 k61 old 19.5 new 19.7 k62 old 19.7 new 21.3
+0.6B down M=8 rep0: k43 old 17.8 new 17.4 k51 old 20.6 new 20.1 k61 old 15.6 new 15.5 k62 old 15.4 new 15.7
+0.6B down M=8 rep1: k43 old 17.7 new 17.3 k51 old 20.4 new 20.1 k61 old 15.7 new 15.6 k62 old 15.5 new 15.8
+DONE

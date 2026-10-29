@@ -1,0 +1,10 @@
+70B down t8 M=16: engine k64 62.2 | 32x16 w1 cps2 64.0 | 32x16 w1 cps4 64.0 | 16x32 w1 cps2 62.0 | 16x32 w1 cps4 62.2 | 32x32 w1 cps2 73.4 | 32x32 w1 cps4 73.5
+70B down t8 M=32: engine k64 62.7 | 32x16 w1 cps2 65.0 | 32x16 w1 cps4 65.1 | 16x32 w1 cps2 64.9 | 16x32 w1 cps4 64.8 | 32x32 w1 cps2 73.8 | 32x32 w1 cps4 73.8
+70B down t8 M=64: engine k44 67.5 | 32x16 w1 cps2 88.8 BITS! | 32x16 w1 cps4 89.9 BITS! | 16x32 w1 cps2 86.3 | 16x32 w1 cps4 83.8 | 32x32 w1 cps2 75.3 | 32x32 w1 cps4 75.3
+70B o t8 M=16: engine k64 22.5 | 32x16 w1 cps2 23.1 | 32x16 w1 cps4 23.2 | 16x32 w1 cps2 22.3 | 16x32 w1 cps4 22.3 | 32x32 w1 cps2 27.3 | 32x32 w1 cps4 27.3
+70B o t8 M=32: engine k64 22.5 | 32x16 w1 cps2 24.2 | 32x16 w1 cps4 24.2 | 16x32 w1 cps2 22.9 | 16x32 w1 cps4 23.0 | 32x32 w1 cps2 27.5 | 32x32 w1 cps4 27.5
+70B o t8 M=64: engine k44 24.0 | 32x16 w1 cps2 39.2 BITS! | 32x16 w1 cps4 33.5 BITS! | 16x32 w1 cps2 35.6 | 16x32 w1 cps4 30.5 | 32x32 w1 cps2 28.4 | 32x32 w1 cps4 28.3
+8B down t8 M=16: engine k63 19.2 | 32x16 w1 cps2 20.4 | 32x16 w1 cps4 20.3 | 16x32 w1 cps2 19.8 | 16x32 w1 cps4 19.7 | 32x32 w1 cps2 24.8 | 32x32 w1 cps4 24.7
+8B down t8 M=32: engine k64 19.9 | 32x16 w1 cps2 20.4 | 32x16 w1 cps4 20.5 | 16x32 w1 cps2 20.1 | 16x32 w1 cps4 20.1 | 32x32 w1 cps2 24.8 | 32x32 w1 cps4 24.8
+8B down t8 M=64: engine k48 20.8 | 32x16 w1 cps2 28.7 BITS! | 32x16 w1 cps4 25.1 BITS! | 16x32 w1 cps2 27.6 | 16x32 w1 cps4 24.4 | 32x32 w1 cps2 25.8 | 32x32 w1 cps4 25.7
+DONE

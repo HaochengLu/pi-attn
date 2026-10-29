@@ -1,0 +1,29 @@
+8B down    M= 128: engine k46 1.42x cuBLAS | new best 128x64x32 cps2 1.82x
+8B down    M= 256: engine k50 1.14x cuBLAS | new best 128x64x32 cps1 1.22x
+8B down    M= 512: engine k10 1.36x cuBLAS | new best 128x64x32 cps2 1.39x
+8B down    M=1024: engine k11 1.18x cuBLAS | new best 128x64x32 cps2 1.66x
+4B down    M= 128: engine k15 1.21x cuBLAS | new best 64x128x32 cps2 2.19x
+4B down    M= 256: engine k13 1.33x cuBLAS | new best 64x128x32 cps1 1.50x
+4B down    M= 512: engine k11 1.17x cuBLAS | new best 128x64x32 cps1 1.42x
+4B down    M=1024: engine k10 1.17x cuBLAS | new best 128x64x32 cps2 1.45x
+1.7B down  M= 128: engine k15 1.30x cuBLAS | new best 128x64x32 cps2 2.18x
+1.7B down  M= 256: engine k46 1.12x cuBLAS | new best 128x64x32 cps1 1.48x
+1.7B down  M= 512: engine k50 1.22x cuBLAS | new best 64x128x32 cps1 1.27x
+1.7B down  M=1024: engine k10 1.25x cuBLAS | new best 128x64x32 cps2 1.31x
+8B o       M= 128: engine k46 1.14x cuBLAS | new best 128x64x32 cps2 1.38x
+8B o       M= 256: engine k11 1.19x cuBLAS | new best 64x128x32 cps1 1.21x
+8B o       M= 512: engine k16 1.13x cuBLAS | new best 128x64x32 cps2 1.29x
+8B o       M=1024: engine k11 0.85x cuBLAS | new best 128x64x32 cps2 1.09x
+8B qkv     M= 128: engine k15 1.14x cuBLAS | new best 128x64x32 cps2 1.16x
+8B qkv     M= 256: engine k11 1.19x cuBLAS | new best 64x128x32 cps2 1.55x
+8B qkv     M= 512: engine k10 1.01x cuBLAS | new best 128x64x32 cps2 1.66x
+8B qkv     M=1024: engine k10 1.00x cuBLAS | new best 128x64x32 cps2 1.63x
+0.6B down  M= 128: engine k49 0.96x cuBLAS | new best 128x64x32 cps1 1.79x
+0.6B down  M= 256: engine k15 1.16x cuBLAS | new best 128x64x32 cps2 1.57x
+0.6B down  M= 512: engine k49 1.21x cuBLAS | new best 128x64x32 cps1 1.39x
+Traceback (most recent call last):
+  File "/uniparser/users/luhaocheng/pi_attn/kernels/../logs/narrow/tiles/try_midm.py", line 33, in <module>
+    print(f'{name:10s} M={M:4d}: engine k{eng[1]} {eng[0] / tc:.2f}x cuBLAS | new best {best[1]} cps{best[2]} '
+                                                                                        ~~~~^^^
+TypeError: 'NoneType' object is not subscriptable
+DONE

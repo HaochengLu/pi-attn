@@ -1,0 +1,65 @@
+210 MHz, 1140 MHz
+tp 4B o         N= 2560 K= 4096 t_max=8 S=4 M=   1: 1617 shard launches
+tp 4B o         N= 2560 K= 4096 t_max=8 S=4 M=   8: 1617 shard launches
+tp 4B o         N= 2560 K= 4096 t_max=8 S=4 M=  33: 1077 shard launches
+tp 4B o         N= 2560 K= 4096 t_max=8 S=4 M= 300: 992 shard launches
+tp 4B o         N= 2560 K= 4096 t_max=8 S=4 M=4096: 244 shard launches
+tp 4B down      N= 2560 K= 9728 t_max=8 S=2 M=   1: 1512 shard launches
+tp 4B down      N= 2560 K= 9728 t_max=8 S=2 M=   8: 1512 shard launches
+tp 4B down      N= 2560 K= 9728 t_max=8 S=2 M=  33: 1080 shard launches
+tp 4B down      N= 2560 K= 9728 t_max=8 S=2 M= 300: 1036 shard launches
+tp 4B down      N= 2560 K= 9728 t_max=8 S=2 M=4096: 247 shard launches
+tp 8B o         N= 4096 K= 4096 t_max=8 S=4 M=   1: 1617 shard launches
+tp 8B o         N= 4096 K= 4096 t_max=8 S=4 M=   8: 1617 shard launches
+tp 8B o         N= 4096 K= 4096 t_max=8 S=4 M=  33: 1077 shard launches
+tp 8B o         N= 4096 K= 4096 t_max=8 S=4 M= 300: 901 shard launches
+tp 8B o         N= 4096 K= 4096 t_max=8 S=4 M=4096: 244 shard launches
+tp 8B down      N= 4096 K=12288 t_max=8 S=4 M=   1: 1617 shard launches
+tp 8B down      N= 4096 K=12288 t_max=8 S=4 M=   8: 1617 shard launches
+tp 8B down      N= 4096 K=12288 t_max=8 S=4 M=  33: 1077 shard launches
+tp 8B down      N= 4096 K=12288 t_max=8 S=4 M= 300: 901 shard launches
+tp 8B down      N= 4096 K=12288 t_max=8 S=4 M=4096: 244 shard launches
+tp 3.5-4B down  N= 2560 K= 9216 t_max=8 S=4 M=   1: 1509 shard launches
+tp 3.5-4B down  N= 2560 K= 9216 t_max=8 S=4 M=   8: 1509 shard launches
+tp 3.5-4B down  N= 2560 K= 9216 t_max=8 S=4 M=  33: 1077 shard launches
+tp 3.5-4B down  N= 2560 K= 9216 t_max=8 S=4 M= 300: 992 shard launches
+tp 3.5-4B down  N= 2560 K= 9216 t_max=8 S=4 M=4096: 244 shard launches
+tp 70B o        N= 8192 K= 8192 t_max=8 S=2 M=   1: 1617 shard launches
+tp 70B o        N= 8192 K= 8192 t_max=8 S=2 M=   8: 1617 shard launches
+tp 70B o        N= 8192 K= 8192 t_max=8 S=2 M=  33: 1077 shard launches
+tp 70B o        N= 8192 K= 8192 t_max=8 S=2 M= 300: 911 shard launches
+tp 70B o        N= 8192 K= 8192 t_max=8 S=2 M=4096: 236 shard launches
+tp 70B down     N= 8192 K=28672 t_max=8 S=2 M=   1: 1617 shard launches
+tp 70B down     N= 8192 K=28672 t_max=8 S=2 M=   8: 1617 shard launches
+tp 70B down     N= 8192 K=28672 t_max=8 S=2 M=  33: 1077 shard launches
+tp 70B down     N= 8192 K=28672 t_max=8 S=2 M= 300: 911 shard launches
+tp 70B down     N= 8192 K=28672 t_max=8 S=2 M=4096: 236 shard launches
+0.6B qkv      N=  4096 K= 1024: max|err| pi(fp32 out) 5.66e-06 pi(bf16) 7.81e-03 cublas(bf16) 7.81e-03 | pi/cublas M=1:0.62(k14) M=8:0.62(k14) M=32:0.66(k14) M=64:0.71(k15) M=128:1.16(k15) M=256:1.14(k13) M=1024:0.90(k12) M=4096:1.02(k10) M=16384:1.12(k16)
+0.6B o        N=  1024 K= 2048: max|err| pi(fp32 out) 6.66e-06 pi(bf16) 1.45e-02 cublas(bf16) 1.45e-02 | pi/cublas M=1:0.69(k43) M=8:0.62(k55) M=32:0.64(k64) M=64:0.64(k48) M=128:0.96(k49) M=256:1.15(k15) M=1024:1.19(k13) M=4096:1.03(k13) M=16384:1.35(k16)
+0.6B gateup   N=  6144 K= 1024: max|err| pi(fp32 out) 5.85e-06 pi(bf16) 7.81e-03 cublas(bf16) 7.81e-03 | pi/cublas M=1:0.65(k14) M=8:0.67(k14) M=32:0.70(k14) M=64:0.81(k13) M=128:1.12(k12) M=256:1.14(k11) M=1024:1.04(k16) M=4096:1.00(k11) M=16384:1.12(k16)
+0.6B down     N=  1024 K= 3072: max|err| pi(fp32 out) 1.20e-05 pi(bf16) 1.52e-02 cublas(bf16) 1.52e-02 | pi/cublas M=1:0.77(k43) M=8:0.73(k61) M=32:0.72(k64) M=64:0.78(k48) M=128:0.95(k49) M=256:1.20(k15) M=1024:1.22(k13) M=4096:1.05(k11) M=16384:1.27(k16)
+0.6B lm_head  N=151936 K= 1024: max|err| pi(fp32 out) 6.89e-06 pi(bf16) 7.82e-03 cublas(bf16) 7.82e-03 | pi/cublas M=1:0.98(k13) M=8:0.99(k14) M=32:0.97(k14) M=64:1.02(k15) M=128:0.96(k11) M=256:1.12(k10) M=1024:1.04(k16) M=4096:1.03(k10) M=16384:1.04(k16)
+1.7B qkv      N=  4096 K= 2048: max|err| pi(fp32 out) 1.48e-05 pi(bf16) 1.46e-02 cublas(bf16) 1.46e-02 | pi/cublas M=1:0.90(k14) M=8:0.92(k14) M=32:0.96(k14) M=64:1.02(k15) M=128:1.26(k13) M=256:1.19(k15) M=1024:0.79(k66) M=4096:1.02(k10) M=16384:1.00(k16)
+1.7B o        N=  2048 K= 2048: max|err| pi(fp32 out) 1.43e-05 pi(bf16) 1.16e-02 cublas(bf16) 1.16e-02 | pi/cublas M=1:0.71(k61) M=8:0.71(k64) M=32:0.92(k64) M=64:0.96(k14) M=128:1.04(k15) M=256:1.27(k15) M=1024:1.01(k10) M=4096:0.92(k11) M=16384:1.05(k66)
+1.7B gateup   N= 12288 K= 2048: max|err| pi(fp32 out) 1.54e-05 pi(bf16) 1.52e-02 cublas(bf16) 1.52e-02 | pi/cublas M=1:0.96(k13) M=8:0.97(k13) M=32:1.02(k13) M=64:1.02(k13) M=128:1.04(k11) M=256:1.07(k10) M=1024:1.01(k10) M=4096:1.03(k16) M=16384:1.02(k16)
+1.7B down     N=  2048 K= 6144: max|err| pi(fp32 out) 7.89e-05 pi(bf16) 2.42e-02 cublas(bf16) 2.78e-02 | pi/cublas M=1:0.74(k61) M=8:1.29(k61) M=32:1.28(k64) M=64:1.49(k14) M=128:1.35(k15) M=256:1.14(k46) M=1024:1.22(k65) M=4096:0.89(k66) M=16384:1.00(k16)
+1.7B lm_head  N=151936 K= 2048: max|err| pi(fp32 out) 1.79e-05 pi(bf16) 1.56e-02 cublas(bf16) 1.56e-02 | pi/cublas M=1:0.99(k14) M=8:0.99(k14) M=32:0.96(k14) M=64:0.96(k15) M=128:1.00(k10) M=256:1.08(k16) M=1024:1.02(k10) M=4096:1.04(k16) M=16384:1.04(k16)
+4B qkv        N=  6144 K= 2560: max|err| pi(fp32 out) 2.35e-05 pi(bf16) 1.56e-02 cublas(bf16) 1.56e-02 | pi/cublas M=1:0.90(k14) M=8:0.96(k14) M=32:0.95(k14) M=64:0.93(k15) M=128:1.17(k15) M=256:1.12(k11) M=1024:1.01(k10) M=4096:1.00(k66) M=16384:0.99(k16)
+4B o          N=  2560 K= 4096: max|err| pi(fp32 out) 4.91e-05 pi(bf16) 1.56e-02 cublas(bf16) 1.56e-02 | pi/cublas M=1:0.86(k61) M=8:1.17(k64) M=32:0.93(k64) M=64:1.19(k14) M=128:1.14(k15) M=256:1.16(k13) M=1024:1.02(k10) M=4096:1.00(k10) M=16384:1.00(k16)
+4B gateup     N= 19456 K= 2560: max|err| pi(fp32 out) 3.17e-05 pi(bf16) 1.56e-02 cublas(bf16) 1.56e-02 | pi/cublas M=1:0.95(k13) M=8:0.99(k14) M=32:0.99(k14) M=64:1.02(k15) M=128:1.09(k10) M=256:0.91(k11) M=1024:1.03(k16) M=4096:1.03(k16) M=16384:1.04(k16)
+4B down       N=  2560 K= 9728: max|err| pi(fp32 out) 1.52e-04 pi(bf16) 3.04e-02 cublas(bf16) 4.46e-02 | pi/cublas M=1:0.91(k61) M=8:1.13(k61) M=32:1.14(k64) M=64:1.18(k14) M=128:1.22(k15) M=256:1.31(k13) M=1024:1.16(k10) M=4096:1.03(k16) M=16384:1.00(k16)
+4B lm_head    N=151936 K= 2560: max|err| pi(fp32 out) 2.77e-05 pi(bf16) 1.56e-02 cublas(bf16) 1.56e-02 | pi/cublas M=1:1.00(k14) M=8:1.00(k14) M=32:1.00(k14) M=64:1.05(k15) M=128:1.06(k10) M=256:1.04(k16) M=1024:1.02(k10) M=4096:1.04(k10) M=16384:1.03(k16)
+8B qkv        N=  6144 K= 4096: max|err| pi(fp32 out) 5.08e-05 pi(bf16) 1.56e-02 cublas(bf16) 1.56e-02 | pi/cublas M=1:0.94(k14) M=8:0.97(k14) M=32:0.95(k14) M=64:1.02(k15) M=128:1.10(k15) M=256:1.18(k11) M=1024:1.01(k10) M=4096:1.01(k66) M=16384:1.01(k16)
+8B o          N=  4096 K= 4096: max|err| pi(fp32 out) 4.29e-05 pi(bf16) 1.56e-02 cublas(bf16) 1.56e-02 | pi/cublas M=1:0.93(k61) M=8:1.03(k14) M=32:1.05(k14) M=64:1.20(k15) M=128:1.12(k46) M=256:1.17(k11) M=1024:0.74(k66) M=4096:1.01(k10) M=16384:0.97(k16)
+8B gateup     N= 24576 K= 4096: max|err| pi(fp32 out) 4.75e-05 pi(bf16) 1.56e-02 cublas(bf16) 1.56e-02 | pi/cublas M=1:0.95(k14) M=8:0.98(k14) M=32:0.99(k14) M=64:1.03(k15) M=128:1.05(k10) M=256:1.03(k10) M=1024:1.02(k16) M=4096:1.02(k10) M=16384:1.02(k16)
+8B down       N=  4096 K=12288: max|err| pi(fp32 out) 2.34e-04 pi(bf16) 3.14e-02 cublas(bf16) 4.49e-02 | pi/cublas M=1:0.97(k63) M=8:1.04(k14) M=32:0.96(k14) M=64:1.14(k15) M=128:1.29(k46) M=256:1.43(k50) M=1024:1.01(k66) M=4096:1.01(k16) M=16384:1.02(k16)
+8B lm_head    N=151936 K= 4096: max|err| pi(fp32 out) 5.11e-05 pi(bf16) 1.56e-02 cublas(bf16) 1.56e-02 | pi/cublas M=1:1.00(k14) M=8:1.00(k14) M=32:0.98(k14) M=64:1.03(k15) M=128:1.04(k10) M=256:1.05(k16) M=1024:1.00(k10) M=4096:1.03(k16) M=16384:1.03(k16)
+3.5-4B qkvz   N= 12288 K= 2560: max|err| pi(fp32 out) 2.38e-05 pi(bf16) 1.56e-02 cublas(bf16) 1.56e-02 | pi/cublas M=1:0.98(k13) M=8:0.98(k13) M=32:1.00(k14) M=64:1.05(k15) M=128:1.04(k11) M=256:1.07(k10) M=1024:1.01(k10) M=4096:1.03(k16) M=16384:1.02(k16)
+3.5-4B ba     N=    64 K= 2560: max|err| pi(fp32 out) 8.19e-06 pi(bf16) 7.81e-03 cublas(bf16) 7.81e-03 | pi/cublas M=1:0.59(k43) M=8:0.60(k40) M=32:0.67(k64) M=64:0.66(k64) M=128:0.66(k64) M=256:0.70(k64) M=1024:0.74(k48) M=4096:1.13(k15) M=16384:1.03(k13)
+3.5-4B gdn out N=  2560 K= 4096: max|err| pi(fp32 out) 4.41e-05 pi(bf16) 1.56e-02 cublas(bf16) 1.56e-02 | pi/cublas M=1:0.89(k61) M=8:1.17(k64) M=32:0.94(k64) M=64:1.19(k14) M=128:1.13(k15) M=256:1.19(k13) M=1024:1.01(k16) M=4096:1.00(k10) M=16384:1.01(k16)
+3.5-4B attn qkv N= 10240 K= 2560: max|err| pi(fp32 out) 2.73e-05 pi(bf16) 1.56e-02 cublas(bf16) 1.56e-02 | pi/cublas M=1:0.96(k1) M=8:0.96(k45) M=32:1.00(k14) M=64:1.08(k15) M=128:1.05(k11) M=256:1.06(k10) M=1024:1.01(k10) M=4096:1.01(k16) M=16384:1.02(k16)
+3.5-4B gateup N= 18432 K= 2560: max|err| pi(fp32 out) 2.71e-05 pi(bf16) 1.56e-02 cublas(bf16) 1.56e-02 | pi/cublas M=1:0.98(k13) M=8:0.86(k13) M=32:0.98(k14) M=64:1.01(k15) M=128:1.09(k10) M=256:0.89(k11) M=1024:1.03(k11) M=4096:1.02(k16) M=16384:1.04(k16)
+3.5-4B down   N=  2560 K= 9216: max|err| pi(fp32 out) 1.35e-04 pi(bf16) 2.80e-02 cublas(bf16) 3.88e-02 | pi/cublas M=1:0.88(k61) M=8:1.03(k61) M=32:1.12(k64) M=64:1.15(k14) M=128:1.20(k15) M=256:1.33(k15) M=1024:0.97(k10) M=4096:1.04(k10) M=16384:1.01(k16)
+3.5-4B lm_head N=248320 K= 2560: max|err| pi(fp32 out) 3.04e-05 pi(bf16) 1.56e-02 cublas(bf16) 1.56e-02 | pi/cublas M=1:1.00(k14) M=8:0.99(k14) M=32:1.00(k14) M=64:1.04(k15) M=128:1.04(k10) M=256:1.07(k10) M=1024:1.00(k10) M=4096:1.04(k16) M=16384:1.04(k16)
+INVARIANCE FAILURES: 0 []
+DONE 0

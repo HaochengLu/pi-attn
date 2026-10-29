@@ -1,0 +1,33 @@
+8B down     M= 128: engine S=1 1.41x (k46) | S=1 sk 128x128 3.09x | S=2 segpar 128x64 1.33x | S=4 segpar 128x64 1.48x
+8B down     M= 256: engine S=1 1.37x (k50) | S=1 sk 128x128 1.85x | S=2 segpar 128x64 1.34x | S=4 segpar 128x64 1.37x
+8B down     M= 512: engine S=1 1.36x (k10) | S=1 sk 128x128 1.21x | S=2 segpar 64x128 1.35x | S=4 segpar 128x64 1.38x
+8B down     M=1024: engine S=1 1.20x (k11) | S=1 sk 128x256 0.98x | S=2 segpar 128x64 1.26x | S=4 segpar 128x256 1.23x
+8B o        M= 128: engine S=1 1.07x (k46) | S=1 sk 128x128 1.99x | S=2 segpar 128x64 1.02x | S=4 segpar 64x64 1.18x
+8B o        M= 256: engine S=1 1.14x (k11) | S=1 sk 128x128 1.45x | S=2 segpar 64x128 1.27x | S=4 segpar 64x128 1.26x
+8B o        M= 512: engine S=1 1.15x (k10) | S=1 sk 128x128 1.15x | S=2 segpar 64x128 1.23x | S=4 segpar 64x128 1.41x
+8B o        M=1024: engine S=1 0.84x (k11) | S=1 sk 128x256 0.72x | S=2 segpar 128x64 0.99x | S=4 segpar 64x128 1.12x
+8B qkv      M= 128: engine S=1 1.08x (k15) | S=1 sk 128x128 1.65x | S=2 segpar 128x64 1.01x | S=4 segpar 128x64 1.19x
+8B qkv      M= 256: engine S=1 1.20x (k11) | S=1 sk 128x128 1.41x | S=2 segpar 128x64 1.42x | S=4 segpar 128x64 1.66x
+8B qkv      M= 512: engine S=1 1.01x (k10) | S=1 sk 128x256 1.05x | S=2 segpar 128x256 1.36x | S=4 segpar 128x64 1.73x
+8B qkv      M=1024: engine S=1 1.00x (k16) | S=1 sk 128x256 1.16x | S=2 segpar 128x256 1.32x
+4B down     M= 128: engine S=1 1.19x (k15) | S=1 sk 128x128 3.36x | S=2 segpar 128x64 1.13x
+4B down     M= 256: engine S=1 1.36x (k13) | S=1 sk 128x128 2.41x | S=2 segpar 128x64 1.09x
+4B down     M= 512: engine S=1 1.16x (k11) | S=1 sk 128x128 1.39x | S=2 segpar 64x128 1.11x
+4B down     M=1024: engine S=1 1.17x (k10) | S=1 sk 128x256 1.20x | S=2 segpar 128x64 1.28x
+3.5-4B down M= 128: engine S=1 1.20x (k15) | S=1 sk 128x128 3.35x | S=2 segpar 64x64 1.12x | S=4 segpar 128x64 1.06x
+3.5-4B down M= 256: engine S=1 1.34x (k15) | S=1 sk 128x128 2.34x | S=2 segpar 128x64 1.11x | S=4 segpar 64x128 1.18x
+3.5-4B down M= 512: engine S=1 1.16x (k11) | S=1 sk 128x128 1.41x | S=2 segpar 64x128 1.11x | S=4 segpar 128x64 1.14x
+3.5-4B down M=1024: engine S=1 0.99x (k10) | S=1 sk 128x256 1.00x | S=2 segpar 128x64 1.06x | S=4 segpar 128x256 1.06x
+1.7B down   M= 128: engine S=1 1.22x (k15) | S=1 sk 128x128 3.73x | S=2 segpar 128x64 1.12x | S=4 segpar 128x64 1.11x
+1.7B down   M= 256: engine S=1 1.15x (k46) | S=1 sk 128x128 2.45x | S=2 segpar 128x64 1.12x | S=4 segpar 64x128 1.30x
+1.7B down   M= 512: engine S=1 1.23x (k50) | S=1 sk 128x128 1.54x | S=2 segpar 64x64 1.33x | S=4 segpar 64x128 1.28x
+1.7B down   M=1024: engine S=1 1.26x (k10) | S=1 sk 128x128 1.14x | S=2 segpar 64x128 1.26x | S=4 segpar 128x64 1.34x
+70B o       M= 128: engine S=1 1.10x (k11) | S=1 sk 128x128 1.34x | S=2 segpar 128x256 1.18x | S=4 segpar 128x64 1.25x
+70B o       M= 256: engine S=1 1.30x (k10) | S=1 sk 128x128 1.19x | S=2 segpar 64x128 1.36x | S=4 segpar 64x128 1.47x
+70B o       M= 512: engine S=1 1.04x (k11) | S=1 sk 128x256 0.90x | S=2 segpar 128x128 1.13x | S=4 segpar 128x256 1.20x
+70B o       M=1024: engine S=1 1.04x (k11) | S=1 sk 128x256 1.29x | S=2 segpar 128x256 1.13x
+70B down    M= 128: engine S=1 1.25x (k11) | S=1 sk 128x128 1.45x | S=2 segpar 128x64 1.18x | S=4 segpar 128x64 1.18x
+70B down    M= 256: engine S=1 1.45x (k16) | S=1 sk 128x128 1.21x | S=2 segpar 128x64 1.40x | S=4 segpar 128x64 1.32x
+70B down    M= 512: engine S=1 1.36x (k11) | S=1 sk 128x256 1.22x | S=2 segpar 128x64 1.27x | S=4 segpar 128x64 1.31x
+70B down    M=1024: engine S=1 1.14x (k10) | S=1 sk 128x256 1.37x | S=2 segpar 128x256 1.21x
+DONE

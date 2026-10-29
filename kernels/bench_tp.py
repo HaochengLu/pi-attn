@@ -18,7 +18,7 @@ import torch
 import test_gemm as G
 
 T_MAX = int(sys.argv[1]) if len(sys.argv) > 1 else 8
-MS = [1, 8, 32, 128, 512, 2048, 8192]
+MS = [1, 8, 16, 32, 128, 512, 2048, 8192]
 
 
 def timeit(fn, ws, iters=20):

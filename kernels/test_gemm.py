@@ -59,20 +59,25 @@ SMEM_OPTIN = torch.cuda.get_device_properties(0).shared_memory_per_block_optin
 SEGPAR_TILE = {48: (32, 64), 49: (64, 64)}  # segment-parallel ids: (TBM, TBN)
 
 
-def segpar_fits(k, M, N, S):  # mirrors CutlassGemm::run_segpar: S > 1, fragments fit g_skt_acc, tiles <= 1024
+def segpar_fits(k, M, N, S):  # mirrors CutlassGemm::run_segpar: S > 1, tiles <= the 4096 arrival counters
     tm, tn = SEGPAR_TILE[k]
     tiles = -(-M // tm) * -(-N // tn)
-    return S > 1 and tiles <= 1024 and tiles * S * tm * tn <= 256 * 64 * 128
+    return S > 1 and tiles <= 4096
 
 
-BK = {20: 128, 21: 256, 22: 256, 24: 128, 25: 128, 30: 256, 31: 128, 32: 128, 33: 128,
-      40: 128, 41: 128, 42: 128, 43: 256, 51: 512, 53: 1024, 54: 128, 60: 256, 61: 512, 62: 256}  # K granularity (default 64)
-MAX_M = {30: 16, 31: 16, 32: 32, 33: 64, 40: 8, 41: 8, 42: 8, 43: 8, 51: 8, 53: 8, 54: 16, 55: 16, 60: 8, 61: 8, 62: 8}
-PAIRS = {60, 61, 62}  # stream-K over pairs of n8 tiles: N % 16 == 0
-STREAMK = {44, 45, 46, 47, 50}  # CUTLASS stream-K: S = 1 shapes only
+WARP_SK = {  # warp stream-K: id -> (BK, stages, n8 tiles per chain, X rows, warps per CTA)
+    40: (128, 4, 1, 8, 2), 41: (128, 4, 1, 8, 3), 42: (128, 4, 1, 8, 4), 43: (256, 3, 1, 8, 3),
+    51: (512, 3, 1, 8, 2), 53: (1024, 2, 1, 8, 1), 60: (256, 3, 2, 8, 2), 61: (512, 3, 2, 8, 2),
+    62: (256, 4, 2, 8, 2), 63: (256, 3, 2, 16, 2)}
+BK = {20: 128, 21: 256, 22: 256, 24: 128, 25: 128, 30: 256, 31: 128, 32: 128, 33: 128, 54: 128,
+      **{k: v[0] for k, v in WARP_SK.items()}}  # K granularity within a segment (default 64)
+MAX_M = {30: 16, 31: 16, 32: 32, 33: 64, 54: 16, 55: 16, **{k: v[3] for k, v in WARP_SK.items()}}
+PAIRS = {k for k, v in WARP_SK.items() if v[2] == 2}  # stream-K over pairs of n8 tiles: N % 16 == 0
+STREAMK = {44: (32, 64), 45: (32, 64), 46: (64, 64), 47: (64, 128), 50: (128, 64),
+           64: (32, 32), 65: (128, 128), 66: (128, 256)}  # CUTLASS stream-K: id -> tile
 SLOT = {17, 18, 19}  # SegmentedKernel with L2 slots: S > 1 only
 SEGSPLIT = {54: (128, 3), 55: (64, 6)}  # S > 1 shapes only: (BK, stages), one cp.async ring per segment
-SEG_WS = {30, 31, 32, 33, 40, 41, 42, 43, 51, 53, 60, 61, 62}  # S > 1: S * M * N partials in g_seg_ws
+SEG_WS = {30, 31, 32, 33, *WARP_SK}  # S > 1: S * M * N partials in g_seg_ws
 
 
 def usable(k, M, N, K, S=None):
@@ -85,12 +90,20 @@ def usable(k, M, N, K, S=None):
         bk, st = SEGSPLIT[k]
         if S * (st * 24 * (bk + 8) * 2 + 32 * 4 * 4) > SMEM_OPTIN:
             return False
+    if k in WARP_SK:
+        bk, st, tn, xr, warps = WARP_SK[k]
+        if warps * st * (xr + 8 * tn) * (bk + 8) * 2 > SMEM_OPTIN:
+            return False
+    if k in STREAMK and S > 1:
+        tm, tn = STREAMK[k]
+        if -(-M // tm) * -(-N // tn) > 4096:  # arrival counters
+            return False
     if k in SEG_WS and S > 1 and (S * min(M, MAX_M[k]) * N > 1 << 20 or N // 8 > 2048):
         return False
     # K tiles may not straddle a segment (the warp stream-K ids 51 / 53 stream 512 / 1024
     # columns per stage; 0.6B down has 1536-column segments).
-    return ((K // S) % BK.get(k, 64) == 0 and M <= MAX_M.get(k, 1 << 30)
-            and not (k in STREAMK and S > 1) and not ((k in SEGSPLIT or k in SLOT) and S == 1)
+    return ((K // S) % BK.get(k, 64) == 0 and K // S >= BK.get(k, 64) and M <= MAX_M.get(k, 1 << 30)
+            and not ((k in SEGSPLIT or k in SLOT) and S == 1)
             and not (k in PAIRS and N % 16))
 
 
@@ -120,7 +133,7 @@ def check_segments(name, X, W, segs, fails):
     tot = torch.zeros(64, N, device=dev)
     for sg in range(segs):
         tot = tot + ext.linear(Xs[:, sg * ks:(sg + 1) * ks], W[:, sg * ks:(sg + 1) * ks].contiguous(), 1, True, 1)
-    for kern in (1, 20, 33, 11, 13, 14, 15, 17, 18, 19, 48, 49):
+    for kern in (1, 20, 33, 11, 13, 14, 15, 17, 18, 19, 44, 48, 49, 64, 65, 66):
         if not usable(kern, 64, N, K, segs):
             continue
         y = ext.linear(Xs, W, kern, False, segs)
@@ -149,8 +162,8 @@ def check_tp(fails, t_max=8):
         row0 = ext.linear(X[:1].contiguous(), W, 1, False, S)[0]
         # M = 4096 (degrees 1, 3, 8): more tiles than resident CTAs, so the persistent slot ids
         # 17-19 wrap their tile loop.
-        for M, degrees in [(1, range(1, t_max + 1)), (8, range(1, t_max + 1)), (33, range(1, t_max + 1)),
-                           (300, range(1, t_max + 1)), (4096, (1, 3, t_max))]:
+        for M, degrees in [(1, range(1, t_max + 1)), (8, range(1, t_max + 1)), (12, range(1, t_max + 1)),
+                           (33, range(1, t_max + 1)), (300, range(1, t_max + 1)), (4096, (1, 3, t_max))]:
             Xm = X[:M].contiguous()
             full = ext.linear(Xm, W, 13, False, S)
             if not torch.equal(full[0].view(torch.int16), row0.view(torch.int16)):
@@ -172,9 +185,37 @@ def check_tp(fails, t_max=8):
         torch.cuda.empty_cache()
 
 
+def check_s8(fails):
+    """S = 8, the largest canonical count, which no t_max = 8 shape above reaches: every id on the whole
+    weight and on column shards (t = 1..8 at M = 33), against the explicit left fold."""
+    for name, (N, K) in {"8B down": (4096, 12288), "70B down": (8192, 28672)}.items():
+        W = (torch.randn(N, K, device=dev) * 0.02).bfloat16()
+        X = torch.randn(300, K, device=dev).bfloat16()
+        check_segments(name + " S=8", X, W, 8, fails)
+        row0 = ext.linear(X[:1].contiguous(), W, 1, False, 8)[0]
+        for M in [1, 12, 33, 300]:
+            Xm = X[:M].contiguous()
+            full = ext.linear(Xm, W, 13, False, 8)
+            if not torch.equal(full[0].view(torch.int16), row0.view(torch.int16)):
+                fails.append((name, "S=8 rows", M))
+            for t in (range(1, 9) if M == 33 else (1,)):
+                for a, b in shards(N, t):
+                    Wt = W[a:b].contiguous()
+                    for kern in KERNELS:
+                        y = ext.linear(Xm, Wt, kern, False, 8)
+                        if (y is not None) != usable(kern, M, b - a, K, 8):
+                            fails.append((name, "S=8", t, M, kern, "refused" if y is None else "ran but should refuse"))
+                        elif y is not None and not torch.equal(y.view(torch.int16), full[:, a:b].view(torch.int16)):
+                            fails.append((name, "S=8", t, (a, b), M, kern))
+        print(f"S=8 {name}: checked", flush=True)
+        del W
+        torch.cuda.empty_cache()
+
+
 def main(bench):
     fails = []
     check_tp(fails)
+    check_s8(fails)
     for name, (N, K) in SHAPES.items():
         W = (torch.randn(N, K, device=dev) * 0.02).bfloat16()
         X = torch.randn(16384 if bench else 4096, K, device=dev).bfloat16()

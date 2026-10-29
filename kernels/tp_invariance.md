@@ -4,7 +4,7 @@ The engine's outputs are a bitwise function of the model and the request whateve
 (README). This extends that to the tensor-parallel degree: with the layout below, a model computed
 on t = 1, 2, 3, ..., 8 ranks produces the same bits. The ranks are emulated on one GPU (no multi-GPU
 machine was available; see "Not claimed"). All numbers are from one A800 80GB (SXM, 108 SMs); every
-one traces to a log under `results/a800/kernels/` or `archive/ceiling_probes/a800/tp_invariance/`.
+one traces to a log under `results/a800/kernels/` or `archive/ceiling_probes/a800/{tp_invariance,narrow}/`.
 
 ## Mechanism: no cross-rank reduction
 
@@ -24,7 +24,7 @@ column counts evenly (3, 5, 6, 7).
 The GEMM program is the engine's (`gemm_inv.cuh`): per output element, one fp32 MMA chain over
 ascending k16 steps per K segment, S segments left-folded from +0. S is part of the model's
 canonical program, not of the launch: every launch takes it as an argument, and a launch over a
-column shard passes the whole weight's S. Any of the 41 kernel ids the tuner picks from is legal
+column shard passes the whole weight's S. Any of the 45 kernel ids the tuner picks from is legal
 on any shard.
 
 ## The segment count and the chain floor
@@ -40,7 +40,8 @@ So the canonical S depends on the largest degree the model will be served at, t_
 `gemm_segments(N, K, t_max)` doubles S while the narrowest shard, N / t_max columns, is at most
 1024 / S wide, up to 8, as long as K stays divisible into segments that are multiples of 256 and at
 least 1024 long (K % (512 S) == 0 and K / (2 S) >= 1024 for the next doubling). It applies to every
-projection, not only o / down (Qwen3-8B at t_max = 8: q/k/v/o/down get S = 4, gate/up/LM head 1).
+projection, not only o / down (Qwen3-8B at t_max = 8, q/k/v separate as in its checkpoint:
+q/k/v/o/down get S = 4, gate/up/LM head 1; a fused qkv [6144, 4096] gets S = 2).
 t_max is part of the model's canonical program: for a fixed t_max the bits are the same for every
 t (also t > t_max, only slower); two deployments that declare different t_max compute different
 bits. With t_max = 1 every Qwen3 / Qwen3.5 projection keeps the S the engine always had (asserted
@@ -55,50 +56,60 @@ K % 1024 == 0 (S = 4 or 8 instead of 2), a shape none of these models has.
 | `kernels/test_invariance.py` (heads) | PI-Attn prefill and decode over the head shards of t = 2, 3, 4, 8 ranks, and t = 16 (kv heads replicated, smaller GQA group per rank), against the all-heads call | 0 failures (`test_invariance_heads.log`) |
 | `kernels/test_tp_model.py` | Qwen3-8B, real weights, t ranks emulated on one GPU (column layout, all-gathers by concatenation, every projection cycling through the kernel ids the tuner may pick for its shard): 4 prompts of random token ids (37-1029 tokens) prefilled as one batch, then 8 greedy decode steps; every logit of every step at t = 2, 3, 4, 8 against t = 1 | bitwise equal. Negative controls, Megatron row-parallel o/down at t = 2: bf16 partial sums change 77-87% of the logits, fp32 partials summed in fp32 (only the order differs) 79-93% (`test_tp_model.log`) |
 
-## Cost (A800, best kernel id per shape, cold L2 for M <= 512; `bench_tp.log`)
+## Cost (A800, best kernel id per shape, cold L2 for M <= 512; `bench_tp.log`, ratios within one run)
 
 Only o / down are measured; the other projections whose S changes at t_max = 8 (q/k/v of small
 models) are not. Declaring t_max = 8 on a single GPU (whole weight at S(8) against S(1)):
 
-| Projection (N x K) | S(1) -> S(8) | M = 1 | 8 | 32 | 128 | 512 | 2048 | 8192 |
-|---|---|---|---|---|---|---|---|---|
-| 70B o (8192 x 8192) | 1 -> 2 | 1.03 | 1.03 | 1.01 | 1.14 | 1.06 | 1.16 | 1.08 |
-| 70B down (8192 x 28672) | 1 -> 2 | 1.01 | 1.01 | 1.02 | 1.14 | 0.94 | 1.12 | 1.11 |
-| 8B o (4096 x 4096) | 1 -> 4 | 1.11 | 1.09 | 1.10 | 1.16 | 1.16 | 1.26 | 1.29 |
-| 8B down (4096 x 12288) | 1 -> 4 | 1.03 | 1.02 | 1.03 | 1.08 | 1.11 | 1.14 | 1.08 |
-| 4B o (2560 x 4096) | 1 -> 4 | 1.09 | 0.87 | 0.87 | 1.04 | 1.11 | 1.19 | 1.32 |
-| 4B down (2560 x 9728) | 1 -> 2 | 1.03 | 0.87 | 0.82 | 0.98 | 1.10 | 1.10 | 1.10 |
-| Qwen3.5-4B down (2560 x 9216) | 1 -> 4 | 1.14 | 0.95 | 0.82 | 0.92 | 1.09 | 1.16 | 1.16 |
+| Projection (N x K) | S(1) -> S(8) | M = 1 | 8 | 16 | 32 | 128 | 512 | 2048 | 8192 |
+|---|---|---|---|---|---|---|---|---|---|
+| 70B o (8192 x 8192) | 1 -> 2 | 1.05 | 1.00 | 1.01 | 1.01 | 1.14 | 1.28 | 1.17 | 1.08 |
+| 70B down (8192 x 28672) | 1 -> 2 | 1.02 | 1.02 | 1.03 | 1.02 | 1.08 | 1.06 | 1.11 | 1.10 |
+| 8B o (4096 x 4096) | 1 -> 4 | 1.11 | 1.10 | 1.09 | 1.08 | 1.15 | 1.19 | 1.28 | 1.27 |
+| 8B down (4096 x 12288) | 1 -> 4 | 1.04 | 1.02 | 1.02 | 1.02 | 1.07 | 1.22 | 1.15 | 1.08 |
+| 4B o (2560 x 4096) | 1 -> 4 | 1.08 | 0.93 | 0.93 | 0.93 | 1.07 | 1.03 | 1.18 | 1.32 |
+| 4B down (2560 x 9728) | 1 -> 2 | 1.03 | 0.86 | 0.84 | 0.85 | 0.98 | 1.08 | 1.14 | 1.10 |
+| Qwen3.5-4B down (2560 x 9216) | 1 -> 4 | 1.13 | 0.93 | 0.87 | 0.85 | 0.92 | 1.14 | 1.20 | 1.16 |
 
 Per-rank GEMM time of the invariant column shard W[N/t, K] at S(8) against the Megatron row shard
 W[N, K/t] at S = 1 (same weight bytes; the row shard's sum is not invariant). Every shape at t = 8,
 and the 70B shapes at t = 2 (t = 2 and 4 for all shapes are in the log):
 
-| Projection | t | M = 1 | 8 | 32 | 128 | 512 | 2048 | 8192 |
-|---|---|---|---|---|---|---|---|---|
-| 70B o | 2 | 1.06 | 1.05 | 1.05 | 1.09 | 1.18 | 1.17 | 1.10 |
-| 70B down | 2 | 1.02 | 1.01 | 1.03 | 1.12 | 1.21 | 1.24 | 1.12 |
-| 70B o | 8 | 1.24 | 1.38 | 1.60 | 1.60 | 1.27 | 1.40 | 1.13 |
-| 70B down | 8 | 1.12 | 1.19 | 1.63 | 1.57 | 1.30 | 1.58 | 1.27 |
-| 8B o | 8 | 1.26 | 1.26 | 1.63 | 1.38 | 1.23 | 1.41 | 1.31 |
-| 8B down | 8 | 1.22 | 1.28 | 1.62 | 1.35 | 1.20 | 1.67 | 1.40 |
-| 4B o | 8 | 1.41 | 1.42 | 1.71 | 1.48 | 1.28 | 1.41 | 1.33 |
-| 4B down | 8 | 2.06 | 2.14 | 2.77 | 2.28 | 1.56 | 1.47 | 1.42 |
-| Qwen3.5-4B down | 8 | 1.38 | 1.40 | 1.78 | 1.51 | 1.28 | 1.62 | 1.51 |
+| Projection | t | M = 1 | 8 | 16 | 32 | 128 | 512 | 2048 | 8192 |
+|---|---|---|---|---|---|---|---|---|---|
+| 70B o | 2 | 1.09 | 1.03 | 1.04 | 1.06 | 1.07 | 1.17 | 1.18 | 1.12 |
+| 70B down | 2 | 1.02 | 1.01 | 1.02 | 1.01 | 1.06 | 1.27 | 1.27 | 1.11 |
+| 70B o | 8 | 1.27 | 1.35 | 1.47 | 1.46 | 1.49 | 1.26 | 1.07 | 1.15 |
+| 70B down | 8 | 1.12 | 1.18 | 1.50 | 1.50 | 1.43 | 1.45 | 1.35 | 1.27 |
+| 8B o | 8 | 1.28 | 1.27 | 1.31 | 1.62 | 1.33 | 1.23 | 1.41 | 1.32 |
+| 8B down | 8 | 1.26 | 1.27 | 1.50 | 1.55 | 1.33 | 1.20 | 1.28 | 1.40 |
+| 4B o | 8 | 1.34 | 1.37 | 1.35 | 1.67 | 1.50 | 1.29 | 1.41 | 1.33 |
+| 4B down | 8 | 2.02 | 2.14 | 2.42 | 2.39 | 1.96 | 1.36 | 1.45 | 1.45 |
+| Qwen3.5-4B down | 8 | 1.39 | 1.38 | 1.66 | 1.68 | 1.51 | 1.29 | 1.56 | 1.49 |
 
-Where the gaps come from:
-- Few independent chains. 4B down (K = 9728) gets only S = 2 (S = 4 needs K % 1024 == 0), so
-  its t = 8 shard of 320 columns has 40 n8 tiles x 2 segments = 80 chains for 108 SMs: 2.1-2.8x at
-  decode. Small models at t = 8 are not a realistic deployment, but the case shows the limit.
+Where the gaps come from (the floors are measured in `archive/ceiling_probes/a800/narrow/`):
+- Independent chains. One n8 chain advances one k16 step per ~28 ns (`out_floor.txt`), 8-9 GB/s
+  of weight, so a weight streams at the bandwidth (up to 1.73 TB/s on wide weights,
+  `out_floor.txt`) only with several chains per SM; a micro-benchmark puts it at 3-4
+  (`out_micro.txt`, run during the 1140 MHz period, so its 6 GB/s per chain is low). A shard has
+  N / t / 8 x S chains: 256 on 70B down at t = 8, 2.4 per SM: 49 µs at M = 8 against a
+  34-37 µs bandwidth floor. 4B down (K = 9728) gets only S = 2 (S = 4 needs
+  K % 1024 == 0), so its 320-column shard has 80 chains for 108 SMs: 2.0-2.4x at M <= 32. Small
+  models at t = 8 are not a realistic deployment, but the case shows the limit. More chains need a
+  larger S, which costs prefill: a canonical trade, not a kernel one.
 - M = 16-128 on narrow shards. Within a segment the chain is sequential, so the work splits only
   over (columns x segments), and an SM that covers few columns re-reads X from L2 for each of them.
-  On 70B down t = 8 no kernel id beats 68.6 µs from M = 16 to 64, against a 36.7 µs bandwidth floor
-  (`out_midm.txt`). Larger S raises the parallelism and costs prefill; CTA tiles chosen to minimise
-  the X and W re-reads at fixed S (none of the current ids) would recover part of it.
-- M = 2048: a narrow shard has few large tiles for 108 SMs (wave quantization), plus the segment cost.
+  Warp stream-K with 16 X rows (id 63) and CUTLASS stream-K over (tile, segment) chains (id 64,
+  32x32 tiles) took 70B down t = 8 from 68.4 to 62.2-62.8 µs at M = 16-32; X re-reads and the
+  chain count bound the rest (`midm3.txt`; five other designs are in the archive, all slower).
+- M = 512-2048: a narrow shard has few large tiles for 108 SMs, plus the segment cost. Stream-K
+  over 128x128 / 128x256 tiles (ids 65 / 66, with S > 1 through per-device scratch) brought 70B o
+  t = 8 at M = 2048 from 1.39x to 1.07x and 70B o / down t = 2 at M = 512 to 1.17x / 1.27x
+  (`archive/ceiling_probes/a800/narrow/bench_tp_before_workspace.log` vs `bench_tp.log`); the
+  row shard gains from the same ids at S = 1, so 1.2-1.5x remains at M = 512 for t = 8.
 - M = 8192: the segment cost. Ids 17-19 keep the segment total in an L2 slot instead of a second
   register fragment (bitwise equal, persistent CTAs); they take 70B down's S = 2 prefill cost from
-  1.24x to 1.11x at M = 8192 (`archive/.../bench_tp_before_slot.log` vs `bench_tp.log`).
+  1.24x to 1.10x at M = 8192 (`archive/.../bench_tp_before_slot.log` vs `bench_tp.log`).
 
 Communication is not measured (one GPU). Per layer the column layout all-gathers the attention
 output, the o_proj output, the MLP intermediate and the down output (4 all-gathers) where Megatron

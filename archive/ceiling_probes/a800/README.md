@@ -270,3 +270,52 @@ its choices, all on the shapes of Qwen3.5-4B / Qwen3-8B / 70B o and down:
 - `probe_midm.py` (`out_midm.txt`): every kernel id on narrow shards at M = 8-128.
 - `bench_tp_before_slot.log`: `kernels/bench_tp.py` before ids 17-19.
 
+
+## Narrow and mid-M GEMM after TP (2026-10-29, `narrow/`)
+
+Pushing the single-GPU GEMM to its floor, starting from the column shards of tensor parallelism
+(narrow N, long K) and ending at the mid-M (128-1024) gaps of the single-GPU shapes. The SM clock
+is noted where it matters: the GPU ran at 1140 MHz (its default application clock) for part of
+2026-10-29 instead of the 1410 MHz boost of the other runs, which slows MMA-latency-bound
+kernels by up to 1.24x and leaves bandwidth-bound ones unchanged (`ab.txt`: old and new builds of
+the same kernels, both 20% slower than an hour before). Only same-session comparisons are used.
+
+- `micro.cu` / `probe_micro.py` (`out_micro.txt`, likely run at 1140 MHz): bandwidth against
+  concurrent chains per SM, with one dependent MMA chain per warp (1: 0.67, 2: 1.2, 3: 1.43,
+  4: 1.53 TB/s; its plain copy plateau is 1.57 TB/s, below the 1.73 TB/s the engine reaches on
+  wide weights in `../tp_invariance/out_floor.txt`). At 1410 MHz a chain advances a k16 step per
+  ~28 ns, 8-9 GB/s (`out_floor.txt`). A narrow shard has N / 8 x S chains: 256 on 70B down at
+  t = 8 (N = 1024, S = 2), 2.4 per SM; the warp stream-K kernel (id 61) runs 49 us at M = 8.
+- Rejected designs, all bitwise correct:
+  - `narrow_probe.cu` (`out1.txt`): one CTA per (column group, segment, row group), warps
+    sharing X. 1.3-3.6x the engine: too few CTAs, and one with two units on a SM finishes last.
+  - `systolic_probe.cu` (`out_sys1.txt`): a systolic relay, each segment's K cut into P slices
+    across SMs, X slices resident in shared memory, accumulators relayed slice to slice.
+    1.2-5x: pipeline fill ((P - 1) block times) and too few bytes in flight per warp.
+  - Warp stream-K with 32 or 64 X rows (`midm_xr_rows.txt`): each warp re-reads its X rows
+    from L2 for 8-16 columns; 1.5-3x at M = 32-64.
+  - More CTAs per SM for the stream-K tiles at mid M (`try_midm`, `midm.txt`): slower everywhere.
+  - A 32x16 one-warp CUTLASS tile (`try_tiles`, `bits.txt`): rows of the second M tile differ
+    from the canonical bits at M > 32, with S = 1 and S = 2 alike; never used. A 16-column tile
+    breaks a precondition of CUTLASS's epilogue thread map (32 lanes x 8-element accesses over
+    the warp's columns); `CutlassGemm` now rejects TBN or WN below 32 at compile time.
+- Shipped:
+  - id 63, warp stream-K with 16 X rows (M <= 16): 4-11% on long-K narrow shards at M = 9-16
+    (`ab_id63.txt`), and it wins 8B down at M = 1 on one GPU.
+  - CUTLASS stream-K over (tile, segment) chains for S > 1, with id 64 (32x32 tiles): the
+    best id for narrow shards at M = 16-128 (70B down t = 8: 68.4 -> 62.8 us at M = 32;
+    `midm3.txt`).
+  - ids 65 / 66, CUTLASS stream-K with 128x128 / 128x256 tiles (handoff and fragment scratch
+    now allocated per device, `gemm_workspace`, instead of static arrays): wide weights at M = 1024 (8B down 1.22 -> 1.01x cuBLAS, 8B o 0.86 -> 0.74x;
+    `bigseg_streamk.txt`, `results/a800/kernels/test_gemm_bench_narrow.log`).
+- What stays, and why (`scan_s.txt`, `bigseg_*.txt`): at S = 1 a mid-M GEMM has at most one
+  independent chain per output tile, so 8B down at M = 128-256 (1.29-1.43x cuBLAS), 4B down,
+  Qwen3.5-4B down (1.2-1.33x) and 1.7B down at M = 8-128 (1.28-1.49x) cannot fill 108 SMs with
+  efficient tiles; cuBLAS splits K. The canonical form of that split is S = 2: large-tile
+  segment-parallel kernels then reach 1.09-1.15x on most of these cells (4B down M = 256:
+  1.31 -> 1.09x; 8B down M = 256 stays at 1.38x; `bigseg_segpar.txt`), and 1.7B down at M = 8
+  falls to 0.98x, but S = 2 costs 3-18% at prefill M = 4096-16384 on the same shapes and
+  changes their bits. Conversely the engine's S = 2 for N <= 1024 (0.6B o / down) now buys
+  3-18% at M = 8-32 and costs 21-27% at M = 16384 (`scan_s.txt`): the stream-K kernels made
+  S = 1 competitive at decode. Both are canonical choices, a trade between decode / mid-M and
+  prefill, left as they are.
