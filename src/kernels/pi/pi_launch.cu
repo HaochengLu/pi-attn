@@ -234,16 +234,16 @@ const char* tune_bucket(const void* w, int N, int K, int m, void* x, void* y, vo
     return c == 0 ? w : (const void*)((const char*)flush + (size_t)(c - 1) * w_bytes);
   };
   for (int k : cands) {
-    if (run_gemm(k, x, K, w, (__nv_bfloat16*)y, N, m, N, K, gemm_device(), st) != cudaSuccess) continue;  // refused, or warm-up
+    if (run_gemm(k, x, K, w, (__nv_bfloat16*)y, N, m, N, K, gemm_segments(N, K), gemm_device(), st) != cudaSuccess) continue;  // refused, or warm-up
     std::vector<float> times;
     for (int r = 0; r < 5; ++r) {
       // A candidate 25% behind the best after one burst is not a contender: stop timing it.
       if (r == 1 && times[0] > 1.25f * best) break;
       cudaEventRecord(e0, st);
       if (copies) {
-        for (int i = 0; i < burst; ++i) run_gemm(k, x, K, copy(r * burst + i), (__nv_bfloat16*)y, N, m, N, K, gemm_device(), st);
+        for (int i = 0; i < burst; ++i) run_gemm(k, x, K, copy(r * burst + i), (__nv_bfloat16*)y, N, m, N, K, gemm_segments(N, K), gemm_device(), st);
       } else {
-        run_gemm(k, x, K, w, (__nv_bfloat16*)y, N, m, N, K, gemm_device(), st);
+        run_gemm(k, x, K, w, (__nv_bfloat16*)y, N, m, N, K, gemm_segments(N, K), gemm_device(), st);
       }
       cudaEventRecord(e1, st);
       cudaEventSynchronize(e1);
@@ -287,8 +287,8 @@ const char* pi_linear(const void* x, int64_t ldx, const void* w, void* y, int M,
     if (it != tuned.end()) k = it->second;
   }
   if (k < 0 || M > kernel_max_m(k) || K % kernel_bk(k)) k = heuristic_kernel(M, K);
-  const cudaError_t err = out_fp32 ? run_gemm(k, x, ldx, w, (float*)y, N, M, N, K, gemm_device(), st)
-                                   : run_gemm(k, x, ldx, w, (__nv_bfloat16*)y, N, M, N, K, gemm_device(), st);
+  const cudaError_t err = out_fp32 ? run_gemm(k, x, ldx, w, (float*)y, N, M, N, K, gemm_segments(N, K), gemm_device(), st)
+                                   : run_gemm(k, x, ldx, w, (__nv_bfloat16*)y, N, M, N, K, gemm_segments(N, K), gemm_device(), st);
   if (err != cudaSuccess) return fail(std::string("PI linear: ") + cudaGetErrorString(err));
   return nullptr;
 }

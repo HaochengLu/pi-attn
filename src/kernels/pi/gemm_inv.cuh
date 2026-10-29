@@ -1,7 +1,7 @@
 // M-invariant GEMM: Y[M,N] = X[M,K] * W[N,K]^T (nn.Linear), bf16 in, fp32 accumulate.
 //
-// Canonical per-element operation sequence. K is cut into S = gemm_segments(N, K)
-// equal segments, a function of the weight shape only. With S = 1: acc = 0; for
+// Canonical per-element operation sequence. K is cut into S = gemm_segments(N, K, t_max)
+// equal segments, a function of the model's weight shape only. With S = 1: acc = 0; for
 // k16 = 0 .. K/16-1 in ascending order: acc = mma.m16n8k16(x[m, k16], w[n, k16],
 // acc); y = round(acc). With S > 1 each segment runs that chain over its k16 steps
 // into p_s, and y = round((((+0 + p_0) + p_1) + ...) + p_{S-1}). Segments let
@@ -11,18 +11,31 @@
 // realise exactly this sequence, so a row of Y is a pure function of that row of
 // X and W, whatever M, the tile shape, or the other rows in the batch (checked
 // bitwise by kernels/test_gemm.py).
+//
+// Every launch takes S as an argument rather than deriving it from its own N, so a
+// launch over any subset of the weight's rows (a tensor-parallel column shard) computes
+// the same chain for each output element as the whole weight does.
 #pragma once
 #include "pi_attn.cuh"
 
 namespace pi_gemm {
 using namespace pi_attn;
 
-// K segments of a [N, K] weight: two for narrow, long-K projections (o / down of
-// small models, whose n8 tiles alone cannot occupy every SM in decode), else one.
-// Segment length is a multiple of 256, so every kernel's K tile divides it.
-constexpr int kSegMaxN = 1024, kSegMax = 2;
-__host__ __device__ constexpr int gemm_segments(int N, int K) {
-  return N <= kSegMaxN && K >= 2048 && K % 512 == 0 ? 2 : 1;
+// K segments of a [N, K] weight served at tensor-parallel degrees up to t_max. Each
+// output element is one dependent MMA chain per segment, about 28 ns per k16 step on
+// A800, so a GEMM whose n8 tiles cannot occupy every SM (decode of a narrow weight, or of
+// an N / t_max column shard of a wide one) is bounded by the chain length, not by weight
+// bandwidth. Segments shorten the chain: S doubles while the narrowest shard is at most
+// 1024 / S columns wide, up to 8, keeping segments at least 1024 long and a multiple of
+// 256 (every kernel's K tile divides them). With t_max = 1 every Qwen3 / Qwen3.5 shape
+// keeps the S of the engine before t_max existed: two for N <= 1024 with K >= 2048 and
+// K % 512 == 0 (o / down of small models), else one; four and eight arise only for
+// narrower shards (N / t_max <= 512).
+constexpr int kSegMax = 8;
+__host__ __device__ constexpr int gemm_segments(int N, int K, int t_max = 1) {
+  int s = 1;
+  while (s < kSegMax && N / t_max * s <= 1024 && K % (512 * s) == 0 && K / (2 * s) >= 1024) s *= 2;
+  return s;
 }
 
 // ---------------------------------------------------------------- small M ----
@@ -45,7 +58,7 @@ template <int G, int W, typename OutT, int BK = kSmallBK, int STAGES = kSmallSta
 __global__ void __launch_bounds__(W * 32)
     gemm_small_kernel(const __nv_bfloat16* __restrict__ x, int64_t ldx,
                       const __nv_bfloat16* __restrict__ w, OutT* __restrict__ y, int64_t ldy, int M,
-                      int N, int K) {
+                      int N, int K, int segs) {
   constexpr int kRows = 16 * G;
   constexpr int kSmallBN = 8 * W;
   constexpr int kStride = BK + 8;
@@ -82,7 +95,7 @@ __global__ void __launch_bounds__(W * 32)
   for (int g = 0; g < G; ++g)
 #pragma unroll
     for (int i = 0; i < 4; ++i) acc[g][i] = tot[g][i] = 0.f;
-  const int segs = gemm_segments(N, K), seg_tiles = ktiles / segs;
+  const int seg_tiles = ktiles / segs;
   const int mat = lane >> 3, r8 = lane & 7;
   for (int kt = 0; kt < ktiles; ++kt) {
     cp_async_wait<STAGES - 2>();
@@ -153,9 +166,16 @@ __global__ void __launch_bounds__(W * 32)
 // its partial to seg_ws and counts its arrival on the n8 tile; the last to arrive
 // (it resets the counter) folds the S partials in ascending order. seg_ws and the
 // counters are per device and per translation unit: launches that use them must
-// not run concurrently (the engine runs its forward on one stream).
-static __device__ float g_seg_ws[kSegMax * 64 * kSegMaxN];
-static __device__ int g_seg_counters[kSegMaxN / 8];
+// not run concurrently (the engine runs its forward on one stream). They hold S * M * N
+// partials and N / 8 counters; launches that need more refuse the shape.
+constexpr int64_t kSegWs = 1 << 20;
+constexpr int kSegMaxUnits = 2048;
+static __device__ float g_seg_ws[kSegWs];
+static __device__ int g_seg_counters[kSegMaxUnits];
+
+inline bool seg_ws_fits(int segs, int M, int N) {
+  return segs == 1 || ((int64_t)segs * M * N <= kSegWs && N / 8 <= kSegMaxUnits);
+}
 
 template <int G, int BK, int STAGES>
 constexpr size_t balanced_smem_bytes(int warps) {
@@ -165,12 +185,12 @@ constexpr size_t balanced_smem_bytes(int warps) {
 template <typename OutT, int G, int BK, int STAGES>
 __global__ void gemm_balanced_kernel(const __nv_bfloat16* __restrict__ x, int64_t ldx,
                                      const __nv_bfloat16* __restrict__ w, OutT* __restrict__ y,
-                                     int64_t ldy, int M, int N, int K) {
+                                     int64_t ldy, int M, int N, int K, int segs) {
   constexpr int kStride = BK + 8, kRows = 16 * G;
   extern __shared__ __align__(16) __nv_bfloat16 smem[];
   const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, warps = blockDim.x >> 5;
   const int stage_elems = (kRows + 8 * warps) * kStride;
-  const int units = N / 8, segs = gemm_segments(N, K), seg_k = K / segs, items = units * segs;
+  const int units = N / 8, seg_k = K / segs, items = units * segs;
   const int i0 = (int)((int64_t)blockIdx.x * items / gridDim.x);
   const int i1 = (int)((int64_t)(blockIdx.x + 1) * items / gridDim.x);
   const int ktiles = seg_k / BK;
@@ -278,17 +298,17 @@ __global__ void gemm_balanced_kernel(const __nv_bfloat16* __restrict__ x, int64_
 // Launch: one CTA per SM, as many warps as units per CTA within max_smem.
 template <typename OutT, int G, int BK, int STAGES>
 cudaError_t run_balanced(const void* x, int64_t ldx, const void* w, OutT* y, int64_t ldy, int M, int N,
-                         int K, int sms, int max_smem, cudaStream_t st) {
-  if (M > 16 * G) return cudaErrorInvalidValue;
-  const int units = N / 8 * gemm_segments(N, K), grid = units < sms ? units : sms;
+                         int K, int segs, int sms, int max_smem, cudaStream_t st) {
+  if (M > 16 * G || !seg_ws_fits(segs, M, N)) return cudaErrorInvalidValue;
+  const int units = N / 8 * segs, grid = units < sms ? units : sms;
   int warps = (units + grid - 1) / grid;
   if (warps > 16) warps = 16;
   while (warps > 1 && balanced_smem_bytes<G, BK, STAGES>(warps) > (size_t)max_smem) --warps;
   const size_t smem = balanced_smem_bytes<G, BK, STAGES>(warps);
-  if (smem > (size_t)max_smem) return cudaErrorInvalidConfiguration;
+  if (smem > (size_t)max_smem) return cudaErrorInvalidValue;  // refused, as every shape an id cannot run
   cudaFuncSetAttribute(gemm_balanced_kernel<OutT, G, BK, STAGES>, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)smem);
   gemm_balanced_kernel<OutT, G, BK, STAGES><<<grid, warps * 32, smem, st>>>(
-      (const __nv_bfloat16*)x, ldx, (const __nv_bfloat16*)w, y, ldy, M, N, K);
+      (const __nv_bfloat16*)x, ldx, (const __nv_bfloat16*)w, y, ldy, M, N, K, segs);
   return cudaGetLastError();
 }
 
@@ -399,7 +419,7 @@ static __device__ int g_sk_flag[kSkMaxWorkers];
 template <typename OutT, int BK, int STAGES, int TN>
 __global__ void gemm_streamk_kernel(const __nv_bfloat16* __restrict__ x, int64_t ldx,
                                     const __nv_bfloat16* __restrict__ w, OutT* __restrict__ y,
-                                    int64_t ldy, int M, int N, int K, int workers) {
+                                    int64_t ldy, int M, int N, int K, int segs, int workers) {
   static_assert(TN >= 1 && TN <= kSkMaxTN, "handoff buffer holds kSkMaxTN tiles per worker");
   constexpr int kStride = BK + 8, kRows = 8 + 8 * TN, kStage = kRows * kStride;
   extern __shared__ __align__(16) __nv_bfloat16 smem[];
@@ -407,7 +427,7 @@ __global__ void gemm_streamk_kernel(const __nv_bfloat16* __restrict__ x, int64_t
   const int wid = blockIdx.x * (blockDim.x >> 5) + warp;
   if (wid >= workers) return;
   __nv_bfloat16* ring = smem + warp * STAGES * kStage;
-  const int segs = gemm_segments(N, K), seg_k = K / segs, kt_n = seg_k / BK;  // k tiles per chain
+  const int seg_k = K / segs, kt_n = seg_k / BK;  // k tiles per chain
   const int64_t total = (int64_t)(N / (8 * TN)) * segs * kt_n;
   const int64_t s0 = wid * total / workers, s1 = (wid + 1) * total / workers;
   const int g = lane >> 2, t = lane & 3, mat = lane >> 3, r8 = lane & 7;
@@ -536,15 +556,14 @@ __global__ void gemm_streamk_kernel(const __nv_bfloat16* __restrict__ x, int64_t
 // chain is cut at most once.
 template <typename OutT, int BK, int STAGES, int TN = 1>
 cudaError_t run_streamk(const void* x, int64_t ldx, const void* w, OutT* y, int64_t ldy, int M, int N,
-                        int K, int warps, int sms, cudaStream_t st) {
-  const int segs = gemm_segments(N, K);
-  if (M > 8 || (K / segs) % BK || N % (8 * TN)) return cudaErrorInvalidValue;
+                        int K, int segs, int warps, int sms, cudaStream_t st) {
+  if (M > 8 || (K / segs) % BK || N % (8 * TN) || !seg_ws_fits(segs, M, N)) return cudaErrorInvalidValue;
   const int workers = min(min(N / (8 * TN) * segs, sms * warps), kSkMaxWorkers);
   const size_t smem = (size_t)warps * STAGES * (8 + 8 * TN) * (BK + 8) * sizeof(__nv_bfloat16);
   cudaFuncSetAttribute(gemm_streamk_kernel<OutT, BK, STAGES, TN>, cudaFuncAttributeMaxDynamicSharedMemorySize,
                        (int)smem);
   gemm_streamk_kernel<OutT, BK, STAGES, TN><<<(workers + warps - 1) / warps, warps * 32, smem, st>>>(
-      (const __nv_bfloat16*)x, ldx, (const __nv_bfloat16*)w, y, ldy, M, N, K, workers);
+      (const __nv_bfloat16*)x, ldx, (const __nv_bfloat16*)w, y, ldy, M, N, K, segs, workers);
   return cudaGetLastError();
 }
 

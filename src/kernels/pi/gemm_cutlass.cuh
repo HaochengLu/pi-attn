@@ -3,16 +3,20 @@
 // the per-element k order is ascending k16 steps in every instantiation, which
 // test_gemm.py checks is bitwise identical to the hand-written small-M kernel. No
 // variant splits an element's k chain across CTAs except at the canonical segment
-// boundaries, and those partial sums are always added in ascending segment order. Shapes with K segments
-// (gemm_segments > 1) run SegmentedKernel: the CTA runs the CUTLASS mainloop once
+// boundaries, and those partial sums are always added in ascending segment order. Launches with K segments
+// (S > 1) run SegmentedKernel: the CTA runs the CUTLASS mainloop once
 // per segment from a zero accumulator and folds it into a running total that
 // starts at +0, the canonical sequence of gemm_inv.cuh.
 // Unsegmented shapes can also run StreamKKernel: deterministic stream-K over the CUTLASS
 // tiles, for mid M where the tiles fill the SMs unevenly (see run_streamk below).
 // Segmented shapes can also run SegParallelKernel: one CTA per (tile, segment), for mid M
-// where SegmentedKernel has too few tiles to fill the SMs (see run_segpar below).
+// where SegmentedKernel has too few tiles to fill the SMs (see run_segpar below), and
+// SegmentedKernel with its running total in L2 slots (run_segmented_slot).
 #pragma once
 #include <algorithm>
+#include <map>
+#include <mutex>
+#include <utility>
 
 #include <cutlass/cutlass.h>
 #include <cutlass/arch/memory_sm80.h>
@@ -23,24 +27,53 @@
 
 namespace pi_gemm {
 
-template <typename Base>
+// kSlot = false: the running total is a second accumulator fragment in registers.
+// kSlot = true: the running total of tile segments lives in a per-CTA fp32 slot in global
+// memory (L2), each thread folding and reading back only its own fragment elements, so the
+// mainloop keeps the register budget of an unsegmented tile (the second fragment costs
+// 128x256 tiles up to 24% at prefill M; PI-Attn archive/ceiling_probes/a800/tp_invariance/
+// out_fold.txt). The fold is the same __fadd_rn sequence, so the bits are those of
+// kSlot = false. Slot CTAs are persistent (one per resident CTA, walking the tiles in the
+// swizzle's launch order), so the slots in use are bounded by the CTAs resident, not by
+// the tile count.
+template <typename Base, bool kSlot = false>
 struct SegmentedKernel : Base {
   using typename Base::Epilogue;
   using typename Base::Mma;
   using typename Base::OutputOp;
-  using typename Base::Params;
   using typename Base::SharedStorage;
   using typename Base::ThreadblockSwizzle;
+  struct Params : Base::Params {
+    int segs;
+    float* slots;  // kSlot: gridDim.x slots of kTile floats
+  };
+  static constexpr int kTile = Mma::Shape::kM * Mma::Shape::kN;
 
   CUTLASS_DEVICE void operator()(Params const& params, SharedStorage& shared_storage) {
-    ThreadblockSwizzle swizzle;
-    cutlass::gemm::GemmCoord tile = swizzle.get_tile_offset(params.swizzle_log_tile);
+    if constexpr (!kSlot) {
+      ThreadblockSwizzle swizzle;
+      run_tile(params, shared_storage, swizzle.get_tile_offset(params.swizzle_log_tile));
+    } else {
+      // CUTLASS's identity swizzle: grid (tiles_m << log, ceil(tiles_n / 2^log)), x fastest.
+      const int log = params.swizzle_log_tile, gx = params.grid_tiled_shape.m() << log;
+      const int gy = (params.grid_tiled_shape.n() + (1 << log) - 1) >> log;
+      for (int t = blockIdx.x; t < gx * gy; t += gridDim.x) {
+        const int bx = t % gx, by = t / gx;
+        run_tile(params, shared_storage, {bx >> log, (by << log) + (bx & ((1 << log) - 1)), 0});
+        __syncthreads();  // the next tile's prologue reuses the epilogue's shared memory
+      }
+    }
+  }
+
+  CUTLASS_DEVICE void run_tile(Params const& params, SharedStorage& shared_storage, cutlass::gemm::GemmCoord tile) {
     if (params.grid_tiled_shape.m() <= tile.m() || params.grid_tiled_shape.n() <= tile.n()) return;
     const int M = params.problem_size.m(), N = params.problem_size.n(), K = params.problem_size.k();
-    const int segs = gemm_segments(N, K), seg_k = K / segs;
+    const int segs = params.segs, seg_k = K / segs;
     const int thread_idx = threadIdx.x, warp_idx = cutlass::canonical_warp_idx_sync(), lane_idx = threadIdx.x % 32;
-    typename Mma::FragmentC total;
-    total.clear();
+    typename Mma::FragmentC acc;
+    [[maybe_unused]] typename Mma::FragmentC total;
+    [[maybe_unused]] float* slot = kSlot ? params.slots + (int64_t)blockIdx.x * kTile + thread_idx : nullptr;
+    if constexpr (!kSlot) total.clear();
     for (int s = 0; s < segs; ++s) {
       const int k0 = s * seg_k, k1 = k0 + seg_k;
       typename Mma::IteratorA iterator_A(params.params_A, params.ref_A.data(), {M, k1}, thread_idx,
@@ -48,13 +81,22 @@ struct SegmentedKernel : Base {
       typename Mma::IteratorB iterator_B(params.params_B, params.ref_B.data(), {k1, N}, thread_idx,
                                          cutlass::MatrixCoord{k0, tile.n() * Mma::Shape::kN});
       Mma mma(shared_storage.main_loop, thread_idx, warp_idx, lane_idx);
-      typename Mma::FragmentC acc;
       acc.clear();
       mma(seg_k / Mma::Shape::kK, acc, iterator_A, iterator_B, acc);
       cutlass::arch::cp_async_wait<0>();
       __syncthreads();  // the next segment's prologue (or the epilogue) reuses shared memory
-      CUTLASS_PRAGMA_UNROLL
-      for (int i = 0; i < Mma::FragmentC::kElements; ++i) total[i] = __fadd_rn(total[i], acc[i]);
+      if constexpr (!kSlot) {
+        CUTLASS_PRAGMA_UNROLL
+        for (int i = 0; i < Mma::FragmentC::kElements; ++i) total[i] = __fadd_rn(total[i], acc[i]);
+      } else {
+        CUTLASS_PRAGMA_UNROLL
+        for (int i = 0; i < Mma::FragmentC::kElements; ++i) {
+          float* p = slot + i * Base::kThreadCount;
+          const float v = __fadd_rn(s == 0 ? 0.f : __ldcg(p), acc[i]);
+          if (s < segs - 1) __stcg(p, v);
+          else acc[i] = v;
+        }
+      }
     }
     OutputOp output_op(params.output_op);
     cutlass::MatrixCoord offset(tile.m() * Mma::Shape::kM, tile.n() * Mma::Shape::kN);
@@ -63,9 +105,35 @@ struct SegmentedKernel : Base {
     typename Epilogue::OutputTileIterator iterator_D(params.params_D, params.ref_D.data(), params.problem_size.mn(),
                                                      thread_idx, offset);
     Epilogue epilogue(shared_storage.epilogue, thread_idx, warp_idx, lane_idx);
-    epilogue(output_op, iterator_D, total, iterator_C);
+    if constexpr (!kSlot) epilogue(output_op, iterator_D, total, iterator_C);
+    else epilogue(output_op, iterator_D, acc, iterator_C);
   }
 };
+
+// Slots for SegmentedKernel<kSlot = true>: one device buffer per device. Each slot id sizes
+// it for its largest grid (every SM full of resident CTAs) on its first launch, whatever M,
+// so it only grows when an id runs for the first time, never later; growing is refused while
+// the stream is being captured (a CUDA graph cannot hold the allocation), and the engine's
+// tuner runs every id eagerly before any capture. As g_seg_ws, launches that use the slots
+// must not run concurrently on one device (the engine runs its forward on one stream).
+inline float* segment_slots(size_t floats, cudaStream_t stream) {
+  static std::mutex mutex;
+  static std::map<int, std::pair<float*, size_t>> bufs;  // device -> (buffer, floats)
+  int device = 0;
+  if (cudaGetDevice(&device) != cudaSuccess) return nullptr;
+  std::lock_guard<std::mutex> lock(mutex);
+  auto& [buf, cap] = bufs[device];
+  if (floats <= cap) return buf;
+  cudaStreamCaptureStatus capturing;
+  if (cudaStreamIsCapturing(stream, &capturing) != cudaSuccess || capturing != cudaStreamCaptureStatusNone)
+    return nullptr;
+  if (cudaDeviceSynchronize() != cudaSuccess || cudaFree(buf) != cudaSuccess) return nullptr;
+  buf = nullptr;
+  cap = 0;
+  if (cudaMalloc(&buf, floats * sizeof(float)) != cudaSuccess) return nullptr;
+  cap = floats;
+  return buf;
+}
 
 // ------------------------------------------------------- stream-K over CUTLASS tiles ----
 // As gemm_streamk_kernel (gemm_inv.cuh) at CTA granularity: the (tile, k-tile) steps of
@@ -163,7 +231,7 @@ struct StreamKKernel : Base {
 // __fadd_rn sequence as SegmentedKernel, so the bits are those of SegmentedKernel. No CTA
 // waits on another, so any number may be resident. The fragments use g_skt_acc as one
 // array (S fragments per tile, tiles numbered M-fastest); every launch leaves the
-// counters zero.
+// counters zero. S = the grid size / the tile count.
 constexpr int kSegMaxTiles = 1024;
 static __device__ int g_seg_count[kSegMaxTiles];
 
@@ -179,7 +247,7 @@ struct SegParallelKernel : Base {
   CUTLASS_DEVICE void run(Params const& params, SharedStorage& shared_storage, int tiles) {
     const int M = params.problem_size.m(), N = params.problem_size.n(), K = params.problem_size.k();
     const int tiles_m = (M + Mma::Shape::kM - 1) / Mma::Shape::kM;
-    const int segs = gemm_segments(N, K), seg_k = K / segs;
+    const int segs = gridDim.x / tiles, seg_k = K / segs;
     const int u = blockIdx.x % tiles, s = blockIdx.x / tiles;
     const int m0 = (u % tiles_m) * Mma::Shape::kM, n0 = (u / tiles_m) * Mma::Shape::kN;
     const int k0 = s * seg_k, k1 = k0 + seg_k;
@@ -258,12 +326,13 @@ struct CutlassGemm {
       cutlass::gemm::threadblock::GemmIdentityThreadblockSwizzle<SWZ>, STAGES, 8, 8,
       /*SplitKSerial=*/false>;
   using Segmented = SegmentedKernel<typename Gemm::GemmKernel>;
+  using SegmentedSlot = SegmentedKernel<typename Gemm::GemmKernel, true>;
   using StreamK = StreamKKernel<typename Gemm::GemmKernel>;
   using SegPar = SegParallelKernel<typename Gemm::GemmKernel>;
 
   static cudaError_t run(const void* x, int64_t ldx, const void* w, void* y, int64_t ldy, int M, int N,
-                         int K, cudaStream_t stream) {
-    if (gemm_segments(N, K) > 1) return run_segmented(x, ldx, w, y, ldy, M, N, K, stream);
+                         int K, int segs, cudaStream_t stream) {
+    if (segs > 1) return run_segmented(x, ldx, w, y, ldy, M, N, K, segs, stream);
     typename Gemm::Arguments args({M, N, K}, {(const Element*)x, ldx}, {(const Element*)w, K},
                                   {(OutElement*)y, ldy}, {(OutElement*)y, ldy}, {1.f, 0.f});
     Gemm op;
@@ -277,9 +346,9 @@ struct CutlassGemm {
 
   // Stream-K over this tile shape with up to CPS CTAs per SM (all resident).
   static cudaError_t run_streamk(const void* x, int64_t ldx, const void* w, void* y, int64_t ldy, int M, int N,
-                                 int K, int sms, int cps, cudaStream_t stream) {
+                                 int K, int segs, int sms, int cps, cudaStream_t stream) {
     using Kernel = typename Gemm::GemmKernel;
-    if (gemm_segments(N, K) != 1 || K % TBK) return cudaErrorInvalidValue;
+    if (segs != 1 || K % TBK) return cudaErrorInvalidValue;
     const int smem = (int)sizeof(typename Kernel::SharedStorage);
     static const bool attr_ok =
         smem < (48 << 10) ||
@@ -307,9 +376,8 @@ struct CutlassGemm {
   // Segment-parallel run of an S > 1 shape: one CTA per (tile, segment). Refuses shapes
   // whose fragments do not fit g_skt_acc or whose tiles exceed the counters.
   static cudaError_t run_segpar(const void* x, int64_t ldx, const void* w, void* y, int64_t ldy, int M, int N,
-                                int K, cudaStream_t stream) {
+                                int K, int segs, cudaStream_t stream) {
     using Kernel = typename Gemm::GemmKernel;
-    const int segs = gemm_segments(N, K);
     const int tiles = ((M + TBM - 1) / TBM) * ((N + TBN - 1) / TBN);
     if (segs < 2 || (K / segs) % TBK || tiles > kSegMaxTiles ||
         (int64_t)tiles * segs * TBM * TBN > (int64_t)kSktMaxWorkers * kSktMaxTile)
@@ -329,19 +397,53 @@ struct CutlassGemm {
   }
 
   static cudaError_t run_segmented(const void* x, int64_t ldx, const void* w, void* y, int64_t ldy, int M, int N,
-                                   int K, cudaStream_t stream) {
+                                   int K, int segs, cudaStream_t stream) {
     using Kernel = typename Gemm::GemmKernel;
-    if ((K / gemm_segments(N, K)) % TBK) return cudaErrorInvalidValue;
+    if ((K / segs) % TBK) return cudaErrorInvalidValue;
     typename Gemm::ThreadblockSwizzle swizzle;
     const cutlass::gemm::GemmCoord problem(M, N, K);
     const cutlass::gemm::GemmCoord grid_shape = swizzle.get_tiled_shape(problem, {TBM, TBN, TBK}, 1);
-    typename Kernel::Params params(problem, grid_shape, {(Element*)x, ldx}, {(Element*)w, K},
-                                   {(OutElement*)y, ldy}, {(OutElement*)y, ldy}, {1.f, 0.f});
+    typename Segmented::Params params{typename Kernel::Params(problem, grid_shape, {(Element*)x, ldx}, {(Element*)w, K},
+                                                              {(OutElement*)y, ldy}, {(OutElement*)y, ldy}, {1.f, 0.f}),
+                                      segs, nullptr};
     const int smem = (int)sizeof(typename Kernel::SharedStorage);
     if (smem >= (48 << 10) &&
         cudaFuncSetAttribute(cutlass::Kernel<Segmented>, cudaFuncAttributeMaxDynamicSharedMemorySize, smem) != cudaSuccess)
       return cudaErrorInvalidValue;
     cutlass::Kernel<Segmented><<<swizzle.get_grid_shape(grid_shape), Kernel::kThreadCount, smem, stream>>>(params);
+    return cudaGetLastError();
+  }
+
+  // SegmentedKernel with the running total in L2 slots: S > 1 only, one persistent CTA per
+  // resident CTA slot (at most the tile count).
+  static cudaError_t run_segmented_slot(const void* x, int64_t ldx, const void* w, void* y, int64_t ldy, int M,
+                                        int N, int K, int segs, int sms, cudaStream_t stream) {
+    using Kernel = typename Gemm::GemmKernel;
+    if (segs < 2 || (K / segs) % TBK) return cudaErrorInvalidValue;
+    const int smem = (int)sizeof(typename Kernel::SharedStorage);
+    static const int resident = [&] {
+      int r = 0;
+      const bool attr_ok = smem < (48 << 10) || cudaFuncSetAttribute(cutlass::Kernel<SegmentedSlot>,
+                                                                     cudaFuncAttributeMaxDynamicSharedMemorySize,
+                                                                     smem) == cudaSuccess;
+      return attr_ok && cudaOccupancyMaxActiveBlocksPerMultiprocessor(&r, cutlass::Kernel<SegmentedSlot>,
+                                                                      Kernel::kThreadCount, smem) == cudaSuccess
+                 ? r
+                 : 0;
+    }();
+    if (resident < 1) return cudaErrorInvalidValue;
+    typename Gemm::ThreadblockSwizzle swizzle;
+    const cutlass::gemm::GemmCoord problem(M, N, K);
+    const cutlass::gemm::GemmCoord grid_shape = swizzle.get_tiled_shape(problem, {TBM, TBN, TBK}, 1);
+    const dim3 g = swizzle.get_grid_shape(grid_shape);
+    const int ctas = (int)std::min<int64_t>((int64_t)g.x * g.y, (int64_t)sms * resident);
+    float* slots = segment_slots((size_t)sms * resident * TBM * TBN, stream);
+    if (!slots) return cudaErrorInvalidValue;
+    typename SegmentedSlot::Params params{
+        typename Kernel::Params(problem, grid_shape, {(Element*)x, ldx}, {(Element*)w, K}, {(OutElement*)y, ldy},
+                                {(OutElement*)y, ldy}, {1.f, 0.f}),
+        segs, slots};
+    cutlass::Kernel<SegmentedSlot><<<ctas, Kernel::kThreadCount, smem, stream>>>(params);
     return cudaGetLastError();
   }
 };

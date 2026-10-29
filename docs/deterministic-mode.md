@@ -34,12 +34,16 @@ positions only, never by batch or schedule:
   bitwise.
 - **Projections** (`src/kernels/pi.rs`, `src/kernels/pi/gemm_*.cuh`): the sum over `k`
   of every output element is fixed by the weight shape (N, K) alone. It runs in
-  ascending 16-wide MMA steps from zero, cut into S segments (S = 2 when N <= 1024,
-  K >= 2048 and K % 512 == 0, otherwise 1) whose sums are added to +0 in ascending
-  order. Small-M kernels, CUTLASS tiles, deterministic stream-K and segment-parallel
-  tiles all realise this order, so at startup the engine times them per shape and
-  M bucket and keeps the fastest (logged as "PI GEMM tile choice") without changing
-  results. The buckets are the CUDA-graph capture sizes, so every graph runs the tile
+  ascending 16-wide MMA steps from zero, cut into S segments whose sums are added to +0
+  in ascending order. S = `gemm_segments(N, K, t_max)` with t_max = 1 in this one-GPU
+  engine: 2 when N <= 1024, K >= 2048 and K % 512 == 0 (4 or 8 for N <= 512 with
+  K >= 4096 and K % 1024 == 0, a shape no Qwen3 projection has), otherwise 1. Every
+  kernel takes S as an argument, so a launch over a column shard of a weight computes the
+  whole weight's bits: the basis of tensor-parallel degree invariance (PI-Attn
+  `kernels/tp_invariance.md`). Small-M kernels, CUTLASS tiles (also with the segment
+  total kept in L2 slots), deterministic stream-K and segment-parallel tiles all realise
+  this order, so at startup the engine times them per shape and M bucket and keeps the
+  fastest (logged as "PI GEMM tile choice") without changing results. The buckets are the CUDA-graph capture sizes, so every graph runs the tile
   timed at its own M.
 - **Sampling**: greedy is `argmax`. With temperature > 0, one batched kernel samples
   row *i* from its own Philox stream `(seed, token position)` (a fork of FlashInfer's
