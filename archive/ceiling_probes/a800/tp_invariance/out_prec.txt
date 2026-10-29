@@ -1,0 +1,12 @@
+qwen3.5-4B down  gauss   S=2: chain 0.06%/73.77ulp  fold32 0.06%/173.04ulp  fix64 0.06%/173.04ulp  ring16 37.51%/8017.11ulp
+qwen3.5-4B down  gauss   S=8: chain 0.06%/73.77ulp  fold32 0.03%/54.21ulp  fix64 0.03%/53.71ulp  ring16 59.28%/524477.04ulp
+qwen3.5-4B down  outlier S=2: chain 0.10%/114.25ulp  fold32 0.09%/473.75ulp  fix64 0.09%/473.75ulp  ring16 37.40%/7944.85ulp
+qwen3.5-4B down  outlier S=8: chain 0.10%/114.25ulp  fold32 0.06%/251.70ulp  fix64 0.06%/235.70ulp  ring16 58.91%/1048763.70ulp
+70B o            gauss   S=2: chain 0.05%/616.91ulp  fold32 0.05%/701.39ulp  fix64 0.05%/701.39ulp  ring16 37.51%/8026.42ulp
+70B o            gauss   S=8: chain 0.05%/616.91ulp  fold32 0.03%/296.91ulp  fix64 0.03%/344.91ulp  ring16 59.26%/4194536.91ulp
+70B o            outlier S=2: chain 0.09%/6339.54ulp  fold32 0.08%/2588.46ulp  fix64 0.08%/2588.46ulp  ring16 37.36%/7955.94ulp
+70B o            outlier S=8: chain 0.09%/6339.54ulp  fold32 0.05%/2915.54ulp  fix64 0.05%/2947.54ulp  ring16 58.89%/4194076.46ulp
+70B down         gauss   S=2: chain 0.11%/1480.66ulp  fold32 0.11%/748.10ulp  fix64 0.11%/748.10ulp  ring16 37.51%/8055.76ulp
+70B down         gauss   S=8: chain 0.11%/1480.66ulp  fold32 0.06%/1272.66ulp  fix64 0.06%/1240.66ulp  ring16 59.32%/10485543.34ulp
+70B down         outlier S=2: chain 0.17%/676.42ulp  fold32 0.16%/514.42ulp  fix64 0.16%/514.42ulp  ring16 37.45%/16176.87ulp
+70B down         outlier S=8: chain 0.17%/676.42ulp  fold32 0.10%/447.89ulp  fix64 0.10%/471.89ulp  ring16 58.93%/1048747.74ulp

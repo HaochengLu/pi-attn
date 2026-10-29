@@ -1,10 +1,16 @@
-"""M-invariance, accuracy and speed of the invariant GEMM vs torch/cuBLAS.
+"""M-invariance, TP-degree invariance, accuracy and speed of the invariant GEMM vs torch/cuBLAS.
 
 Invariance: for every projection of the four Qwen3 models (LM heads included), every row
 of Y must be bitwise equal whether computed with M = 1, any other M up to 4096, any kernel
 id the engine can choose (gemm_dispatch.cuh), and with garbage in the other rows. Each id
 must also refuse exactly the shapes `usable` says it cannot run, so the tuner never picks
-an untested (id, shape, M)."""
+an untested (id, shape, M).
+
+TP-degree invariance (column sharding): for row-parallel projections of models served at
+up to t_max = 8 GPUs, Y computed over the whole weight must equal, bitwise, the
+concatenation of Y computed over its column shards for every t = 1..8 (uneven shards for
+t = 3, 5, 6, 7), every M and every kernel id that runs the shard, with S =
+gemm_segments(N, K, t_max) of the whole weight passed to every launch."""
 import os
 import sys
 
@@ -35,17 +41,28 @@ KERNELS = tuple(ext.small_kernels()) + tuple(ext.large_kernels())  # the engine'
 SMALL = set(ext.small_kernels())
 
 
-def gemm_segments(N, K):  # mirrors gemm_inv.cuh
-    return 2 if N <= 1024 and K >= 2048 and K % 512 == 0 else 1
+def gemm_segments(N, K, t_max=1):  # mirrors gemm_inv.cuh
+    s = 1
+    while s < 8 and N // t_max * s <= 1024 and K % (512 * s) == 0 and K // (2 * s) >= 1024:
+        s *= 2
+    return s
+
+
+# Before t_max: two segments for N <= 1024, K >= 2048, K % 512 == 0. The engine's own shapes keep it.
+assert all(gemm_segments(N, K) == (2 if N <= 1024 and K >= 2048 and K % 512 == 0 else 1) for N, K in
+           [(n, k) for n in range(32, 20000, 32) for k in range(64, 30000, 64) if n > 512 or k % 1024 or k < 4096])
+assert all(ext.gemm_segments(N, K, t) == gemm_segments(N, K, t) for N in (64, 512, 1024, 2560, 8192)
+           for K in (1024, 2560, 3072, 4096, 9216, 28672) for t in (1, 2, 4, 8))
+SMEM_OPTIN = torch.cuda.get_device_properties(0).shared_memory_per_block_optin
 
 
 SEGPAR_TILE = {48: (32, 64), 49: (64, 64)}  # segment-parallel ids: (TBM, TBN)
 
 
-def segpar_fits(k, M, N, K):  # mirrors CutlassGemm::run_segpar: S > 1, fragments fit g_skt_acc, tiles <= 1024
+def segpar_fits(k, M, N, S):  # mirrors CutlassGemm::run_segpar: S > 1, fragments fit g_skt_acc, tiles <= 1024
     tm, tn = SEGPAR_TILE[k]
     tiles = -(-M // tm) * -(-N // tn)
-    return gemm_segments(N, K) > 1 and tiles <= 1024 and tiles * gemm_segments(N, K) * tm * tn <= 256 * 64 * 128
+    return S > 1 and tiles <= 1024 and tiles * S * tm * tn <= 256 * 64 * 128
 
 
 BK = {20: 128, 21: 256, 22: 256, 24: 128, 25: 128, 30: 256, 31: 128, 32: 128, 33: 128,
@@ -53,24 +70,33 @@ BK = {20: 128, 21: 256, 22: 256, 24: 128, 25: 128, 30: 256, 31: 128, 32: 128, 33
 MAX_M = {30: 16, 31: 16, 32: 32, 33: 64, 40: 8, 41: 8, 42: 8, 43: 8, 51: 8, 53: 8, 54: 16, 55: 16, 60: 8, 61: 8, 62: 8}
 PAIRS = {60, 61, 62}  # stream-K over pairs of n8 tiles: N % 16 == 0
 STREAMK = {44, 45, 46, 47, 50}  # CUTLASS stream-K: S = 1 shapes only
-SEGSPLIT = {54, 55}  # S > 1 shapes only
+SLOT = {17, 18, 19}  # SegmentedKernel with L2 slots: S > 1 only
+SEGSPLIT = {54: (128, 3), 55: (64, 6)}  # S > 1 shapes only: (BK, stages), one cp.async ring per segment
+SEG_WS = {30, 31, 32, 33, 40, 41, 42, 43, 51, 53, 60, 61, 62}  # S > 1: S * M * N partials in g_seg_ws
 
 
-def usable(k, M, N, K):
-    """Whether kernel id k runs this shape (written independently of gemm_dispatch.cuh)."""
+def usable(k, M, N, K, S=None):
+    """Whether kernel id k runs this shape with S segments (default: the weight's own);
+    written independently of gemm_dispatch.cuh."""
+    S = gemm_segments(N, K) if S is None else S
     if k in SEGPAR_TILE:
-        return segpar_fits(k, M, N, K)
-    segmented = gemm_segments(N, K) > 1
+        return segpar_fits(k, M, N, S)
+    if k in SEGSPLIT:
+        bk, st = SEGSPLIT[k]
+        if S * (st * 24 * (bk + 8) * 2 + 32 * 4 * 4) > SMEM_OPTIN:
+            return False
+    if k in SEG_WS and S > 1 and (S * min(M, MAX_M[k]) * N > 1 << 20 or N // 8 > 2048):
+        return False
     # K tiles may not straddle a segment (the warp stream-K ids 51 / 53 stream 512 / 1024
     # columns per stage; 0.6B down has 1536-column segments).
-    return ((K // gemm_segments(N, K)) % BK.get(k, 64) == 0 and M <= MAX_M.get(k, 1 << 30)
-            and not (k in STREAMK and segmented) and not (k in SEGSPLIT and not segmented)
+    return ((K // S) % BK.get(k, 64) == 0 and M <= MAX_M.get(k, 1 << 30)
+            and not (k in STREAMK and S > 1) and not ((k in SEGSPLIT or k in SLOT) and S == 1)
             and not (k in PAIRS and N % 16))
 
 
-def candidates(M, N, K):
+def candidates(M, N, K, S=None):
     """The ids the engine's tuner tries for this shape in an M bucket that holds M."""
-    return [k for k in KERNELS if usable(k, M, N, K) and (M <= 64 or k not in SMALL)]
+    return [k for k in KERNELS if usable(k, M, N, K, S) and (M <= 64 or k not in SMALL)]
 
 
 def timeit(fn, iters=30):
@@ -86,8 +112,69 @@ def timeit(fn, iters=30):
     return s.elapsed_time(e) / iters * 1000
 
 
+def check_segments(name, X, W, segs, fails):
+    """y = round(((+0 + p_0) + p_1) + ...), p_s = the unsegmented chain over segment s."""
+    N, K = W.shape
+    Xs = X[:64].contiguous()
+    ks = K // segs
+    tot = torch.zeros(64, N, device=dev)
+    for sg in range(segs):
+        tot = tot + ext.linear(Xs[:, sg * ks:(sg + 1) * ks], W[:, sg * ks:(sg + 1) * ks].contiguous(), 1, True, 1)
+    for kern in (1, 20, 33, 11, 13, 14, 15, 17, 18, 19, 48, 49):
+        if not usable(kern, 64, N, K, segs):
+            continue
+        y = ext.linear(Xs, W, kern, False, segs)
+        if y is None or not torch.equal(y.view(torch.int16), tot.bfloat16().view(torch.int16)):
+            fails.append((name, "segments", segs, kern))
+
+
+TP_SHAPES = {  # row-parallel projections (o / down, GDN out): name: (N, K)
+    "4B o": (2560, 4096), "4B down": (2560, 9728), "8B o": (4096, 4096), "8B down": (4096, 12288),
+    "3.5-4B down": (2560, 9216), "70B o": (8192, 8192), "70B down": (8192, 28672)}
+
+
+def shards(N, t):
+    """Column ranges of t ranks: as even as 32-column units allow (uneven for t = 3, 5, 6, 7)."""
+    cuts = [round(i * N / t / 32) * 32 for i in range(t + 1)]
+    return list(zip(cuts[:-1], cuts[1:]))
+
+
+def check_tp(fails, t_max=8):
+    for name, (N, K) in TP_SHAPES.items():
+        S = gemm_segments(N, K, t_max)
+        W = (torch.randn(N, K, device=dev) * 0.02).bfloat16()
+        X = torch.randn(4096, K, device=dev).bfloat16()
+        if S > 1:
+            check_segments(name + f" t_max={t_max}", X, W, S, fails)
+        row0 = ext.linear(X[:1].contiguous(), W, 1, False, S)[0]
+        # M = 4096 (degrees 1, 3, 8): more tiles than resident CTAs, so the persistent slot ids
+        # 17-19 wrap their tile loop.
+        for M, degrees in [(1, range(1, t_max + 1)), (8, range(1, t_max + 1)), (33, range(1, t_max + 1)),
+                           (300, range(1, t_max + 1)), (4096, (1, 3, t_max))]:
+            Xm = X[:M].contiguous()
+            full = ext.linear(Xm, W, 13, False, S)
+            if not torch.equal(full[0].view(torch.int16), row0.view(torch.int16)):
+                fails.append((name, "tp rows", M))  # row invariance across M at S(t_max)
+            runs = 0
+            for t in degrees:
+                for a, b in shards(N, t):
+                    Wt = W[a:b].contiguous()
+                    for kern in KERNELS:
+                        y = ext.linear(Xm, Wt, kern, False, S)
+                        if (y is not None) != usable(kern, M, b - a, K, S):
+                            fails.append((name, "tp", t, M, kern, "refused" if y is None else "ran but should refuse"))
+                        elif y is not None:
+                            runs += 1
+                            if not torch.equal(y.view(torch.int16), full[:, a:b].view(torch.int16)):
+                                fails.append((name, "tp", t, (a, b), M, kern))
+            print(f"tp {name:12s} N={N:5d} K={K:5d} t_max={t_max} S={S} M={M:4d}: {runs} shard launches", flush=True)
+        del W
+        torch.cuda.empty_cache()
+
+
 def main(bench):
     fails = []
+    check_tp(fails)
     for name, (N, K) in SHAPES.items():
         W = (torch.randn(N, K, device=dev) * 0.02).bfloat16()
         X = torch.randn(16384 if bench else 4096, K, device=dev).bfloat16()
@@ -105,18 +192,8 @@ def main(bench):
                                         or not torch.equal(y.view(torch.int16), full.view(torch.int16))):
                     fails.append((name, M, kern))
         segs = gemm_segments(N, K)
-        if segs > 1:  # y = round(((+0 + p_0) + p_1) + ...), p_s = the unsegmented chain over segment s
-            Xs = X[:64].contiguous()
-            ks = K // segs
-            tot = torch.zeros(64, N, device=dev)
-            pad = max(0, 1056 - N)  # zero rows widen the weight to one segment; columns are independent
-            for sg in range(segs):
-                Wp = torch.cat([W[:, sg * ks:(sg + 1) * ks], W.new_zeros(pad, ks)]).contiguous()
-                assert gemm_segments(Wp.shape[0], ks) == 1
-                tot = tot + ext.linear(Xs[:, sg * ks:(sg + 1) * ks], Wp, 1, True)[:, :N]
-            for kern in (1, 20, 33, 11, 13, 14, 15, 48, 49):
-                if not torch.equal(ext.linear(Xs, W, kern, False).view(torch.int16), tot.bfloat16().view(torch.int16)):
-                    fails.append((name, "segments", kern))
+        if segs > 1:
+            check_segments(name, X, W, segs, fails)
         y64 = (X[:256].double() @ W.double().T)
         e_pi = (ext.linear(X[:256].contiguous(), W, 0, True).double() - y64).abs().max().item()
         e_cb = (torch.matmul(X[:256], W.T).double() - y64).abs().max().item()

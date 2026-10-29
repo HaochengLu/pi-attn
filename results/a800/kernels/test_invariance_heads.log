@@ -1,0 +1,4 @@
+L=517: PI err mean 5.753e-04 max 1.224e-02 | SDPA err mean 5.670e-04 max 1.224e-02
+L=2049: PI err mean 4.437e-04 max 9.453e-03 | SDPA err mean 4.517e-04 max 9.511e-03
+checks failed: 0 []
+DONE 0

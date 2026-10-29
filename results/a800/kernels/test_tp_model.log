@@ -1,0 +1,9 @@
+Qwen3-8B t_max=8: S per weight [('down_proj', 4), ('gate_proj', 1), ('k_proj', 4), ('lm_head', 1), ('o_proj', 4), ('q_proj', 4), ('up_proj', 1), ('v_proj', 4)]
+greedy tokens (t=1), one column per prompt: [[12982, 99603, 9370, 101766, 102054, 20412, 99387, 100582, 9370], [198, 32313, 11, 1077, 594, 1430, 311, 7071, 700], [220, 16, 15, 15, 15, 15, 15, 15, 15], [220, 16, 15, 15, 15, 15, 15, 15, 15]]
+t=2: 9 logit sets (4 prompts: prefill + 8 decode steps), bitwise different: []
+t=3: 9 logit sets (4 prompts: prefill + 8 decode steps), bitwise different: []
+t=4: 9 logit sets (4 prompts: prefill + 8 decode steps), bitwise different: []
+t=8: 9 logit sets (4 prompts: prefill + 8 decode steps), bitwise different: []
+negative control, Megatron row-parallel o/down at t=2, bf16 partials: fraction of logits that differ per step ['0.846', '0.873', '0.792', '0.771', '0.825', '0.847', '0.774', '0.863', '0.820']
+negative control, Megatron row-parallel o/down at t=2, fp32 partials: fraction of logits that differ per step ['0.932', '0.887', '0.788', '0.787', '0.818', '0.812', '0.787', '0.786', '0.879']
+TP INVARIANCE FAILURES: 0

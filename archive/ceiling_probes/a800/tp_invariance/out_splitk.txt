@@ -1,0 +1,12 @@
+qwen3.5-4B o/gdn-out   N= 2560 K= 4096 M= 2048: S=1 230us(k11) | S=2 leaves 1.22x + combine 0.20x = 1.42x | S=4 leaves 1.60x + combine 0.30x = 1.90x | S=8 leaves 2.37x + combine 0.51x = 2.88x
+qwen3.5-4B o/gdn-out   N= 2560 K= 4096 M= 8192: S=1 759us(k10) | S=2 leaves 1.22x + combine 0.17x = 1.39x | S=4 leaves 1.64x + combine 0.29x = 1.92x | S=8 leaves 2.41x + combine 0.54x = 2.95x
+qwen3.5-4B down        N= 2560 K= 9216 M= 2048: S=1 405us(k11) | S=2 leaves 1.11x + combine 0.10x = 1.21x | S=4 leaves 1.32x + combine 0.16x = 1.47x
+qwen3.5-4B down        N= 2560 K= 9216 M= 8192: S=1 1423us(k10) | S=2 leaves 1.21x + combine 0.09x = 1.29x | S=4 leaves 1.40x + combine 0.15x = 1.56x
+qwen3-8B o             N= 4096 K= 4096 M= 2048: S=1 296us(k11) | S=2 leaves 1.34x + combine 0.19x = 1.53x | S=4 leaves 1.76x + combine 0.32x = 2.08x | S=8 leaves 2.62x + combine 0.58x = 3.21x
+qwen3-8B o             N= 4096 K= 4096 M= 8192: S=1 1070us(k10) | S=2 leaves 1.41x + combine 0.18x = 1.60x | S=4 leaves 1.83x + combine 0.32x = 2.16x | S=8 leaves 2.68x + combine 0.61x = 3.29x
+qwen3-8B down          N= 4096 K=12288 M= 2048: S=1 846us(k11) | S=2 leaves 1.12x + combine 0.07x = 1.19x | S=4 leaves 1.27x + combine 0.11x = 1.38x | S=8 leaves 1.54x + combine 0.20x = 1.75x
+qwen3-8B down          N= 4096 K=12288 M= 8192: S=1 3189us(k10) | S=2 leaves 1.14x + combine 0.06x = 1.20x | S=4 leaves 1.28x + combine 0.11x = 1.39x | S=8 leaves 1.56x + combine 0.21x = 1.77x
+70B o                  N= 8192 K= 8192 M= 2048: S=1 1039us(k10) | S=2 leaves 1.21x + combine 0.10x = 1.31x | S=4 leaves 1.46x + combine 0.17x = 1.63x | S=8 leaves 1.95x + combine 0.32x = 2.27x
+70B o                  N= 8192 K= 8192 M= 8192: S=1 4230us(k10) | S=2 leaves 1.16x + combine 0.09x = 1.25x | S=4 leaves 1.38x + combine 0.16x = 1.54x | S=8 leaves 1.80x + combine 0.31x = 2.11x
+70B down               N= 8192 K=28672 M= 2048: S=1 3646us(k10) | S=2 leaves 1.07x + combine 0.03x = 1.10x | S=4 leaves 1.14x + combine 0.05x = 1.19x | S=8 leaves 1.29x + combine 0.09x = 1.38x
+70B down               N= 8192 K=28672 M= 8192: S=1 15169us(k16) | S=2 leaves 1.06x + combine 0.02x = 1.08x | S=4 leaves 1.08x + combine 0.04x = 1.13x | S=8 leaves 1.19x + combine 0.09x = 1.28x

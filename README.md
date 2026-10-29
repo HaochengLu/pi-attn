@@ -5,12 +5,13 @@ This directory holds the research project built on
 `llm_infer_rust/`). It makes the engine's outputs a bitwise function of the model and
 the request alone — independent of batching, concurrency, prefix caching, chunked
 prefill, decode vs re-prefill, CUDA graphs, page size and restarts — without turning
-any of those optimizations off.
+any of those optimizations off. `kernels/tp_invariance.md` extends this to the
+tensor-parallel degree (verified on one GPU with emulated ranks).
 
 | Path | What |
 |---|---|
 | `llm_infer_rust/` (branch `pi-attn`) | Engine with `--deterministic`; kernels in `src/kernels/pi/`, docs in `docs/deterministic-mode.md` |
-| `kernels/` | PyTorch bindings, invariance tests (`test_invariance.py`, `test_matrix.py`, `test_directed.py`, `test_gemm.py`) microbenchmarks for the kernels, and the GEMM as vLLM's batch-invariant dense ops (`pi_vllm.py`, used by `gdn/vllm/`) (sources, including the GEMM id table `gemm_dispatch.cuh`, symlinked from the engine) |
+| `kernels/` | PyTorch bindings, invariance tests (`test_invariance.py`, `test_matrix.py`, `test_directed.py`, `test_gemm.py`, `test_tp_model.py`), tensor-parallel degree invariance (`tp_invariance.md`, `bench_tp.py`), microbenchmarks for the kernels, and the GEMM as vLLM's batch-invariant dense ops (`pi_vllm.py`, used by `gdn/vllm/`) (sources, including the GEMM id table `gemm_dispatch.cuh`, symlinked from the engine) |
 | `gdn/` | Exact Gated DeltaNet decode for hybrid models: decode bitwise equal to fla's chunked training forward (`exact_decode.py`), its test, benchmark and experiments, and its vLLM 0.17.1 integration (`gdn/vllm/`: decode bitwise the engine's prefill, speculation on or off); findings in `gdn/README.md` |
 | `detcheck/detcheck.py` | Black-box determinism checker for any OpenAI-compatible server |
 | `eval/` | Serving benchmark (`loadgen.py`), cross-configuration check (`crossconfig.sh`), end-to-end matrices (`e2e_matrix.sh`, `e2e_extended.sh`), same-GPU SGLang/vLLM baselines (`baselines.sh`), GSM8K reproducibility (`accuracy.sh`, `compare_accuracy.py`), fp32 agreement (`fp32_agreement.sh`), kernel benchmarks (`kernel_benches.sh`), and table generators (`summarize_*.py`) |
@@ -79,6 +80,7 @@ the upstream `main` branch and is unrelated to this work.
 
 ```bash
 cd kernels && python test_invariance.py && python test_matrix.py && python test_directed.py && python test_gemm.py
+python test_tp_model.py      # Qwen3-8B on t = 1..8 emulated tensor-parallel ranks (needs models/Qwen3-8B)
 cd llm_infer_rust && VENV_DIR=$VIRTUAL_ENV scripts/run-rust-tests.sh cuda
 SGLANG_E2E_BASE_URL=http://127.0.0.1:8000/v1 SGLANG_E2E_DETERMINISTIC=1 python -m unittest discover -s tests -p "test_*.py"
 ```

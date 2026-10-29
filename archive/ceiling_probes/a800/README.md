@@ -243,3 +243,30 @@ prefill already hold their accumulator in registers, and the total does not fit 
 memory beside the pipeline. So S > 1 costs 2-15% on these shapes at prefill M whatever the
 mainloop, and a canonical K-block tree over t_max blocks (TP-degree invariance at TP = 1)
 would cost at least this on row-parallel projections. The shipped kernel is kept.
+
+## TP-degree invariance (2026-10-28, `tp_invariance/`)
+
+Write-up and the shipped mechanism: `kernels/tp_invariance.md` (column-parallel layout, no
+cross-rank reduction; S from `gemm_segments(N, K, t_max)` as a kernel argument). The probes behind
+its choices, all on the shapes of Qwen3.5-4B / Qwen3-8B / 70B o and down:
+
+- `probe_segs.py` (`out_S{1,2,4,8}.txt`): builds of the engine GEMM with S forced to 2, 4, 8 for
+  every shape; best id per M against the S = 1 build. In-register segments at M = 8192: +2-24%
+  (S = 2), +12-38% (S = 8); decode M <= 32: 0.74-1.08x (S = 2), 1.02-1.26x (S = 8).
+- `probe_fold.py` (`out_fold.txt`): the segment total in a per-tile L2 slot instead of a register
+  fragment (fp32, bitwise equal to the register fold, and int64 fixed point). fp32 slots help long
+  K (70B down S = 2: 1.24 -> 1.05) but not short K (8B o S = 8: 1.46 -> 1.55); int64 +11-184%.
+  This refines the 2026-10-27 conclusion: removing the second register tile removes the long-K
+  cost, not the short-K one, which is the fold's L2 traffic ((S - 1) tile round trips per K).
+  Shipped as ids 17-19 (persistent CTAs): 70B down S = 2 at M = 8192 is 1.11x in `bench_tp.log`
+  against the probe's 1.05x (the probe used per-tile slots, not persistent CTAs, and compared
+  against its own S = 1 build).
+- `probe_splitk.py` (`out_splitk.txt`): leaves as separate launches writing fp32 partials and an
+  int64 combine kernel: 1.08-3.29x. Rejected.
+- `probe_shard.py` (`out_shard.txt`): column shard vs Megatron row shard per rank, S = 1 build.
+- `probe_floor.py`, `probe_floor_s.py` (`out_floor*.txt`): the chain floor (~28 ns per k16
+  step at M = 1) and how S lifts it.
+- `probe_prec.py` (`out_prec.txt`): accuracy of leaf combines vs fp64.
+- `probe_midm.py` (`out_midm.txt`): every kernel id on narrow shards at M = 8-128.
+- `bench_tp_before_slot.log`: `kernels/bench_tp.py` before ids 17-19.
+

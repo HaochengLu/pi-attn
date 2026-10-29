@@ -1,0 +1,29 @@
+TILE qwen3.5-4B o/gdn-out   M= 2048: best 230us(k11) k11 229us = 1.00x
+TILE qwen3.5-4B o/gdn-out   M= 8192: best 750us(k16) k11 754us = 1.01x
+SHARD qwen3.5-4B o/gdn-out   N= 2560 K= 4096 t=2: M=1: row 11.8 col 14.9 (1.27x) M=8: row 13.5 col 16.8 (1.25x) M=32: row 13.4 col 21.0 (1.57x) M=128: row 16.7 col 21.5 (1.29x) M=512: row 39.9 col 40.5 (1.02x) M=2048: row 101.1 col 106.4 (1.05x) M=8192: row 340.8 col 324.9 (0.95x)
+SHARD qwen3.5-4B o/gdn-out   N= 2560 K= 4096 t=4: M=1: row 8.5 col 12.1 (1.42x) M=8: row 9.0 col 12.9 (1.43x) M=32: row 9.1 col 20.7 (2.28x) M=128: row 11.1 col 20.8 (1.88x) M=512: row 23.0 col 26.0 (1.13x) M=2048: row 55.6 col 66.4 (1.19x) M=8192: row 184.3 col 205.8 (1.12x)
+SHARD qwen3.5-4B o/gdn-out   N= 2560 K= 4096 t=8: M=1: row 6.7 col 11.8 (1.77x) M=8: row 6.7 col 12.3 (1.85x) M=32: row 7.1 col 20.7 (2.91x) M=128: row 8.3 col 20.7 (2.50x) M=512: row 15.1 col 21.1 (1.40x) M=2048: row 33.7 col 39.3 (1.17x) M=8192: row 111.7 col 133.2 (1.19x)
+TILE qwen3.5-4B down        M= 2048: best 405us(k11) k11 425us = 1.05x
+TILE qwen3.5-4B down        M= 8192: best 1484us(k16) k11 1713us = 1.15x
+SHARD qwen3.5-4B down        N= 2560 K= 9216 t=2: M=1: row 21.3 col 26.0 (1.22x) M=8: row 25.0 col 29.6 (1.19x) M=32: row 25.2 col 40.9 (1.62x) M=128: row 32.3 col 42.0 (1.30x) M=512: row 75.3 col 85.8 (1.14x) M=2048: row 204.5 col 244.5 (1.20x) M=8192: row 736.1 col 734.9 (1.00x)
+SHARD qwen3.5-4B down        N= 2560 K= 9216 t=4: M=1: row 13.9 col 21.4 (1.54x) M=8: row 14.7 col 22.3 (1.52x) M=32: row 14.7 col 40.5 (2.76x) M=128: row 17.9 col 40.5 (2.26x) M=512: row 41.1 col 51.8 (1.26x) M=2048: row 107.7 col 145.4 (1.35x) M=8192: row 382.9 col 439.5 (1.15x)
+TILE qwen3-8B o             M= 2048: best 302us(k11) k11 301us = 1.00x
+TILE qwen3-8B o             M= 8192: best 1112us(k16) k11 1222us = 1.10x
+SHARD qwen3-8B o             N= 4096 K= 4096 t=2: M=1: row 16.5 col 17.0 (1.03x) M=8: row 15.5 col 19.4 (1.25x) M=32: row 15.5 col 21.1 (1.36x) M=128: row 25.0 col 26.9 (1.07x) M=512: row 58.2 col 57.1 (0.98x) M=2048: row 155.3 col 180.1 (1.16x) M=8192: row 568.0 col 547.7 (0.96x)
+SHARD qwen3-8B o             N= 4096 K= 4096 t=4: M=1: row 10.2 col 14.1 (1.38x) M=8: row 10.0 col 15.7 (1.56x) M=32: row 10.0 col 20.7 (2.07x) M=128: row 15.7 col 21.0 (1.34x) M=512: row 33.0 col 37.7 (1.14x) M=2048: row 85.6 col 101.9 (1.19x) M=8192: row 303.2 col 309.1 (1.02x)
+SHARD qwen3-8B o             N= 4096 K= 4096 t=8: M=1: row 7.3 col 12.0 (1.64x) M=8: row 7.3 col 12.7 (1.73x) M=32: row 7.5 col 20.6 (2.74x) M=128: row 11.1 col 20.6 (1.86x) M=512: row 20.8 col 24.6 (1.18x) M=2048: row 50.9 col 56.0 (1.10x) M=8192: row 172.8 col 191.7 (1.11x)
+TILE qwen3-8B down          M= 2048: best 857us(k11) k11 896us = 1.05x
+TILE qwen3-8B down          M= 8192: best 3300us(k16) k11 4057us = 1.23x
+SHARD qwen3-8B down          N= 4096 K=12288 t=2: M=1: row 36.9 col 38.0 (1.03x) M=8: row 38.0 col 42.0 (1.11x) M=32: row 38.6 col 55.3 (1.43x) M=128: row 58.9 col 71.6 (1.22x) M=512: row 157.3 col 146.1 (0.93x) M=2048: row 438.2 col 530.3 (1.21x) M=8192: row 1650.9 col 1649.8 (1.00x)
+SHARD qwen3-8B down          N= 4096 K=12288 t=4: M=1: row 21.5 col 31.9 (1.49x) M=8: row 21.2 col 35.1 (1.65x) M=32: row 21.4 col 53.1 (2.48x) M=128: row 34.9 col 53.3 (1.53x) M=512: row 83.0 col 91.5 (1.10x) M=2048: row 222.4 col 323.8 (1.46x) M=8192: row 849.1 col 951.5 (1.12x)
+SHARD qwen3-8B down          N= 4096 K=12288 t=8: M=1: row 13.1 col 26.4 (2.01x) M=8: row 12.8 col 27.2 (2.13x) M=32: row 12.8 col 52.3 (4.10x) M=128: row 20.7 col 52.4 (2.54x) M=512: row 45.5 col 66.6 (1.46x) M=2048: row 119.0 col 146.1 (1.23x) M=8192: row 434.5 col 555.6 (1.28x)
+TILE 70B o                  M= 2048: best 1060us(k10) k11 1161us = 1.10x
+TILE 70B o                  M= 8192: best 4310us(k16) k11 4940us = 1.15x
+SHARD 70B o                  N= 8192 K= 8192 t=2: M=1: row 47.0 col 48.4 (1.03x) M=8: row 47.2 col 50.9 (1.08x) M=32: row 48.5 col 52.0 (1.07x) M=128: row 66.2 col 76.5 (1.16x) M=512: row 182.0 col 205.2 (1.13x) M=2048: row 532.6 col 591.8 (1.11x) M=8192: row 2160.9 col 2181.4 (1.01x)
+SHARD 70B o                  N= 8192 K= 8192 t=4: M=1: row 25.8 col 27.7 (1.07x) M=8: row 25.5 col 35.6 (1.40x) M=32: row 26.4 col 38.7 (1.47x) M=128: row 38.2 col 49.7 (1.30x) M=512: row 97.7 col 108.3 (1.11x) M=2048: row 280.0 col 354.8 (1.27x) M=8192: row 1111.6 col 1062.2 (0.96x)
+SHARD 70B o                  N= 8192 K= 8192 t=8: M=1: row 15.3 col 23.5 (1.54x) M=8: row 14.9 col 27.7 (1.86x) M=32: row 15.2 col 36.4 (2.39x) M=128: row 21.1 col 36.9 (1.75x) M=512: row 55.1 col 71.8 (1.30x) M=2048: row 153.8 col 207.4 (1.35x) M=8192: row 585.5 col 627.4 (1.07x)
+TILE 70B down               M= 2048: best 3874us(k10) k11 5476us = 1.41x
+TILE 70B down               M= 8192: best 15297us(k16) k11 22585us = 1.48x
+SHARD 70B down               N= 8192 K=28672 t=2: M=1: row 139.6 col 140.4 (1.01x) M=8: row 144.7 col 150.2 (1.04x) M=32: row 150.4 col 154.1 (1.02x) M=128: row 207.5 col 244.8 (1.18x) M=512: row 620.5 col 723.3 (1.17x) M=2048: row 1886.2 col 2225.1 (1.18x) M=8192: row 7683.0 col 7927.8 (1.03x)
+SHARD 70B down               N= 8192 K=28672 t=4: M=1: row 76.4 col 79.1 (1.04x) M=8: row 76.0 col 86.1 (1.13x) M=32: row 79.1 col 121.6 (1.54x) M=128: row 111.2 col 159.7 (1.44x) M=512: row 312.2 col 348.4 (1.12x) M=2048: row 950.3 col 1322.1 (1.39x) M=8192: row 3856.2 col 3992.4 (1.04x)
+SHARD 70B down               N= 8192 K=28672 t=8: M=1: row 40.6 col 67.7 (1.67x) M=8: row 41.2 col 72.2 (1.75x) M=32: row 42.0 col 116.4 (2.77x) M=128: row 61.3 col 116.8 (1.91x) M=512: row 162.6 col 207.0 (1.27x) M=2048: row 463.0 col 742.6 (1.60x) M=8192: row 1894.7 col 2224.5 (1.17x)

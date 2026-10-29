@@ -1,11 +1,13 @@
 """GPU invariance and accuracy tests for the PI-Attn kernels.
 
-Five partition changes must leave every output bit unchanged:
+Six partition changes must leave every output bit unchanged:
   batch    : a request computed alone vs inside a mixed batch
   split    : prefill split over fold groups (1..many CTAs per row tile), either kernel variant
   chunk    : prefill in one call vs chunked prefill with arbitrary cut points
   prefix   : prefix KV already cached (different physical pages) vs computed now
   path     : prefill row at position p vs decode of the token at position p
+  heads    : all heads in one call vs the head shards of tensor-parallel ranks (t = 2, 3, 4,
+             8 over the kv heads; t = 16 replicates kv heads, so each rank's GQA group shrinks)
 Accuracy is compared against float64 attention and torch SDPA (bf16).
 """
 import math
@@ -90,8 +92,9 @@ def decode(pool, reqs):
     m = meta([r[1] for r in reqs], [r[2] for r in reqs])
     max_kv = max(r[2] for r in reqs)
     rows = len(reqs) * -(-max_kv // ext.GROUP_KEYS)
-    ws_o = torch.full((rows, HQ, D), float("nan"), device=dev)
-    ws_ml = torch.full((rows, HQ, 2 * ext.DECODE_WARPS), float("nan"), device=dev)
+    hq = q.shape[1]
+    ws_o = torch.full((rows, hq, D), float("nan"), device=dev)
+    ws_ml = torch.full((rows, hq, 2 * ext.DECODE_WARPS), float("nan"), device=dev)
     out = ext.decode(q, pool.k, pool.v, m["kv_page_indptr"], m["kv_page_indices"], m["kv_lens"],
                      ws_o, ws_ml, COUNTERS, max_kv, SCALE)
     assert COUNTERS.count_nonzero().item() == 0, "decode left arrival counters set"
@@ -100,6 +103,37 @@ def decode(pool, reqs):
 
 def same(a, b):
     return torch.equal(a.view(torch.int16), b.view(torch.int16))
+
+
+def head_shards(t):
+    """(q heads, kv heads) of each of t ranks: kv heads split as evenly as possible when t <= HKV,
+    else q heads split evenly and each rank holds a copy of its one kv head."""
+    g = HQ // HKV
+    if t <= HKV:
+        cuts = [round(i * HKV / t) for i in range(t + 1)]
+        return [((a * g, b * g), (a, b)) for a, b in zip(cuts, cuts[1:])]
+    cuts = [round(i * HQ / t) for i in range(t + 1)]
+    return [((a, b), (a // g, (b - 1) // g + 1)) for a, b in zip(cuts, cuts[1:])]
+
+
+def check_heads(pool, seqs, pages, alone, fails):
+    lens = list(seqs)
+    probes = [(L, p) for L in lens for p in {0, L // 2, L - 1}]
+    for t in (2, 3, 4, 8, 16):
+        for (qa, qb), (ka, kb) in head_shards(t):
+            assert (qb - qa) % (kb - ka) == 0 and qa // (HQ // HKV) >= ka
+            part = Pool.__new__(Pool)
+            part.k, part.v = pool.k[:, :, ka:kb].contiguous(), pool.v[:, :, ka:kb].contiguous()
+            # q heads [qa, qb) attend kv heads [ka, kb) in the same GQA mapping as the full call
+            # only when the slice keeps whole groups or is one group's sub-range (t = 16).
+            outs = prefill(part, [(seqs[L][0][:, qa:qb].contiguous(), pages[L], L) for L in lens])
+            for L, out in zip(lens, outs):
+                if not same(out, alone[L][:, qa:qb]):
+                    fails.append(("heads prefill", t, (qa, qb), L))
+            reqs = [(seqs[L][0][p:p + 1, qa:qb].contiguous(), pages[L], p + 1) for L, p in probes]
+            for (L, p), out in zip(probes, decode(part, reqs)):
+                if not same(out[0], alone[L][p, qa:qb]):
+                    fails.append(("heads decode", t, (qa, qb), L, p))
 
 
 def exact(q, k, v):
@@ -172,6 +206,8 @@ def main():
         for L, p in probes[:8]:  # alone: a single request runs another grid order (decode_grid)
             if not same(decode(pool, [(seqs[L][0][p:p + 1].contiguous(), pages[L], p + 1)])[0][0], alone[L][p]):
                 fails.append(("path alone", L, p))
+
+    check_heads(pool, seqs, pages, alone, fails)
 
     # Accuracy vs float64 and vs bf16 SDPA.
     for L in [517, 2049]:
