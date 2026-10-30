@@ -230,6 +230,7 @@ fn run_scheduler(mut scheduler: Scheduler, commands: mpsc::Receiver<Command>) {
                     let _ = sender.send(OutputToken {
                         uid,
                         token_id: 0,
+                        logprob: None,
                         finished: true,
                         finish_reason: Some(FinishReason::Error),
                     });
@@ -270,6 +271,7 @@ fn handle_command(
                 let _ = sender.send(OutputToken {
                     uid,
                     token_id: 0,
+                    logprob: None,
                     finished: true,
                     finish_reason: Some(FinishReason::Abort),
                 });

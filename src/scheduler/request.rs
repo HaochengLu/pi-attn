@@ -13,11 +13,13 @@ pub enum FinishReason {
     Error,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct OutputToken {
     pub uid: RequestId,
     /// The token is only meaningful when `finish_reason` is not Abort or Error.
     pub token_id: i64,
+    /// The token's log-probability, when the request asked for it (`SamplingParams::logprobs`).
+    pub logprob: Option<f32>,
     pub finished: bool,
     pub finish_reason: Option<FinishReason>,
 }

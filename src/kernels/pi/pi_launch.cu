@@ -1,4 +1,4 @@
-// C ABI for the PI (partition-invariant) kernels: attention and M-invariant GEMM.
+// C ABI for the PI (partition-invariant) kernels: attention, M-invariant GEMM and token log-probabilities.
 // No torch dependency; callers pass raw device pointers and the CUDA stream.
 // Every kernel variant, split count and GEMM tile produces identical bits, so
 // the planners and the GEMM tuner only affect speed. Errors are returned as a
@@ -16,6 +16,7 @@
 #include "gemm_dispatch.cuh"
 
 #include "pi_attn_kernels.cu"
+#include "pi_logprob.cuh"
 
 using namespace pi_attn;
 using namespace pi_gemm;
@@ -118,8 +119,9 @@ const char* pi_attn_decode(const void* q, const void* k_cache, const void* v_cac
 void pi_attn_prefill_plan(int batch, int num_qo_heads, int num_kv_heads, int max_q_len,
                           int max_kv_len, int* splits, int* max_groups) {
   const DeviceInfo info = device_info();
+  const int warps = prefill_warps(info.prefill_qreg, batch, num_qo_heads, num_kv_heads, max_q_len, info.sms);
   prefill_plan(batch, num_qo_heads, num_kv_heads, max_q_len, max_kv_len, info.sms, info.prefill_tail_splits, splits,
-               max_groups);
+               max_groups, warps * 16, warps == 8 ? 1 : 2);
 }
 
 // q/out: [total_q, Hq, 128] bf16 contiguous; qo_indptr: [batch + 1] int32;
@@ -138,16 +140,19 @@ const char* pi_attn_prefill(const void* q, const void* k_cache, const void* v_ca
   if (splits > 1 && (!ws_o || !ws_ml)) return fail("PI prefill split mode needs a workspace");
   auto st = (cudaStream_t)stream;
   const int group = num_qo_heads / num_kv_heads;
-  const int tiles = (int)(((int64_t)max_q_len * group + kPrefillRows - 1) / kPrefillRows);
+  const DeviceInfo info = device_info();
+  const int warps = prefill_warps(info.prefill_qreg, batch, num_qo_heads, num_kv_heads, max_q_len, info.sms);
+  const int tiles = (int)(((int64_t)max_q_len * group + warps * 16 - 1) / (warps * 16));
   auto launch = [&](auto kernel, int smem) {
     set_smem(kernel, smem);
-    kernel<<<dim3(tiles, num_kv_heads, batch * splits), kPrefillWarps * 32, smem, st>>>(
+    kernel<<<dim3(tiles, num_kv_heads, batch * splits), warps * 32, smem, st>>>(
         (const __nv_bfloat16*)q, (__nv_bfloat16*)out, (const __nv_bfloat16*)k_cache,
         (const __nv_bfloat16*)v_cache, qo_indptr, nullptr, page_table, table_stride, nullptr, prefix_lens,
         num_qo_heads, num_kv_heads, page_size, page_shift_of(page_size),
         (float)(sm_scale * 1.4426950408889634), splits, ws_o, (float2*)ws_ml, max_groups);
   };
-  if (device_info().prefill_qreg) launch(prefill_kernel<true>, prefill_smem_bytes<true>());
+  if (warps == 8) launch(prefill_kernel<true, 8>, prefill_smem_bytes<true, 8>());
+  else if (info.prefill_qreg) launch(prefill_kernel<true>, prefill_smem_bytes<true>());
   else launch(prefill_kernel<false>, prefill_smem_bytes<false>());
   if (auto e = check_launch("pi prefill")) return e;
   if (splits > 1) {
@@ -323,6 +328,16 @@ const char* pi_linear_tune(const void* w, int N, int K, int bucket, void* x, voi
                            int64_t flush_bytes, void* stream) {
   if (K % 64 || N % 32) return fail("PI linear needs K % 64 == 0 and N % 32 == 0");
   return tune_bucket(w, N, K, bucket, x, y, flush, (size_t)flush_bytes, (cudaStream_t)stream);
+}
+
+// ------------------------------------------------------------- log-probabilities
+
+// out[r] = log softmax(logits[r])[tokens[r]] in fp32 (pi_logprob.cuh), for logits [rows, vocab]
+// bf16 (is_fp32 == 0) or f32 with row stride ld, tokens [rows] int64, out [rows] f32.
+const char* pi_token_logprob(const void* logits, int is_fp32, int64_t ld, int rows, int vocab,
+                             const int64_t* tokens, float* out, void* stream) {
+  const cudaError_t err = pi_logprob::token_logprob(logits, is_fp32, ld, rows, vocab, tokens, out, (cudaStream_t)stream);
+  return err == cudaSuccess ? nullptr : fail(std::string("PI token logprob: ") + cudaGetErrorString(err));
 }
 
 }  // extern "C"

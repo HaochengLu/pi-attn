@@ -19,8 +19,8 @@ __device__ __forceinline__ const int32_t* request_pages(const int32_t* kv_page_i
   return kv_page_indices + (kv_page_indptr ? (int64_t)kv_page_indptr[b] : (int64_t)b * table_stride);
 }
 
-// Prefill / extend. grid = (row tiles of 64, num_kv_heads, batch * kv_splits), 4
-// warps of 16 rows. The rows of a CTA are the (token, query head) pairs of one kv
+// Prefill / extend. grid = (row tiles of WARPS * 16, num_kv_heads, batch * kv_splits),
+// WARPS (4 or 8) warps of 16 rows; the first 128 threads copy the K/V tiles. The rows of a CTA are the (token, query head) pairs of one kv
 // head's GQA group, token-major (row r: token r / group, head kv_head * group +
 // r % group), so each K/V tile is loaded once per kv head. Token i of request b
 // sits at position kv_len[b] - q_len + i. kv_splits == 1: the CTA folds every
@@ -36,25 +36,37 @@ __device__ __forceinline__ const int32_t* request_pages(const int32_t* kv_page_i
 // range: a fully masked online step is an exact no-op (see online_step).
 //
 // QREG (sm_80): Q fragments live in registers and the fp32 folded totals (touched
-// once per fold group) in smem: 80 KB, two CTAs per SM on sm_80's 164 KB. Otherwise
-// Q is read from smem per tile and the totals sit in registers: 48 KB, which fits
-// two CTAs in sm_89's 100 KB. Both run every row's identical sequence.
+// once per fold group) in smem: 80 KB, two CTAs per SM on sm_80's 164 KB; with 8 warps
+// 128 KB, one CTA per SM, which halves the K/V smem writes and L2 reads per row
+// (prefill_warps). Otherwise Q is read from smem per tile and the totals sit in
+// registers: 48 KB, which fits two CTAs in sm_89's 100 KB. All run every row's
+// identical sequence.
 constexpr int kPrefillWarps = 4, kPrefillRows = kPrefillWarps * 16;
-template <bool QREG>
+template <bool QREG, int WARPS = kPrefillWarps>
 constexpr int prefill_smem_bytes() {
-  return (kPrefillRows + 4 * kTile) * kHeadDim * 2 + (QREG ? kPrefillRows * kHeadDim * 4 : 0);
+  return (WARPS * 16 + 4 * kTile) * kHeadDim * 2 + (QREG ? WARPS * 16 * kHeadDim * 4 : 0);
 }
 // Which variant a device runs: QREG on sm_80, where it measures faster
 // (results/a800/kernels/prefill_configs.txt); elsewhere the 48 KB one, the only one
 // of which two CTAs fit in sm_89's 100 KB.
 inline bool prefill_qreg(int cc_major, int cc_minor) { return cc_major == 8 && cc_minor == 0; }
+// Warps per prefill CTA: on sm_80 (QREG), 8 when the 128-row CTAs fill two waves of one CTA
+// per SM, where they measured 5-8% faster on long and batched prefills; otherwise 4, which
+// keeps short extends and small grids at two CTAs per SM
+// (archive/ceiling_probes/a800/close/probe_prefill_warps.txt).
+inline int prefill_warps(bool qreg, int batch, int num_qo_heads, int num_kv_heads, int max_q_len, int sms) {
+  if (!qreg) return kPrefillWarps;
+  const int64_t rows = (int64_t)max_q_len * (num_qo_heads / std::max(num_kv_heads, 1));
+  const int64_t ctas = (rows + 127) / 128 * num_kv_heads * batch;
+  return ctas >= 2 * (int64_t)sms ? 8 : kPrefillWarps;
+}
 // Whether the planner may split a few-wave prefill against its causal tail. The
 // dispatch simulation below was fitted on sm_89; on sm_80 every split it picks measured
 // slower than one (archive/ceiling_probes/a800/prefill_split_planner.txt).
 inline bool prefill_tail_splits(int cc_major, int cc_minor) { return !(cc_major == 8 && cc_minor == 0); }
 
-template <bool QREG>
-__global__ void __launch_bounds__(kPrefillWarps * 32, 2)
+template <bool QREG, int WARPS = kPrefillWarps>
+__global__ void __launch_bounds__(WARPS * 32, WARPS == 4 ? 2 : 1)
     prefill_kernel(const __nv_bfloat16* __restrict__ q, __nv_bfloat16* __restrict__ out,
                     const __nv_bfloat16* __restrict__ k_cache, const __nv_bfloat16* __restrict__ v_cache,
                     const int32_t* __restrict__ qo_indptr, const int32_t* __restrict__ kv_page_indptr,
@@ -62,7 +74,7 @@ __global__ void __launch_bounds__(kPrefillWarps * 32, 2)
                     const int32_t* __restrict__ kv_lens, const int32_t* __restrict__ prefix_lens,
                     int num_qo_heads, int num_kv_heads, int page_size, int page_shift, float scale_log2,
                     int kv_splits, float* __restrict__ ws_o, float2* __restrict__ ws_ml, int max_groups) {
-  constexpr int kRows = kPrefillRows;
+  constexpr int kRows = WARPS * 16, kThreads = WARPS * 32;
   extern __shared__ __align__(16) __nv_bfloat16 smem[];
   __nv_bfloat16* sQ = smem;
   __nv_bfloat16* sK = sQ + kRows * kHeadDim;  // slots 0, 1 (kTile x 128 each)
@@ -127,8 +139,8 @@ __global__ void __launch_bounds__(kPrefillWarps * 32, 2)
   };
 
 #pragma unroll
-  for (int i = 0; i < kRows * 16 / 128; ++i) {
-    const int idx = tid + i * 128, r = idx >> 4, chunk = idx & 15, qi = row0 + r;
+  for (int i = 0; i < kRows * 16 / kThreads; ++i) {
+    const int idx = tid + i * kThreads, r = idx >> 4, chunk = idx & 15, qi = row0 + r;
     const __nv_bfloat16* src = q;
     int bytes = 0;
     if (qi < rows_total) {
@@ -139,14 +151,18 @@ __global__ void __launch_bounds__(kPrefillWarps * 32, 2)
   }
   // Tile t uses K slot and V slot t & 1 (t_begin is even). row1 / row2: this
   // thread's cache rows of tiles t + 1 and t + 2, each read an iteration before use.
-  auto row_of = [&](int t) { return tile_row(pages, page_size, page_shift, t, kv_len, num_kv_heads, kvh, tid); };
+  // The first 128 threads copy the K/V tiles (issue_tile).
+  const bool copier = tid < 128;
+  auto row_of = [&](int t) -> int64_t {
+    return copier ? tile_row(pages, page_size, page_shift, t, kv_len, num_kv_heads, kvh, tid) : -1;
+  };
   int64_t row1 = row_of(t_begin);
-  issue_tile(sK, k_cache, row1, tid);
+  if (copier) issue_tile(sK, k_cache, row1, tid);
   cp_async_commit();  // Q + K(t_begin)
-  issue_tile(sV, v_cache, row1, tid);
+  if (copier) issue_tile(sV, v_cache, row1, tid);
   row1 = row_of(t_begin + 1);
   int64_t row2 = row_of(t_begin + 2);
-  if (t_begin + 1 <= t_last) issue_tile(sK + kTile * kHeadDim, k_cache, row1, tid);
+  if (copier && t_begin + 1 <= t_last) issue_tile(sK + kTile * kHeadDim, k_cache, row1, tid);
   cp_async_commit();  // V(t_begin) + K(t_begin + 1)
 
   // st: the current group; the folded total of the finished groups is (tot_m,
@@ -205,8 +221,8 @@ __global__ void __launch_bounds__(kPrefillWarps * 32, 2)
     const int slot = t & 1;
     cp_async_wait<0>();  // V(t), K(t + 1)
     __syncthreads();     // ... for all threads; everyone is done with V(t - 1) and K(t)
-    if (t + 1 <= t_last) issue_tile(sV + (slot ^ 1) * kTile * kHeadDim, v_cache, row1, tid);
-    if (t + 2 <= t_last) issue_tile(sK + slot * kTile * kHeadDim, k_cache, row2, tid);
+    if (copier && t + 1 <= t_last) issue_tile(sV + (slot ^ 1) * kTile * kHeadDim, v_cache, row1, tid);
+    if (copier && t + 2 <= t_last) issue_tile(sK + slot * kTile * kHeadDim, k_cache, row2, tid);
     cp_async_commit();
     row1 = row2;
     row2 = row_of(t + 3);
@@ -278,16 +294,16 @@ __global__ void __launch_bounds__(kHeadDim)
 // key tiles it runs plus a fixed 4, and split mode adds the partial-workspace write and
 // merge (0.02 per 1000 row-head-groups). Fitted on results/kernels/prefill_configs.txt.
 inline double prefill_makespan(int batch, int num_qo_heads, int num_kv_heads, int max_q_len, int max_kv_len,
-                        int sp, int64_t slots) {
+                        int sp, int64_t slots, int cta_rows = kPrefillRows) {
   const int group = num_qo_heads / std::max(num_kv_heads, 1), rows = max_q_len * group;
-  const int row_tiles = (rows + kPrefillRows - 1) / (kPrefillRows), prefix = max_kv_len - max_q_len;
+  const int row_tiles = (rows + cta_rows - 1) / cta_rows, prefix = max_kv_len - max_q_len;
   std::priority_queue<double, std::vector<double>, std::greater<double>> free_at;
   for (int64_t i = 0; i < slots; ++i) free_at.push(0.0);
   double end = 0.0;
   for (int z = 0; z < batch * sp; ++z)
     for (int y = 0; y < num_kv_heads; ++y)
       for (int x = 0; x < row_tiles; ++x) {
-        const int last_pos = prefix + (std::min((x + 1) * kPrefillRows, rows) - 1) / group;
+        const int last_pos = prefix + (std::min((x + 1) * cta_rows, rows) - 1) / group;
         const int tg = last_pos / kGroupKeys + 1, per = (tg + sp - 1) / sp, gb = (z % sp) * per;
         const int ge = std::min(tg, gb + per);
         if (gb >= ge) continue;
@@ -303,12 +319,14 @@ inline double prefill_makespan(int batch, int num_qo_heads, int num_kv_heads, in
 
 // Prefill planner: split count over fold groups and max_groups for the split
 // workspace. Splits never change bits, only speed.
+// cta_rows / ctas_per_sm: the prefill kernel configuration (rows per CTA, resident CTAs per SM).
 inline void prefill_plan(int batch, int num_qo_heads, int num_kv_heads, int max_q_len, int max_kv_len,
-                         int sms, bool tail_splits, int* splits, int* max_groups) {
+                         int sms, bool tail_splits, int* splits, int* max_groups, int cta_rows = kPrefillRows,
+                         int ctas_per_sm = 2) {
   const int group = num_qo_heads / std::max(num_kv_heads, 1);
   const int64_t rows = (int64_t)max_q_len * group;
-  const int64_t ctas = (rows + kPrefillRows - 1) / (kPrefillRows) * num_kv_heads * batch;
-  const int64_t slots = 2 * (int64_t)sms;
+  const int64_t ctas = (rows + cta_rows - 1) / cta_rows * num_kv_heads * batch;
+  const int64_t slots = ctas_per_sm * (int64_t)sms;
   *max_groups = (max_kv_len - 1) / kGroupKeys + 1;
   const int64_t tiles = (max_kv_len + kTile - 1) / kTile;
   *splits = 1;
@@ -346,9 +364,9 @@ inline void prefill_plan(int batch, int num_qo_heads, int num_kv_heads, int max_
       return;
     }
     const int q_key = std::min(max_q_len, kv_key);
-    double best = prefill_makespan(batch, num_qo_heads, num_kv_heads, q_key, kv_key, 1, slots);
+    double best = prefill_makespan(batch, num_qo_heads, num_kv_heads, q_key, kv_key, 1, slots, cta_rows);
     for (int sp = 2; sp <= 8 && sp <= *max_groups; sp *= 2) {
-      const double c = prefill_makespan(batch, num_qo_heads, num_kv_heads, q_key, kv_key, sp, slots);
+      const double c = prefill_makespan(batch, num_qo_heads, num_kv_heads, q_key, kv_key, sp, slots, cta_rows);
       if (c < best) {
         best = c;
         *splits = sp;

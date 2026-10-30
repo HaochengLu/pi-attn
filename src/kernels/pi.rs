@@ -46,6 +46,16 @@ mod ffi {
         pub fn pi_linear_tuned_kernel(n: i32, k: i32, bucket: i32) -> i32;
         pub fn pi_stream_capturing(stream: *mut c_void) -> i32;
         pub fn pi_l2_bytes() -> i64;
+        pub fn pi_token_logprob(
+            logits: *const c_void,
+            is_fp32: i32,
+            ld: i64,
+            rows: i32,
+            vocab: i32,
+            tokens: *const i64,
+            out: *mut f32,
+            stream: *mut c_void,
+        ) -> *const c_char;
         pub fn pi_linear_tune(
             w: *const c_void,
             n: i32,
@@ -476,8 +486,63 @@ pub(crate) fn prefill(
     }
 }
 
+/// `log softmax(logits[r])[tokens[r]]` in f32 for `logits [rows, vocab]` (bf16 or f32) and
+/// `tokens [rows]` i64, in one fixed reduction order per row (`pi_logprob.cuh`), so a row's
+/// value does not depend on its batch; a negative token gives NaN.
+pub(crate) fn token_logprobs(logits: &Tensor, tokens: &Tensor) -> Result<Tensor, String> {
+    if logits.dim() != 2 || logits.stride()[1] != 1 || !matches!(logits.kind(), Kind::BFloat16 | Kind::Float) {
+        return Err(format!("token logprobs: logits must be 2-D bf16/f32 rows, got {:?} {:?}", logits.kind(), logits.size()));
+    }
+    require(tokens, Kind::Int64, "token logprobs tokens")?;
+    let rows = logits.size()[0];
+    let tokens = tokens.contiguous();
+    if tokens.size() != [rows] {
+        return Err(format!("token logprobs: {rows} logits rows, tokens {:?}", tokens.size()));
+    }
+    let out = Tensor::empty([rows], (Kind::Float, logits.device()));
+    #[cfg(has_pi)]
+    check(unsafe {
+        ffi::pi_token_logprob(
+            logits.data_ptr(),
+            (logits.kind() == Kind::Float) as i32,
+            logits.stride()[0],
+            rows as i32,
+            logits.size()[1] as i32,
+            tokens.data_ptr().cast(),
+            out.data_ptr().cast(),
+            stream_of(logits)?,
+        )
+    })?;
+    #[cfg(not(has_pi))]
+    return Err("PI kernels were not built".into());
+    Ok(out)
+}
+
 #[cfg(all(test, has_pi))]
 mod tests {
+    use tch::{Device, Kind, Tensor};
+
+    #[test]
+    fn token_logprobs_match_log_softmax_and_do_not_depend_on_the_batch() {
+        if !tch::Cuda::is_available() {
+            return;
+        }
+        let device = Device::Cuda(0);
+        let logits = (Tensor::randn([5, 151936], (Kind::Float, device)) * 4.0).to_kind(Kind::BFloat16);
+        let tokens = Tensor::from_slice(&[0i64, 7, 151935, 42, 1000]).to_device(device);
+        let batch = super::token_logprobs(&logits, &tokens).unwrap();
+        let reference = logits
+            .to_kind(Kind::Float)
+            .log_softmax(-1, Kind::Float)
+            .gather(1, &tokens.unsqueeze(1), false)
+            .squeeze_dim(1);
+        assert!((&batch - &reference).abs().max().double_value(&[]) < 1e-4);
+        for row in 0..5 {
+            let alone = super::token_logprobs(&logits.narrow(0, row, 1), &tokens.narrow(0, row, 1)).unwrap();
+            assert!(alone.equal(&batch.narrow(0, row, 1)), "row {row}");
+        }
+    }
+
     #[test]
     fn graph_sizes_are_tuning_buckets() {
         // Every captured graph size must be a bucket top, or the graph runs a tile tuned

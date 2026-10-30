@@ -22,7 +22,7 @@ pub use model_runner::{
     AttentionMetadata, Batch, BatchPhase, DecodeGraphState, DecodeHostMetadata,
     MetadataRequirements, ModelExecutor, ModelRunner, ModelRunnerError,
 };
-pub(crate) use sampling::{CompletionFence, PendingSample};
+pub(crate) use sampling::{CompletionFence, PendingSample, Sampled};
 pub use sampling::{Sampler, SamplingError, SamplingParams};
 
 pub(crate) use graph::NativeCudaGraph;

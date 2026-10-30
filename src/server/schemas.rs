@@ -60,6 +60,10 @@ pub struct ChatCompletionRequest {
     /// and returned, so a sampled response can be reproduced in deterministic mode.
     #[serde(default)]
     pub seed: Option<i64>,
+    /// Log-probabilities are served by `/v1/completions` only; a chat request asking
+    /// for them is rejected rather than answered without them.
+    #[serde(default)]
+    pub logprobs: bool,
 }
 
 impl ChatCompletionRequest {
@@ -111,6 +115,11 @@ pub struct CompletionRequest {
     /// and returned, so a sampled response can be reproduced in deterministic mode.
     #[serde(default)]
     pub seed: Option<i64>,
+    /// OpenAI `logprobs`: 0 also returns each sampled token's log-probability under the
+    /// model's distribution (softmax of the logits, before temperature, top-k and top-p),
+    /// non-streaming only. Alternatives (values > 0) are not supported.
+    #[serde(default)]
+    pub logprobs: Option<i64>,
 }
 
 pub fn sampling_params(
@@ -140,6 +149,10 @@ mod tests {
         let request: CompletionRequest = serde_json::from_str(r#"{"prompt":"hello"}"#).unwrap();
         assert!(matches!(request.prompt, PromptInput::Text(_)));
         assert!(!request.return_token_ids);
+        assert_eq!(request.logprobs, None);
+        let with_logprobs: CompletionRequest =
+            serde_json::from_str(r#"{"prompt":"hello","logprobs":0}"#).unwrap();
+        assert_eq!(with_logprobs.logprobs, Some(0));
         let tokens: CompletionRequest =
             serde_json::from_str(r#"{"prompt":[1,2,3],"return_token_ids":true}"#).unwrap();
         assert!(matches!(tokens.prompt, PromptInput::Tokens(ref ids) if ids == &[1, 2, 3]));

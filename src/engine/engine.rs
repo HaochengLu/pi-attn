@@ -525,10 +525,11 @@ impl Engine {
         Ok((output.logits, fence))
     }
 
-    /// Samples one token per logits row using request-aligned parameters.
-    pub fn sample(&self, logits: &Tensor, params: &[SamplingParams]) -> Result<Vec<i64>> {
+    /// Samples one token per logits row using request-aligned parameters, with the
+    /// log-probabilities the rows ask for.
+    pub(crate) fn sample(&self, logits: &Tensor, params: &[SamplingParams]) -> Result<super::sampling::Sampled> {
         self.ensure_live()?;
-        Ok(self.sampler.sample_batch(logits, params)?)
+        Ok(self.sampler.sample_batch_logprobs(logits, params)?)
     }
 
     pub(crate) fn defer_sample(
@@ -929,7 +930,8 @@ mod tests {
         assert_eq!(
             engine
                 .sample(&logits, &[SamplingParams::default()])
-                .unwrap(),
+                .unwrap()
+                .tokens,
             vec![1]
         );
         fs::remove_dir_all(model_dir).unwrap();

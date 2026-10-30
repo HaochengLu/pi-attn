@@ -12,7 +12,9 @@
 // CUTLASS tiles, 16 = 10 with CTAs swizzled 8 tiles wide (L2 reuse at M >= 8192), 17 / 18 / 19 =
 // 10 / 16 / 11 with the segment total in L2 slots (S > 1 only), 44..47, 50 and 64..66 stream-K
 // over CUTLASS tiles (64: 32x32 tiles, for narrow weights at M = 17..64; 65 / 66: 128x128 /
-// 128x256, for wide weights at M = 256..1024, where those tiles alone leave SMs idle), 48/49
+// 128x256, for wide weights at M = 256..1024, where those tiles alone leave SMs idle), 67..70
+// CUTLASS tiles with 64-deep k stages (128x64, 64x128, 128x128, 64x64; at M = 128..512 they
+// halve the mainloop's barriers per k), 71 / 72 stream-K over 128x128 / 128x64 of them, 48/49
 // segment-parallel CUTLASS tiles (S > 1 shapes), 54/55 segment-split (M <= 16, S > 1
 // shapes: one CTA per n8 tile, one warp per segment). All realise the same k order; an id that
 // cannot run a shape returns an error before launching and is then not tuned. S (segs) is
@@ -39,7 +41,8 @@ inline const std::vector<int>& small_kernels() {
 }
 // Candidates for every M bucket.
 inline const std::vector<int>& large_kernels() {
-  static const std::vector<int> v{10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 44, 45, 46, 47, 48, 49, 50, 64, 65, 66};
+  static const std::vector<int> v{10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 44, 45, 46, 47,
+                                  48, 49, 50, 64, 65, 66, 67, 68, 69, 70, 71, 72};
   return v;
 }
 inline bool is_small_kernel(int k) { return k < 10 || (k >= 20 && k <= 43) || k == 51 || (k >= 53 && k <= 55) || (k >= 60 && k <= 63); }
@@ -157,6 +160,12 @@ cudaError_t run_gemm(int k, const void* x, int64_t ldx, const void* w, OutT* y, 
     case 64: return CutlassGemm<OutT, 32, 32, 64, 16, 32, 5>::run_streamk(x, ldx, w, y, ldy, M, N, K, segs, dev.sms, 2, st);
     case 65: return CutlassGemm<OutT, 128, 128, 32, 64, 64, 4>::run_streamk(x, ldx, w, y, ldy, M, N, K, segs, dev.sms, 1, st);
     case 66: return CutlassGemm<OutT, 128, 256, 32, 64, 64, 3>::run_streamk(x, ldx, w, y, ldy, M, N, K, segs, dev.sms, 1, st);
+    case 67: return CutlassGemm<OutT, 128, 64, 64, 64, 32, 5>::run(x, ldx, w, y, ldy, M, N, K, segs, st);
+    case 68: return CutlassGemm<OutT, 64, 128, 64, 32, 64, 4>::run(x, ldx, w, y, ldy, M, N, K, segs, st);
+    case 69: return CutlassGemm<OutT, 128, 128, 64, 64, 64, 3>::run(x, ldx, w, y, ldy, M, N, K, segs, st);
+    case 70: return CutlassGemm<OutT, 64, 64, 64, 32, 32, 5>::run(x, ldx, w, y, ldy, M, N, K, segs, st);
+    case 71: return CutlassGemm<OutT, 128, 128, 64, 64, 64, 3>::run_streamk(x, ldx, w, y, ldy, M, N, K, segs, dev.sms, 1, st);
+    case 72: return CutlassGemm<OutT, 128, 64, 64, 64, 32, 5>::run_streamk(x, ldx, w, y, ldy, M, N, K, segs, dev.sms, 1, st);
     default: return cudaErrorInvalidValue;
   }
 }

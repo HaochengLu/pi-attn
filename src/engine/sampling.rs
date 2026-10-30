@@ -17,6 +17,9 @@ pub struct SamplingParams {
     /// Absolute position of the token being sampled; set by the scheduler per
     /// step. With `seed` it fixes the random stream of a deterministic sample.
     pub position: u64,
+    /// Also return each sampled token's log-probability under the model's
+    /// distribution (softmax of the logits: temperature 1, before top-k/top-p).
+    pub logprobs: bool,
 }
 
 impl Default for SamplingParams {
@@ -29,6 +32,7 @@ impl Default for SamplingParams {
             max_tokens: 1024,
             seed: 0,
             position: 0,
+            logprobs: false,
         }
     }
 }
@@ -98,6 +102,20 @@ pub type Result<T> = std::result::Result<T, SamplingError>;
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Sampler;
 
+/// Sampled token ids of a batch, with their log-probabilities when a row asked for them.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Sampled {
+    pub tokens: Vec<i64>,
+    /// One per row (every row, if any row's `SamplingParams::logprobs` is set).
+    pub logprobs: Option<Vec<f32>>,
+}
+
+impl From<Vec<i64>> for Sampled {
+    fn from(tokens: Vec<i64>) -> Self {
+        Self { tokens, logprobs: None }
+    }
+}
+
 /// One in-flight sampling invocation on the caller's execution stream.
 /// Owns both tensors until the blocking readback; cannot move to another thread.
 /// It is private to the engine/scheduler and never exposes device IDs to users.
@@ -105,6 +123,10 @@ pub(crate) struct PendingSample {
     #[cfg(has_cuda_graph)]
     readback: Option<Rc<Readback>>,
     ids: Tensor,
+    /// What is read back: `ids`, or `ids` followed by the f32 log-probability bits
+    /// of every row (`readout_of`).
+    readout: Tensor,
+    with_logprobs: bool,
     _logits: Tensor,
     _same_thread: PhantomData<Rc<()>>,
 }
@@ -125,13 +147,42 @@ impl PendingSample {
         self.ids.clamp_min(0)
     }
 
+    #[cfg(test)]
     pub(crate) fn finish(self) -> Result<Vec<i64>> {
+        Ok(self.finish_sampled()?.tokens)
+    }
+
+    pub(crate) fn finish_sampled(self) -> Result<Sampled> {
         #[cfg(has_cuda_graph)]
         if let Some(readback) = &self.readback {
-            return sampled_ids(&readback.finish()?);
+            return unpack_readout(&readback.finish()?, self.with_logprobs);
         }
-        sampled_ids(&self.ids)
+        unpack_readout(&self.readout, self.with_logprobs)
     }
+}
+
+/// The tensor read back for a sampled batch: the ids, then (when any row asked for
+/// log-probabilities) every row's f32 log-probability bits widened to i64.
+fn readout_of(logits: &Tensor, ids: &Tensor, params: &[SamplingParams]) -> Result<(Tensor, bool)> {
+    if !params.iter().any(|params| params.logprobs) {
+        return Ok((ids.shallow_clone(), false));
+    }
+    let logprobs = crate::kernels::pi::token_logprobs(logits, ids).map_err(SamplingError::Native)?;
+    let bits = logprobs.view_dtype(Kind::Int).to_kind(Kind::Int64);
+    Ok((Tensor::cat(&[ids, &bits], 0), true))
+}
+
+fn unpack_readout(readout: &Tensor, with_logprobs: bool) -> Result<Sampled> {
+    if !with_logprobs {
+        return Ok(sampled_ids(readout)?.into());
+    }
+    let rows = readout.size()[0] / 2;
+    let tokens = sampled_ids(&readout.narrow(0, 0, rows))?;
+    let bits = Vec::<i64>::try_from(readout.narrow(0, rows, rows))?;
+    Ok(Sampled {
+        tokens,
+        logprobs: Some(bits.into_iter().map(|bits| f32::from_bits(bits as i32 as u32)).collect()),
+    })
 }
 
 /// Shared completion of one forward/sampling/readback invocation. Request
@@ -287,16 +338,30 @@ impl Sampler {
         sampled_ids(&self.sample_batch_device(logits, params_list)?)
     }
 
+    /// [`Self::sample_batch`], with the log-probabilities the rows ask for.
+    pub(crate) fn sample_batch_logprobs(
+        &self,
+        logits: &Tensor,
+        params_list: &[SamplingParams],
+    ) -> Result<Sampled> {
+        let ids = self.sample_batch_device(logits, params_list)?;
+        let (readout, with_logprobs) = readout_of(logits, &ids, params_list)?;
+        unpack_readout(&readout, with_logprobs)
+    }
+
     pub(crate) fn defer_batch(
         &self,
         logits: Tensor,
         params: &[SamplingParams],
     ) -> Result<PendingSample> {
-        match self.sample_batch_device(&logits, params) {
-            Ok(ids) => {
+        match self
+            .sample_batch_device(&logits, params)
+            .and_then(|ids| readout_of(&logits, &ids, params).map(|readout| (ids, readout)))
+        {
+            Ok((ids, (readout, with_logprobs))) => {
                 #[cfg(has_cuda_graph)]
                 let readback = if ids.device().is_cuda() {
-                    match Readback::new(&ids) {
+                    match Readback::new(&readout) {
                         Ok(readback) => Some(Rc::new(readback)),
                         Err(error) => {
                             if let tch::Device::Cuda(device) = logits.device() {
@@ -312,6 +377,8 @@ impl Sampler {
                     #[cfg(has_cuda_graph)]
                     readback,
                     ids,
+                    readout,
+                    with_logprobs,
                     _logits: logits,
                     _same_thread: PhantomData,
                 })

@@ -4,7 +4,7 @@ use std::collections::{BTreeSet, VecDeque};
 
 use crate::engine::kvcache::{CacheManager, NaiveCacheManager, RadixCacheManager};
 use crate::engine::{
-    Batch, BatchContext, BatchPhase, Engine, EngineError, SamplingParams, ServerArgs,
+    Batch, BatchContext, BatchPhase, Engine, EngineError, Sampled, SamplingParams, ServerArgs,
 };
 use crate::profiling::{StepProfiler, StepStage, time_schedule};
 use tch::Tensor;
@@ -415,7 +415,7 @@ impl Scheduler {
             logits
                 .and_then(|logits| self.engine.sample(&logits, &params))
                 .and_then(|tokens| {
-                    if tokens.len() == request_ids.len() {
+                    if tokens.tokens.len() == request_ids.len() {
                         Ok(tokens)
                     } else {
                         Err(EngineError::InvalidArgument(
@@ -464,13 +464,14 @@ impl Scheduler {
         request_ids: Vec<RequestId>,
         inputs: Option<Vec<CompletionInput>>,
         phase: BatchPhase,
-        sampled: std::result::Result<Vec<i64>, EngineError>,
+        sampled: std::result::Result<Sampled, EngineError>,
         results: &mut Vec<OutputToken>,
     ) {
         match sampled {
-            Ok(tokens) => {
+            Ok(Sampled { tokens, logprobs }) => {
                 let mut finished = Vec::new();
                 for (row, (uid, token_id)) in request_ids.into_iter().zip(tokens).enumerate() {
+                    let logprob = logprobs.as_ref().map(|logprobs| logprobs[row]);
                     // Aborted rows, including their speculative sampled tokens,
                     // are ignored after the outstanding invocation is fenced.
                     if self.requests.running_request(uid).is_none() {
@@ -491,6 +492,7 @@ impl Scheduler {
                         results.push(OutputToken {
                             uid,
                             token_id,
+                            logprob,
                             finished: true,
                             finish_reason: reason,
                         });
@@ -520,6 +522,7 @@ impl Scheduler {
                     results.push(OutputToken {
                         uid,
                         token_id,
+                        logprob,
                         finished: reason.is_some(),
                         finish_reason: reason,
                     });
@@ -850,7 +853,7 @@ impl Scheduler {
         BatchPhase,
         Vec<RequestId>,
         Vec<CompletionInput>,
-        std::result::Result<Vec<i64>, EngineError>,
+        std::result::Result<Sampled, EngineError>,
     ) {
         let PendingBatch {
             fence: _,
@@ -861,10 +864,10 @@ impl Scheduler {
             ..
         } = pending;
         let tokens = sample
-            .finish()
+            .finish_sampled()
             .map_err(EngineError::from)
             .and_then(|tokens| {
-                if tokens.len() == request_ids.len() {
+                if tokens.tokens.len() == request_ids.len() {
                     Ok(tokens)
                 } else {
                     Err(EngineError::InvalidArgument(
@@ -897,29 +900,29 @@ impl Scheduler {
         &mut self,
         request_ids: Vec<RequestId>,
         inputs: Vec<CompletionInput>,
-        tokens: Vec<i64>,
+        sampled: Sampled,
         phase: BatchPhase,
         chunk: PrefillChunk,
         results: &mut Vec<OutputToken>,
     ) {
         let mut other_ids = Vec::new();
         let mut other_inputs = Vec::new();
-        let mut other_tokens = Vec::new();
-        for ((uid, input), token) in request_ids.into_iter().zip(inputs).zip(tokens) {
+        let mut other = Sampled {
+            tokens: Vec::new(),
+            logprobs: sampled.logprobs.as_ref().map(|_| Vec::new()),
+        };
+        for (row, ((uid, input), token)) in request_ids.into_iter().zip(inputs).zip(sampled.tokens).enumerate() {
             if uid != chunk.uid {
                 other_ids.push(uid);
                 other_inputs.push(input);
-                other_tokens.push(token);
+                other.tokens.push(token);
+                if let (Some(all), Some(kept)) = (&sampled.logprobs, &mut other.logprobs) {
+                    kept.push(all[row]);
+                }
             }
         }
         if !other_ids.is_empty() {
-            self.complete(
-                other_ids,
-                Some(other_inputs),
-                phase,
-                Ok(other_tokens),
-                results,
-            );
+            self.complete(other_ids, Some(other_inputs), phase, Ok(other), results);
         }
         self.complete_chunk(chunk, results);
     }
@@ -1070,6 +1073,7 @@ impl Scheduler {
         OutputToken {
             uid,
             token_id: self.eos_token_ids.first().copied().unwrap_or(0),
+            logprob: None,
             finished: true,
             finish_reason: Some(reason),
         }
@@ -1192,6 +1196,7 @@ mod tests {
             vec![OutputToken {
                 uid,
                 token_id: 7,
+                logprob: None,
                 finished: true,
                 finish_reason: Some(FinishReason::Abort),
             }]
@@ -2308,7 +2313,7 @@ mod tests {
                     vec![0],
                     Some(vec![input]),
                     BatchPhase::Decode,
-                    Ok(vec![7]),
+                    Ok(vec![7].into()),
                     &mut outputs,
                 );
                 assert_eq!(outputs.len(), 1);
@@ -2401,7 +2406,7 @@ mod tests {
             vec![0],
             Some(vec![input]),
             BatchPhase::Decode,
-            Ok(vec![7]),
+            Ok(vec![7].into()),
             &mut outputs,
         );
         assert_eq!(outputs[0].finish_reason, Some(FinishReason::Stop));
@@ -2631,12 +2636,14 @@ mod tests {
                 OutputToken {
                     uid,
                     token_id: 3,
+                    logprob: None,
                     finished: false,
                     finish_reason: None
                 },
                 OutputToken {
                     uid,
                     token_id: 3,
+                    logprob: None,
                     finished: false,
                     finish_reason: None
                 },
@@ -2648,6 +2655,7 @@ mod tests {
             vec![OutputToken {
                 uid,
                 token_id: 3,
+                logprob: None,
                 finished: true,
                 finish_reason: Some(FinishReason::Length)
             },]
@@ -2672,12 +2680,14 @@ mod tests {
                 OutputToken {
                     uid,
                     token_id: 3,
+                    logprob: None,
                     finished: false,
                     finish_reason: None
                 },
                 OutputToken {
                     uid,
                     token_id: 7,
+                    logprob: None,
                     finished: true,
                     finish_reason: Some(FinishReason::Error)
                 },
@@ -2717,12 +2727,14 @@ mod tests {
                 OutputToken {
                     uid: second,
                     token_id: 7,
+                    logprob: None,
                     finished: true,
                     finish_reason: Some(FinishReason::Error)
                 },
                 OutputToken {
                     uid: first,
                     token_id: 3,
+                    logprob: None,
                     finished: true,
                     finish_reason: Some(FinishReason::Length)
                 },
@@ -2747,6 +2759,7 @@ mod tests {
             vec![OutputToken {
                 uid,
                 token_id: 7,
+                logprob: None,
                 finished: true,
                 finish_reason: Some(FinishReason::Stop),
             }]
