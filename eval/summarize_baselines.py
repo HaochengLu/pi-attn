@@ -6,7 +6,8 @@ d = sys.argv[1]
 ENG = [("rust", "llm_infer_rust (FlashInfer)"), ("rust-det", "llm_infer_rust --deterministic (PI)"),
        ("sglang", "SGLang 0.5.5"), ("sglang-det", "SGLang 0.5.5 deterministic (FlashInfer)"),
        ("sglang-det-triton", "SGLang 0.5.5 deterministic (Triton)"),
-       ("vllm", "vLLM 0.11.2"), ("vllm-det", "vLLM 0.11.2 VLLM_BATCH_INVARIANT=1")]
+       ("vllm", "vLLM 0.11.2"), ("vllm-det", "vLLM 0.11.2 VLLM_BATCH_INVARIANT=1"),
+       ("vllm17", "vLLM 0.17.1"), ("vllm17-det", "vLLM 0.17.1 VLLM_BATCH_INVARIANT=1")]
 loads = {}
 print("| engine | batch c4/c16 | shared prefix x32 | path | seeded path | repeat (unique/200) | seeded sample c4/c16 | prefix full/partial hit |")
 print("|---|---|---|---|---|---|---|---|")

@@ -4,7 +4,7 @@
 # kernel benchmarks, cross-configuration and detcheck runs, end-to-end matrices,
 # high-concurrency decode, the attention/GEMM ablation, same-GPU baselines (our engine only
 # unless BASELINE_ENGINES lists more, e.g. on a new GPU "rust rust-det sglang sglang-det vllm vllm-det"), GSM8K,
-# fp32 agreement and node-level traces of batch-1 decode. Each stage logs to results/run_all/<stage>.log.
+# fp32 agreement, rollout log-probabilities vs a trainer's forward and node-level traces of batch-1 decode. Each stage logs to results/run_all/<stage>.log.
 set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../env.sh"
 log=$ROOT/results/run_all; mkdir -p $log
@@ -13,7 +13,7 @@ stage build
 arch=${FLASHINFER_CUDA_ARCH:-$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -1 | tr -d .)}  # 89 = 4090, 80 = A800
 (cd $ROOT/llm_infer_rust && FLASHINFER_CUDA_ARCH=$arch cargo build --release) > $log/build.log 2>&1 || { echo build failed; exit 1; }
 stage kernel-tests
-(cd $ROOT/kernels && for t in test_invariance test_directed test_matrix test_gemm; do python $t.py; echo "$t exit=$?"; done) > $log/kernel_tests.log 2>&1
+(cd $ROOT/kernels && for t in test_invariance test_directed test_matrix test_gemm test_mutants; do python $t.py; echo "$t exit=$?"; done) > $log/kernel_tests.log 2>&1
 grep "exit=" $log/kernel_tests.log
 stage xgpu-hashes
 mkdir -p $ROOT/results/xgpu
@@ -30,7 +30,7 @@ for M in Qwen3-0.6B Qwen3-1.7B Qwen3-4B Qwen3-8B; do
   $ROOT/scripts/serve.sh $port $ROOT/models/$M --deterministic --max-running-req 32 --max-seq-len 8192 \
     --max-total-tokens 32768 --chunked-prefill-size 2048 --log-dir $ROOT/logs > $ROOT/results/detcheck/final_$M.server.log 2>&1 &
   for i in $(seq 1 200); do curl -s -m 2 localhost:$port/health >/dev/null && break; sleep 2; done
-  python $ROOT/detcheck/detcheck.py --url http://127.0.0.1:$port --tokenizer $ROOT/models/$M \
+  python $ROOT/detcheck/detcheck.py --url http://127.0.0.1:$port --tokenizer $ROOT/models/$M --logprobs \
     --out $ROOT/results/detcheck/final_$M.json > $ROOT/results/detcheck/final_$M.log 2>&1
   echo "$M detcheck exit=$? $(tail -1 $ROOT/results/detcheck/final_$M.log)"
   bash $ROOT/scripts/stop_all.sh > /dev/null 2>&1; sleep 5
@@ -60,6 +60,8 @@ python $ROOT/eval/compare_accuracy.py $ROOT/results/accuracy/Qwen3-1.7B > $ROOT/
 python $ROOT/eval/compare_accuracy.py $ROOT/results/accuracy/Qwen3-8B > $ROOT/results/accuracy/Qwen3-8B/SUMMARY.md 2>&1
 stage fp32
 bash $ROOT/eval/fp32_agreement.sh > $log/fp32.log 2>&1
+stage rollout
+bash $ROOT/eval/rollout.sh > $log/rollout.log 2>&1
 stage nsys
 for M in 0.6B 1.7B 4B 8B; do
   MODEL=Qwen3-$M bash $ROOT/scripts/nsys_decode.sh b1_${M}_fi --attention-backend flashinfer --chunked-prefill-size 2048

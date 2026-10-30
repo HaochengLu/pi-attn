@@ -8,12 +8,16 @@ Six partition changes must leave every output bit unchanged:
   path     : prefill row at position p vs decode of the token at position p
   heads    : all heads in one call vs the head shards of tensor-parallel ranks (t = 2, 3, 4,
              8 over the kv heads; t = 16 replicates kv heads, so each rank's GQA group shrinks)
-Accuracy is compared against float64 attention and torch SDPA (bf16).
+Accuracy against float64 attention must be within ACC_SLACK of FlashInfer's single prefill (a
+production bf16 flash-attention kernel, P rounded to bf16 as here) on the same inputs. (torch
+SDPA on these 3-d inputs runs its math backend, which keeps P in fp32; it is not the reference.)
+kernels/test_mutants.py runs these checks on deliberately broken kernels, which must fail them.
 """
 import math
 import random
 import sys
 
+import flashinfer
 import torch
 
 from build import build
@@ -26,8 +30,11 @@ PAGE = 16
 HQ, HKV, D = 16, 8, 128
 SCALE = 1 / math.sqrt(D)
 KVSPLITS = int(__import__('os').environ.get('PI_KVSPLITS', '1'))
-# Prefill kernel variant: 0 = the device's choice, 1 = Q in smem, 2 = Q in registers.
+# Prefill kernel variant: 0 = the device's choice, 1 = Q in smem, 2 = Q in registers, 3 / 4 = the same
+# with 8 warps per CTA.
 VARIANT = 0
+# PI error vs float64 may exceed FlashInfer's by at most this factor (mean, max).
+ACC_SLACK = (1.05, 1.25)
 # Decode arrival counters, shared by every call as in the engine: each call must
 # leave them zero for the next.
 COUNTERS = torch.zeros(1 << 20, dtype=torch.int32, device=dev)
@@ -145,7 +152,20 @@ def exact(q, k, v):
     return torch.einsum("hqk,khd->qhd", s.softmax(-1), vd)
 
 
-def main():
+def accuracy(L, out, q, k, v):
+    """Error of out vs float64, against FlashInfer's on the same inputs: (failures, mean, max)."""
+    ref = exact(q, k, v).float()
+    e_pi = (out.float() - ref).abs()
+    e_fi = (flashinfer.single_prefill_with_kv_cache(q, k, v, causal=True).float() - ref).abs()
+    print(f"L={L} hq={q.shape[1]} hkv={k.shape[1]}: PI err mean {e_pi.mean():.3e} max {e_pi.max():.3e} | "
+          f"FlashInfer err mean {e_fi.mean():.3e} max {e_fi.max():.3e} | "
+          f"bf16(exact) err mean {(ref.bfloat16().float() - ref).abs().mean():.3e}")
+    bad = e_pi.mean() > ACC_SLACK[0] * e_fi.mean() or e_pi.max() > ACC_SLACK[1] * e_fi.max()
+    return [("accuracy", L, q.shape[1], k.shape[1])] if bad else [], e_pi.mean().item(), e_pi.max().item()
+
+
+def run_checks():
+    """All invariance and accuracy checks; returns the failures as (check, ...) tuples."""
     global KVSPLITS, VARIANT
     pool = Pool()
     fails = []
@@ -182,23 +202,25 @@ def main():
         if not same(torch.cat(outs), alone[L]):
             fails.append(("chunk+prefix", L))
 
-    # split / variant: prefill forced over 1..7 split CTAs per row tile, with either
-    # prefill kernel variant, vs the planner's run.
-    for VARIANT in (1, 2):
+    # split / variant: prefill forced over 1..7 split CTAs per row tile, with every
+    # prefill kernel variant (Q in smem / registers, 4 / 8 warps), vs the planner's run.
+    for VARIANT in (1, 2, 3, 4):
         for KVSPLITS in (1, 2, 3, 7):
             for L in lens:
                 if not same(prefill(pool, [(seqs[L][0], pages[L], L)])[0], alone[L]):
                     fails.append(("split", VARIANT, L, KVSPLITS))
     KVSPLITS, VARIANT = 0, 0
 
-    # path + batch: decode token p (cache holds 0..p) vs prefill row p, at tile
-    # (32) and fold-group (512) boundaries, in two random batchings.
+    # path + batch: decode token p (cache holds 0..p) vs prefill row p, for every position of
+    # every request (a one-ulp fp32 difference reaches the bf16 output only rarely, so the check
+    # needs volume: kernels/test_mutants.py), in two random batchings of random sizes.
     for _ in range(2):
-        probes = [(L, p) for L in lens for p in sorted({0, L // 2, L - 1, random.randrange(L)} |
-                                                      {b for b in (31, 32, 511, 512, 513, 1023, 1024) if b < L})]
+        probes = [(L, p) for L in lens for p in range(L)]
         random.shuffle(probes)
-        for i in range(0, len(probes), 9):
-            group = probes[i:i + 9]
+        i = 0
+        while i < len(probes):
+            n = random.randint(1, 64)
+            group, i = probes[i:i + n], i + n
             reqs = [(seqs[L][0][p:p + 1].contiguous(), pages[L], p + 1) for L, p in group]
             for (L, p), out in zip(group, decode(pool, reqs)):
                 if not same(out[0], alone[L][p]):
@@ -209,18 +231,15 @@ def main():
 
     check_heads(pool, seqs, pages, alone, fails)
 
-    # Accuracy vs float64 and vs bf16 SDPA.
+    # Accuracy vs float64, against FlashInfer's.
     for L in [517, 2049]:
         q, k, v = seqs[L]
-        ref = exact(q, k, v).float()
-        sd = torch.nn.functional.scaled_dot_product_attention(
-            q.transpose(0, 1), k.transpose(0, 1), v.transpose(0, 1), is_causal=True,
-            enable_gqa=True).transpose(0, 1).float()
-        e_pi = (alone[L].float() - ref).abs()
-        e_sd = (sd - ref).abs()
-        print(f"L={L}: PI err mean {e_pi.mean():.3e} max {e_pi.max():.3e} | "
-              f"SDPA err mean {e_sd.mean():.3e} max {e_sd.max():.3e}")
+        fails += accuracy(L, alone[L], q, k, v)[0]
+    return fails
 
+
+def main():
+    fails = run_checks()
     print("checks failed:", len(fails), fails[:10])
     return 1 if fails else 0
 

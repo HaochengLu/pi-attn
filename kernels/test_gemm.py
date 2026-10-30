@@ -4,7 +4,8 @@ Invariance: for every projection of the four Qwen3 models (LM heads included), e
 of Y must be bitwise equal whether computed with M = 1, any other M up to 4096, any kernel
 id the engine can choose (gemm_dispatch.cuh), and with garbage in the other rows. Each id
 must also refuse exactly the shapes `usable` says it cannot run, so the tuner never picks
-an untested (id, shape, M).
+an untested (id, shape, M). Accuracy: the fp32 result is within the fp32 summation error bound
+of the float64 product, and the bf16 output is exactly its rounding.
 
 TP-degree invariance (column sharding): for row-parallel projections of models served at
 up to t_max = 8 GPUs, Y computed over the whole weight must equal, bitwise, the
@@ -74,7 +75,7 @@ BK = {20: 128, 21: 256, 22: 256, 24: 128, 25: 128, 30: 256, 31: 128, 32: 128, 33
 MAX_M = {30: 16, 31: 16, 32: 32, 33: 64, 54: 16, 55: 16, **{k: v[3] for k, v in WARP_SK.items()}}
 PAIRS = {k for k, v in WARP_SK.items() if v[2] == 2}  # stream-K over pairs of n8 tiles: N % 16 == 0
 STREAMK = {44: (32, 64), 45: (32, 64), 46: (64, 64), 47: (64, 128), 50: (128, 64),
-           64: (32, 32), 65: (128, 128), 66: (128, 256)}  # CUTLASS stream-K: id -> tile
+           64: (32, 32), 65: (128, 128), 66: (128, 256), 71: (128, 128), 72: (128, 64)}  # CUTLASS stream-K: id -> tile
 SLOT = {17, 18, 19}  # SegmentedKernel with L2 slots: S > 1 only
 SEGSPLIT = {54: (128, 3), 55: (64, 6)}  # S > 1 shapes only: (BK, stages), one cp.async ring per segment
 SEG_WS = {30, 31, 32, 33, *WARP_SK}  # S > 1: S * M * N partials in g_seg_ws
@@ -133,7 +134,7 @@ def check_segments(name, X, W, segs, fails):
     tot = torch.zeros(64, N, device=dev)
     for sg in range(segs):
         tot = tot + ext.linear(Xs[:, sg * ks:(sg + 1) * ks], W[:, sg * ks:(sg + 1) * ks].contiguous(), 1, True, 1)
-    for kern in (1, 20, 33, 11, 13, 14, 15, 17, 18, 19, 44, 48, 49, 64, 65, 66):
+    for kern in (1, 20, 33, 11, 13, 14, 15, 17, 18, 19, 44, 48, 49, 64, 65, 66, 67, 68, 69, 70, 71, 72):
         if not usable(kern, 64, N, K, segs):
             continue
         y = ext.linear(Xs, W, kern, False, segs)
@@ -235,10 +236,20 @@ def main(bench):
         segs = gemm_segments(N, K)
         if segs > 1:
             check_segments(name, X, W, segs, fails)
-        y64 = (X[:256].double() @ W.double().T)
-        e_pi = (ext.linear(X[:256].contiguous(), W, 0, True).double() - y64).abs().max().item()
-        e_cb = (torch.matmul(X[:256], W.T).double() - y64).abs().max().item()
-        e_pi_b = (ext.linear(X[:256].contiguous(), W, 0, False).double() - y64).abs().max().item()
+        # Accuracy: the fp32 result is within the fp32 summation bound (K products + the segment fold,
+        # 2^-23 per add to allow tensor-core alignment truncation) of the float64 product, and the bf16
+        # output is exactly that fp32 result rounded.
+        Xa = X[:256].contiguous()
+        y64 = Xa.double() @ W.double().T
+        bound = (Xa.double().abs() @ W.double().abs().T) * ((K + segs) * 2.0 ** -23)
+        y32, yb = ext.linear(Xa, W, 0, True), ext.linear(Xa, W, 0, False)
+        if ((y32.double() - y64).abs() > bound).any():
+            fails.append((name, "accuracy: fp32 result outside the summation bound"))
+        if not torch.equal(yb.view(torch.int16), y32.bfloat16().view(torch.int16)):
+            fails.append((name, "accuracy: bf16 output is not the rounded fp32 result"))
+        e_pi = (y32.double() - y64).abs().max().item()
+        e_cb = (torch.matmul(Xa, W.T).double() - y64).abs().max().item()
+        e_pi_b = (yb.double() - y64).abs().max().item()
         line = f"{name:13s} N={N:6d} K={K:5d}: max|err| pi(fp32 out) {e_pi:.2e} pi(bf16) {e_pi_b:.2e} cublas(bf16) {e_cb:.2e}"
         if bench:
             ts = []

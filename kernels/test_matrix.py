@@ -2,11 +2,12 @@
 
 For each GQA geometry (Qwen3 0.6B/1.7B: 16/8, 4B/8B: 32/8, plus 8/8 and 32/4)
 and query scale (normal and peaked), every way of computing a token's attention
-output must give the same bits: prefill with either kernel variant (Q in smem or in
-registers) and 1, 2, 5 or the planner's split count over fold groups (inside random
+output must give the same bits: prefill with every kernel variant (Q in smem or in
+registers, 4 or 8 warps per CTA) and 1, 2, 5 or the planner's split count over fold groups (inside random
 batches), chunked prefill at random cuts over a
 cached prefix stored in other pages, and decode inside random batches. Also
-checks run-to-run determinism and accuracy vs float64.
+checks run-to-run determinism and accuracy vs float64, which must be within
+test_invariance.ACC_SLACK of FlashInfer's (test_invariance.accuracy).
 """
 import math
 import random
@@ -35,7 +36,7 @@ def run_geometry(hq, hkv, qscale, lens, seed):
     fails = []
     T.KVSPLITS = 1
     ref = {L: T.prefill(pool, [(seqs[L][0], pages[L], L)])[0] for L in lens}
-    for var, kvs in [(v, k) for v in (1, 2) for k in (1, 2, 5, 0)]:  # both variants; forced splits and the planner
+    for var, kvs in [(v, k) for v in (1, 2, 3, 4) for k in (1, 2, 5, 0)]:  # every variant; forced splits and the planner
         T.VARIANT, T.KVSPLITS = var, kvs
         # Split mode stores one f32 partial per (row, head, fold group): batch only the
         # requests whose workspace fits; longer ones get the extend case split mode is
@@ -84,8 +85,8 @@ def run_geometry(hq, hkv, qscale, lens, seed):
         return fails, float("nan"), float("nan")
     L = max(small)
     q, k, v = seqs[L]
-    e = (ref[L].float() - T.exact(q, k, v).float()).abs()
-    return fails, e.mean().item(), e.max().item()
+    acc, mean, mx = T.accuracy(L, ref[L], q, k, v)
+    return fails + acc, mean, mx
 
 
 def main():

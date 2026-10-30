@@ -1,0 +1,44 @@
+/uniparser/users/luhaocheng/pi_attn/kernels/../archive/ceiling_probes/a800/close/acc_probe.py:30: UserWarning: Memory efficient kernel not used because: (Triggered internally at /__w/pytorch/pytorch/aten/src/ATen/native/transformers/cuda/sdp_utils.cpp:1104.)
+  o = torch.nn.functional.scaled_dot_product_attention(q.transpose(0, 1), kk.transpose(0, 1), vv.transpose(0, 1), is_causal=True).transpose(0, 1)
+/uniparser/users/luhaocheng/pi_attn/kernels/../archive/ceiling_probes/a800/close/acc_probe.py:30: UserWarning: Memory Efficient attention has been runtime disabled. (Triggered internally at /__w/pytorch/pytorch/aten/src/ATen/native/transformers/sdp_utils_cpp.h:571.)
+  o = torch.nn.functional.scaled_dot_product_attention(q.transpose(0, 1), kk.transpose(0, 1), vv.transpose(0, 1), is_causal=True).transpose(0, 1)
+/uniparser/users/luhaocheng/pi_attn/kernels/../archive/ceiling_probes/a800/close/acc_probe.py:30: UserWarning: Flash attention kernel not used because: (Triggered internally at /__w/pytorch/pytorch/aten/src/ATen/native/transformers/cuda/sdp_utils.cpp:1106.)
+  o = torch.nn.functional.scaled_dot_product_attention(q.transpose(0, 1), kk.transpose(0, 1), vv.transpose(0, 1), is_causal=True).transpose(0, 1)
+/uniparser/users/luhaocheng/pi_attn/kernels/../archive/ceiling_probes/a800/close/acc_probe.py:30: UserWarning: All fused kernels requires query, key and value to be 4 dimensional, but got Query dim: 3, Key dim: 3, Value dim: 3 instead. (Triggered internally at /__w/pytorch/pytorch/aten/src/ATen/native/transformers/sdp_utils_cpp.h:327.)
+  o = torch.nn.functional.scaled_dot_product_attention(q.transpose(0, 1), kk.transpose(0, 1), vv.transpose(0, 1), is_causal=True).transpose(0, 1)
+/uniparser/users/luhaocheng/pi_attn/kernels/../archive/ceiling_probes/a800/close/acc_probe.py:30: UserWarning: cuDNN attention kernel not used because: (Triggered internally at /__w/pytorch/pytorch/aten/src/ATen/native/transformers/cuda/sdp_utils.cpp:1108.)
+  o = torch.nn.functional.scaled_dot_product_attention(q.transpose(0, 1), kk.transpose(0, 1), vv.transpose(0, 1), is_causal=True).transpose(0, 1)
+/uniparser/users/luhaocheng/pi_attn/kernels/../archive/ceiling_probes/a800/close/acc_probe.py:30: UserWarning: cuDNN attention has been runtime disabled. (Triggered internally at /__w/pytorch/pytorch/aten/src/ATen/native/transformers/cuda/sdp_utils.cpp:831.)
+  o = torch.nn.functional.scaled_dot_product_attention(q.transpose(0, 1), kk.transpose(0, 1), vv.transpose(0, 1), is_causal=True).transpose(0, 1)
+/uniparser/users/luhaocheng/pi_attn/kernels/../archive/ceiling_probes/a800/close/acc_probe.py:30: UserWarning: Flash attention has been runtime disabled. (Triggered internally at /__w/pytorch/pytorch/aten/src/ATen/native/transformers/sdp_utils_cpp.h:559.)
+  o = torch.nn.functional.scaled_dot_product_attention(q.transpose(0, 1), kk.transpose(0, 1), vv.transpose(0, 1), is_causal=True).transpose(0, 1)
+hq=16 qscale=1.0 PI: mean 8.112e-05 max 7.530e-03
+  SDPA FLASH_ATTENTION: RuntimeError
+  SDPA EFFICIENT_ATTENTION: RuntimeError
+  SDPA CUDNN_ATTENTION: RuntimeError
+  SDPA MATH: mean 5.851e-05 max 7.530e-03
+  SDPA default enable_gqa: mean 5.851e-05 max 7.530e-03
+/uniparser/users/luhaocheng/pi_attn/kernels/../archive/ceiling_probes/a800/close/acc_probe.py:30: UserWarning: Memory efficient kernel not used because: (Triggered internally at /__w/pytorch/pytorch/aten/src/ATen/native/transformers/cuda/sdp_utils.cpp:1104.)
+  o = torch.nn.functional.scaled_dot_product_attention(q.transpose(0, 1), kk.transpose(0, 1), vv.transpose(0, 1), is_causal=True).transpose(0, 1)
+/uniparser/users/luhaocheng/pi_attn/kernels/../archive/ceiling_probes/a800/close/acc_probe.py:30: UserWarning: Memory Efficient attention has been runtime disabled. (Triggered internally at /__w/pytorch/pytorch/aten/src/ATen/native/transformers/sdp_utils_cpp.h:571.)
+  o = torch.nn.functional.scaled_dot_product_attention(q.transpose(0, 1), kk.transpose(0, 1), vv.transpose(0, 1), is_causal=True).transpose(0, 1)
+/uniparser/users/luhaocheng/pi_attn/kernels/../archive/ceiling_probes/a800/close/acc_probe.py:30: UserWarning: Flash attention kernel not used because: (Triggered internally at /__w/pytorch/pytorch/aten/src/ATen/native/transformers/cuda/sdp_utils.cpp:1106.)
+  o = torch.nn.functional.scaled_dot_product_attention(q.transpose(0, 1), kk.transpose(0, 1), vv.transpose(0, 1), is_causal=True).transpose(0, 1)
+/uniparser/users/luhaocheng/pi_attn/kernels/../archive/ceiling_probes/a800/close/acc_probe.py:30: UserWarning: All fused kernels requires query, key and value to be 4 dimensional, but got Query dim: 3, Key dim: 3, Value dim: 3 instead. (Triggered internally at /__w/pytorch/pytorch/aten/src/ATen/native/transformers/sdp_utils_cpp.h:327.)
+  o = torch.nn.functional.scaled_dot_product_attention(q.transpose(0, 1), kk.transpose(0, 1), vv.transpose(0, 1), is_causal=True).transpose(0, 1)
+/uniparser/users/luhaocheng/pi_attn/kernels/../archive/ceiling_probes/a800/close/acc_probe.py:30: UserWarning: cuDNN attention kernel not used because: (Triggered internally at /__w/pytorch/pytorch/aten/src/ATen/native/transformers/cuda/sdp_utils.cpp:1108.)
+  o = torch.nn.functional.scaled_dot_product_attention(q.transpose(0, 1), kk.transpose(0, 1), vv.transpose(0, 1), is_causal=True).transpose(0, 1)
+/uniparser/users/luhaocheng/pi_attn/kernels/../archive/ceiling_probes/a800/close/acc_probe.py:30: UserWarning: cuDNN attention has been runtime disabled. (Triggered internally at /__w/pytorch/pytorch/aten/src/ATen/native/transformers/cuda/sdp_utils.cpp:831.)
+  o = torch.nn.functional.scaled_dot_product_attention(q.transpose(0, 1), kk.transpose(0, 1), vv.transpose(0, 1), is_causal=True).transpose(0, 1)
+/uniparser/users/luhaocheng/pi_attn/kernels/../archive/ceiling_probes/a800/close/acc_probe.py:30: UserWarning: Flash attention has been runtime disabled. (Triggered internally at /__w/pytorch/pytorch/aten/src/ATen/native/transformers/sdp_utils_cpp.h:559.)
+  o = torch.nn.functional.scaled_dot_product_attention(q.transpose(0, 1), kk.transpose(0, 1), vv.transpose(0, 1), is_causal=True).transpose(0, 1)
+  FlashInfer single_prefill: mean 8.323e-05 max 7.530e-03
+  bf16(exact) rounding only: mean 5.559e-05 max 7.530e-03
+hq=16 qscale=6.0 PI: mean 7.475e-04 max 1.532e-02
+  SDPA FLASH_ATTENTION: RuntimeError
+  SDPA EFFICIENT_ATTENTION: RuntimeError
+  SDPA CUDNN_ATTENTION: RuntimeError
+  SDPA MATH: mean 8.692e-04 max 1.532e-02
+  SDPA default enable_gqa: mean 8.692e-04 max 1.532e-02
+  FlashInfer single_prefill: mean 7.720e-04 max 1.532e-02
+  bf16(exact) rounding only: mean 7.268e-04 max 1.532e-02

@@ -24,7 +24,7 @@ column counts evenly (3, 5, 6, 7).
 The GEMM program is the engine's (`gemm_inv.cuh`): per output element, one fp32 MMA chain over
 ascending k16 steps per K segment, S segments left-folded from +0. S is part of the model's
 canonical program, not of the launch: every launch takes it as an argument, and a launch over a
-column shard passes the whole weight's S. Any of the 45 kernel ids the tuner picks from is legal
+column shard passes the whole weight's S. Any of the 51 kernel ids the tuner picks from is legal
 on any shard.
 
 ## The segment count and the chain floor
@@ -63,30 +63,28 @@ models) are not. Declaring t_max = 8 on a single GPU (whole weight at S(8) again
 
 | Projection (N x K) | S(1) -> S(8) | M = 1 | 8 | 16 | 32 | 128 | 512 | 2048 | 8192 |
 |---|---|---|---|---|---|---|---|---|---|
-| 70B o (8192 x 8192) | 1 -> 2 | 1.05 | 1.00 | 1.01 | 1.01 | 1.14 | 1.28 | 1.17 | 1.08 |
-| 70B down (8192 x 28672) | 1 -> 2 | 1.02 | 1.02 | 1.03 | 1.02 | 1.08 | 1.06 | 1.11 | 1.10 |
-| 8B o (4096 x 4096) | 1 -> 4 | 1.11 | 1.10 | 1.09 | 1.08 | 1.15 | 1.19 | 1.28 | 1.27 |
-| 8B down (4096 x 12288) | 1 -> 4 | 1.04 | 1.02 | 1.02 | 1.02 | 1.07 | 1.22 | 1.15 | 1.08 |
-| 4B o (2560 x 4096) | 1 -> 4 | 1.08 | 0.93 | 0.93 | 0.93 | 1.07 | 1.03 | 1.18 | 1.32 |
-| 4B down (2560 x 9728) | 1 -> 2 | 1.03 | 0.86 | 0.84 | 0.85 | 0.98 | 1.08 | 1.14 | 1.10 |
-| Qwen3.5-4B down (2560 x 9216) | 1 -> 4 | 1.13 | 0.93 | 0.87 | 0.85 | 0.92 | 1.14 | 1.20 | 1.16 |
-
+| 70B o (8192 x 8192) | 1 -> 2 | 1.05 | 1.00 | 1.01 | 1.00 | 1.14 | 1.21 | 1.13 | 1.07 |
+| 70B down (8192 x 28672) | 1 -> 2 | 1.02 | 1.02 | 1.02 | 1.00 | 1.06 | 1.06 | 1.10 | 1.09 |
+| 8B o (4096 x 4096) | 1 -> 4 | 1.10 | 1.09 | 1.09 | 1.10 | 1.16 | 1.36 | 1.22 | 1.27 |
+| 8B down (4096 x 12288) | 1 -> 4 | 1.05 | 1.02 | 1.03 | 1.03 | 1.08 | 1.31 | 1.13 | 1.10 |
+| 4B o (2560 x 4096) | 1 -> 4 | 1.08 | 0.93 | 0.94 | 0.93 | 1.12 | 1.21 | 1.16 | 1.32 |
+| 4B down (2560 x 9728) | 1 -> 2 | 1.03 | 0.86 | 0.84 | 0.85 | 1.03 | 1.04 | 1.08 | 1.06 |
+| Qwen3.5-4B down (2560 x 9216) | 1 -> 4 | 1.11 | 0.95 | 0.87 | 0.86 | 1.04 | 1.06 | 1.07 | 1.17 |
 Per-rank GEMM time of the invariant column shard W[N/t, K] at S(8) against the Megatron row shard
 W[N, K/t] at S = 1 (same weight bytes; the row shard's sum is not invariant). Every shape at t = 8,
 and the 70B shapes at t = 2 (t = 2 and 4 for all shapes are in the log):
 
 | Projection | t | M = 1 | 8 | 16 | 32 | 128 | 512 | 2048 | 8192 |
 |---|---|---|---|---|---|---|---|---|---|
-| 70B o | 2 | 1.09 | 1.03 | 1.04 | 1.06 | 1.07 | 1.17 | 1.18 | 1.12 |
-| 70B down | 2 | 1.02 | 1.01 | 1.02 | 1.01 | 1.06 | 1.27 | 1.27 | 1.11 |
-| 70B o | 8 | 1.27 | 1.35 | 1.47 | 1.46 | 1.49 | 1.26 | 1.07 | 1.15 |
-| 70B down | 8 | 1.12 | 1.18 | 1.50 | 1.50 | 1.43 | 1.45 | 1.35 | 1.27 |
-| 8B o | 8 | 1.28 | 1.27 | 1.31 | 1.62 | 1.33 | 1.23 | 1.41 | 1.32 |
-| 8B down | 8 | 1.26 | 1.27 | 1.50 | 1.55 | 1.33 | 1.20 | 1.28 | 1.40 |
-| 4B o | 8 | 1.34 | 1.37 | 1.35 | 1.67 | 1.50 | 1.29 | 1.41 | 1.33 |
-| 4B down | 8 | 2.02 | 2.14 | 2.42 | 2.39 | 1.96 | 1.36 | 1.45 | 1.45 |
-| Qwen3.5-4B down | 8 | 1.39 | 1.38 | 1.66 | 1.68 | 1.51 | 1.29 | 1.56 | 1.49 |
-
+| 70B o | 2 | 1.07 | 1.07 | 1.08 | 1.07 | 1.04 | 1.16 | 1.19 | 1.11 |
+| 70B down | 2 | 1.03 | 1.02 | 1.02 | 1.02 | 1.03 | 1.26 | 1.14 | 1.12 |
+| 70B o | 8 | 1.25 | 1.36 | 1.45 | 1.46 | 1.52 | 1.16 | 1.07 | 1.14 |
+| 70B down | 8 | 1.12 | 1.18 | 1.49 | 1.49 | 1.52 | 1.31 | 1.34 | 1.26 |
+| 8B o | 8 | 1.28 | 1.24 | 1.34 | 1.60 | 1.57 | 1.23 | 1.39 | 1.24 |
+| 8B down | 8 | 1.26 | 1.27 | 1.50 | 1.55 | 1.66 | 1.27 | 1.28 | 1.33 |
+| 4B o | 8 | 1.34 | 1.41 | 1.40 | 1.69 | 1.47 | 1.42 | 1.16 | 1.28 |
+| 4B down | 8 | 2.12 | 2.16 | 2.40 | 2.37 | 1.95 | 1.48 | 1.24 | 1.36 |
+| Qwen3.5-4B down | 8 | 1.42 | 1.39 | 1.66 | 1.66 | 1.55 | 1.39 | 1.30 | 1.39 |
 Where the gaps come from (the floors are measured in `archive/ceiling_probes/a800/narrow/`):
 - Independent chains. One n8 chain advances one k16 step per ~28 ns (`out_floor.txt`), 8-9 GB/s
   of weight, so a weight streams at the bandwidth (up to 1.73 TB/s on wide weights,
@@ -94,7 +92,7 @@ Where the gaps come from (the floors are measured in `archive/ceiling_probes/a80
   (`out_micro.txt`, run during the 1140 MHz period, so its 6 GB/s per chain is low). A shard has
   N / t / 8 x S chains: 256 on 70B down at t = 8, 2.4 per SM: 49 µs at M = 8 against a
   34-37 µs bandwidth floor. 4B down (K = 9728) gets only S = 2 (S = 4 needs
-  K % 1024 == 0), so its 320-column shard has 80 chains for 108 SMs: 2.0-2.4x at M <= 32. Small
+  K % 1024 == 0), so its 320-column shard has 80 chains for 108 SMs: 2.1-2.4x at M <= 32. Small
   models at t = 8 are not a realistic deployment, but the case shows the limit. More chains need a
   larger S, which costs prefill: a canonical trade, not a kernel one.
 - M = 16-128 on narrow shards. Within a segment the chain is sequential, so the work splits only
@@ -104,12 +102,17 @@ Where the gaps come from (the floors are measured in `archive/ceiling_probes/a80
   chain count bound the rest (`midm3.txt`; five other designs are in the archive, all slower).
 - M = 512-2048: a narrow shard has few large tiles for 108 SMs, plus the segment cost. Stream-K
   over 128x128 / 128x256 tiles (ids 65 / 66, with S > 1 through per-device scratch) brought 70B o
-  t = 8 at M = 2048 from 1.39x to 1.07x and 70B o / down t = 2 at M = 512 to 1.17x / 1.27x
+  t = 8 at M = 2048 from 1.39x to 1.07x and 70B o / down t = 2 at M = 512 to 1.16x / 1.26x
   (`archive/ceiling_probes/a800/narrow/bench_tp_before_workspace.log` vs `bench_tp.log`); the
-  row shard gains from the same ids at S = 1, so 1.2-1.5x remains at M = 512 for t = 8.
+  row shard gains from the same ids at S = 1, so 1.16-1.48x remains at M = 512 for t = 8. The
+  64-deep k-stage tiles (ids 67-72, `archive/ceiling_probes/a800/close/probe_gemm_cfg.txt`) speed
+  up both layouts at M = 128-2048; at M = 128 the row shard gains more (70B down t = 8: 1.43x to
+  1.52x), so those ratios rose. Against the previous run, column shards at M >= 8 are at most 3.3%
+  slower (70B o t = 2 at M = 2048); at M = 1, where the new ids are not chosen, up to 9% (8B o t = 4:
+  11.9 to 13.0 µs) is run-to-run variation.
 - M = 8192: the segment cost. Ids 17-19 keep the segment total in an L2 slot instead of a second
   register fragment (bitwise equal, persistent CTAs); they take 70B down's S = 2 prefill cost from
-  1.24x to 1.10x at M = 8192 (`archive/.../bench_tp_before_slot.log` vs `bench_tp.log`).
+  1.24x to 1.09x at M = 8192 (`archive/.../bench_tp_before_slot.log` vs `bench_tp.log`).
 
 Communication is not measured (one GPU). Per layer the column layout all-gathers the attention
 output, the o_proj output, the MLP intermediate and the down output (4 all-gathers) where Megatron

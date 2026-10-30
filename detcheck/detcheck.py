@@ -18,9 +18,14 @@ identical tokens no matter how the server batches, caches or chunks work.
            later run against them: across server restarts and across server
            configurations (chunk size, CUDA graphs, batch limits, overlap)
 
-Usage: detcheck.py --url http://host:port --tokenizer /path/to/model [--checks ...]
+With --logprobs every generated token is also compared by its log-probability, bit for bit
+(float32): a check then fails if any token's log-probability differs, even where the
+tokens agree. Each generated token is held as one int, token id | (logprob float32 bits << 32).
+
+Usage: detcheck.py --url http://host:port --tokenizer /path/to/model [--checks ...] [--logprobs]
 Requires the server to return completion token ids ("return_token_ids": true,
-supported by vLLM and llm_infer_rust) or SGLang's native /generate (--api sglang).
+supported by vLLM and llm_infer_rust) or SGLang's native /generate (--api sglang), and for
+--logprobs the sampled tokens' log-probabilities (OpenAI "logprobs": 0, SGLang "return_logprob").
 """
 import argparse
 import concurrent.futures as cf
@@ -29,12 +34,23 @@ import random
 import sys
 import time
 
+import numpy as np
 import requests
 
 
+def with_logprobs(ids, logprobs):
+    """One int per token: the id in the low 32 bits, the logprob's float32 bits above them."""
+    bits = np.asarray(logprobs, dtype=np.float32).view(np.uint32)
+    return [int(t) | (int(b) << 32) for t, b in zip(ids, bits)]
+
+
+def token_ids(seq):
+    return [x & 0xFFFFFFFF for x in seq]
+
+
 class Server:
-    def __init__(self, url, api, timeout=1200):
-        self.url, self.api, self.timeout = url.rstrip("/"), api, timeout
+    def __init__(self, url, api, logprobs=False, timeout=1200):
+        self.url, self.api, self.logprobs, self.timeout = url.rstrip("/"), api, logprobs, timeout
 
     def generate(self, ids, max_tokens, sampling=None):
         sp = sampling or {"temperature": 0}
@@ -42,18 +58,24 @@ class Server:
             if "seed" in sp:  # SGLang names the per-request sampling seed sampling_seed
                 sp = {**{k: v for k, v in sp.items() if k != "seed"}, "sampling_seed": sp["seed"]}
             r = requests.post(self.url + "/generate", json={
-                "input_ids": ids, "sampling_params": {**sp, "max_new_tokens": max_tokens,
-                                                      "ignore_eos": True}}, timeout=self.timeout)
+                "input_ids": ids, "sampling_params": {**sp, "max_new_tokens": max_tokens, "ignore_eos": True},
+                **({"return_logprob": True} if self.logprobs else {})}, timeout=self.timeout)
             r.raise_for_status()
-            return list(r.json()["output_ids"])
+            out = r.json()
+            if not self.logprobs:
+                return list(out["output_ids"])
+            return with_logprobs(out["output_ids"], [x[0] for x in out["meta_info"]["output_token_logprobs"]])
         r = requests.post(self.url + "/v1/completions", json={
             "model": self.model(), "prompt": ids, "max_tokens": max_tokens, **sp,
-            "ignore_eos": True, "return_token_ids": True}, timeout=self.timeout)
+            "ignore_eos": True, "return_token_ids": True, **({"logprobs": 0} if self.logprobs else {})},
+            timeout=self.timeout)
         r.raise_for_status()
         choice = r.json()["choices"][0]
         if "token_ids" not in choice:
             raise SystemExit("server does not return completion token ids (return_token_ids)")
-        return list(choice["token_ids"])
+        if not self.logprobs:
+            return list(choice["token_ids"])
+        return with_logprobs(choice["token_ids"], choice["logprobs"]["token_logprobs"])
 
     _model = None
 
@@ -162,7 +184,7 @@ def check_path(srv, prompts, T, rng, flush, vocab, sampling=None):
         full = srv.generate(p, T, sp)
         for k in (1, T // 4, T // 2):
             srv.flush(flush, vocab, rng)
-            cont = srv.generate(p + full[:k], T - k, sp)  # tokens k.. via prefill of the generated prefix
+            cont = srv.generate(p + token_ids(full[:k]), T - k, sp)  # tokens k.. via prefill of the generated prefix
             rows["requests"] += 1
             d = first_divergence(full[k:], cont)
             if d is not None:
@@ -241,15 +263,16 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--save", help="write greedy/sampled references (run under --concurrency[-1])")
     ap.add_argument("--compare", help="compare against references written by --save")
+    ap.add_argument("--logprobs", action="store_true", help="also compare every token's log-probability bits")
     ap.add_argument("--out")
     a = ap.parse_args()
     from transformers import AutoTokenizer
     tok = AutoTokenizer.from_pretrained(a.tokenizer)
     vocab = min(len(tok), 150000)
     rng = random.Random(a.seed)
-    srv = Server(a.url, a.api)
+    srv = Server(a.url, a.api, a.logprobs)
     prompts = make_prompts(tok, rng, a.prompts, a.lengths)
-    report = {"url": a.url, "tokens": a.tokens, "prompts": a.prompts, "lengths": a.lengths}
+    report = {"url": a.url, "tokens": a.tokens, "prompts": a.prompts, "lengths": a.lengths, "logprobs": a.logprobs}
     t0 = time.time()
     if "batch" in a.checks:
         report["batch"] = check_batch(srv, prompts, a.tokens, rng, a.concurrency, vocab)

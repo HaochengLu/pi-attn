@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
 # Same-GPU baselines: SGLang and vLLM, each with and without its deterministic mode,
-# next to llm_infer_rust (flashinfer / --deterministic). Every server runs detcheck and
+# next to llm_infer_rust (flashinfer / --deterministic). Every server runs detcheck (tokens and their
+# log-probabilities) and
 # the greedy loadgen workloads of eval/e2e_matrix.sh on one model.
+# Engines: rust rust-det sglang sglang-det sglang-det-triton vllm vllm-det (vLLM 0.11.2) vllm17 vllm17-det
+# (vLLM 0.17.1, env/venv-vllm17). Output: $BASELINES_OUT (default results/baselines/<model>).
 # Usage: eval/baselines.sh [model] [engines...]
 set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../env.sh"
 model=${1:-Qwen3-1.7B}; shift || true
 engines=${*:-rust rust-det sglang sglang-det sglang-det-triton vllm vllm-det}
 port=18098
-out=$ROOT/results/baselines/$model
+out=${BASELINES_OUT:-$ROOT/results/baselines/$model}
 mkdir -p $out
 M=$ROOT/models/$model
 for eng in $engines; do
@@ -25,17 +28,18 @@ for eng in $engines; do
       LD_LIBRARY_PATH=$ROOT/env/syslibs/lib:${LD_LIBRARY_PATH:-} $ROOT/env/venv-sglang/bin/python -m sglang.launch_server --model-path $M --served-model-name default --port $port \
         --max-running-requests 32 --context-length 8192 --chunked-prefill-size 2048 --mem-fraction-static 0.8 --cuda-graph-max-bs 32 \
         "${d[@]}" > $out/$eng.server.log 2>&1 & ;;
-    vllm|vllm-det)
+    vllm|vllm-det|vllm17|vllm17-det)
       flush=vllm
-      VLLM_SERVER_DEV_MODE=1 VLLM_BATCH_INVARIANT=$([[ $eng == vllm-det ]] && echo 1 || echo 0) \
-        $ROOT/env/venv-vllm/bin/vllm serve $M --served-model-name default --port $port --max-num-seqs 32 \
+      venv=venv-vllm; [[ $eng == vllm17* ]] && venv=venv-vllm17
+      VLLM_SERVER_DEV_MODE=1 VLLM_BATCH_INVARIANT=$([[ $eng == *-det ]] && echo 1 || echo 0) \
+        $ROOT/env/$venv/bin/vllm serve $M --served-model-name default --port $port --max-num-seqs 32 \
         --max-model-len 8192 --max-num-batched-tokens 2048 --gpu-memory-utilization 0.8 > $out/$eng.server.log 2>&1 & ;;
   esac
   pid=$!
   ok=0
   for i in $(seq 1 450); do curl -s -m 2 localhost:$port/health >/dev/null && { ok=1; break; }; kill -0 $pid 2>/dev/null || break; sleep 2; done
   if [[ $ok == 1 ]]; then
-    python $ROOT/detcheck/detcheck.py --url http://127.0.0.1:$port --tokenizer $M --api $api --flush $flush \
+    python $ROOT/detcheck/detcheck.py --url http://127.0.0.1:$port --tokenizer $M --api $api --flush $flush --logprobs \
       --out $out/$eng.detcheck.json > $out/$eng.detcheck.log 2>&1
     echo "$model $eng detcheck exit=$?"
     python $ROOT/eval/loadgen.py --url http://127.0.0.1:$port --temperature 0 --num 32 --repeats 3 \

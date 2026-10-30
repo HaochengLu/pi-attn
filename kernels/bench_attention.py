@@ -2,7 +2,10 @@
 
 Decode baselines: FI default (nondeterministic split-KV), FI tensor-core decode, and
 FI tensor-core decode with fixed_split_size=2048 (SGLang deterministic decode). Prefill: FI paged prefill, FI with
-fixed_split_size=2048 (deterministic), PI planner. Times in us (median)."""
+fixed_split_size=2048 (deterministic), PI planner. Times in us, per call, in the engine's regime: each method's call (after its plan) is
+captured into one CUDA graph over a ring of per-layer KV caches (as many layers, up to 28, as exceed 160 MB, so
+every call reads its K/V from DRAM, not L2), at least CALLS calls; the median graph replay divided by the
+number of calls is the time per call. Host launch overhead (Python wrappers, attribute calls) is excluded."""
 import argparse
 import json
 import math
@@ -17,18 +20,29 @@ dev = "cuda"
 PAGE, D = 16, 128
 
 
-def timeit(fn, iters=40, warmup=8):
-    for _ in range(warmup):
-        fn()
+CALLS = 10
+
+
+def timeit(fn, layers, iters=20):
+    """fn(layer) runs one call on that layer's KV."""
+    calls = -(-CALLS // layers) * layers
+    fn(0)
+    torch.cuda.synchronize()
+    g = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(g):
+        for i in range(calls):
+            fn(i % layers)
+    for _ in range(3):
+        g.replay()
     torch.cuda.synchronize()
     ts = []
     for _ in range(iters):
         s, e = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
         s.record()
-        fn()
+        g.replay()
         e.record()
         torch.cuda.synchronize()
-        ts.append(s.elapsed_time(e))
+        ts.append(s.elapsed_time(e) / calls)
     ts.sort()
     return round(ts[len(ts) // 2] * 1000, 1)
 
@@ -48,17 +62,20 @@ def warm_gpu(seconds=2.0):
 
 
 def make_cache(batch, kv_len, hkv, shared=False):
-    """Paged K/V in shuffled pages; shared: every request reads the same pages (prefix cache)."""
+    """Paged K/V in shuffled pages, one (k, v) per layer of the ring; shared: every request reads the
+    same pages (prefix cache)."""
     pages_per = (kv_len + PAGE - 1) // PAGE
     n = (1 if shared else batch) * pages_per + 1
-    k = torch.randn(n, PAGE, hkv, D, device=dev, dtype=torch.bfloat16)
-    v = torch.randn(n, PAGE, hkv, D, device=dev, dtype=torch.bfloat16)
+    layer_bytes = 2 * n * PAGE * hkv * D * 2
+    kv = [(torch.randn(n, PAGE, hkv, D, device=dev, dtype=torch.bfloat16),
+           torch.randn(n, PAGE, hkv, D, device=dev, dtype=torch.bfloat16))
+          for _ in range(min(28, -(-(160 << 20) // layer_bytes)))]
     perm = torch.randperm(n - 1, device=dev).int() + 1
     indices = (perm.repeat(batch) if shared else perm[: batch * pages_per]).contiguous()
     indptr = torch.arange(0, batch + 1, device=dev, dtype=torch.int32) * pages_per
     last = torch.full((batch,), (kv_len - 1) % PAGE + 1, device=dev, dtype=torch.int32)
     lens = torch.full((batch,), kv_len, device=dev, dtype=torch.int32)
-    return k, v, indptr, indices, last, lens
+    return kv, indptr, indices, last, lens
 
 
 def fi_try(fn):
@@ -73,7 +90,7 @@ def best_fi(r):  # fastest non-deterministic FlashInfer decode (CUDA-core or ten
 
 
 def bench_decode(batch, kv_len, hq, hkv, shared=False):
-    k, v, indptr, indices, last, lens = make_cache(batch, kv_len, hkv, shared)
+    kv, indptr, indices, last, lens = make_cache(batch, kv_len, hkv, shared)
     q = torch.randn(batch, hq, D, device=dev, dtype=torch.bfloat16)
     ws = torch.empty(256 << 20, device=dev, dtype=torch.uint8)
     res = {}
@@ -81,19 +98,20 @@ def bench_decode(batch, kv_len, hq, hkv, shared=False):
         def run():
             w = flashinfer.BatchDecodeWithPagedKVCacheWrapper(ws, "NHD", use_tensor_cores=tc)
             w.plan(indptr.cpu(), indices, last.cpu(), hq, hkv, D, PAGE, q_data_type=torch.bfloat16, **kw)
-            return timeit(lambda: w.run(q, (k, v)))
+            return timeit(lambda i: w.run(q, kv[i]), len(kv))
         res[name] = fi_try(run)
     rows = batch * -(-kv_len // ext.GROUP_KEYS)
     ws_o = torch.empty(rows, hq, D, device=dev)
     ws_ml = torch.empty(rows, hq, 2 * ext.DECODE_WARPS, device=dev)
     cnt = torch.zeros(rows, hq, ext.DECODE_WARPS, dtype=torch.int32, device=dev)
-    res["pi"] = timeit(lambda: ext.decode(q, k, v, indptr, indices, lens, ws_o, ws_ml, cnt, kv_len, 1 / math.sqrt(D)))
+    res["pi"] = timeit(lambda i: ext.decode(q, *kv[i], indptr, indices, lens, ws_o, ws_ml, cnt, kv_len, 1 / math.sqrt(D)),
+                       len(kv))
     return res
 
 
 def bench_prefill(batch, q_len, prefix, hq, hkv):
     kv_len = q_len + prefix
-    k, v, indptr, indices, last, lens = make_cache(batch, kv_len, hkv)
+    kv, indptr, indices, last, lens = make_cache(batch, kv_len, hkv)
     q = torch.randn(batch * q_len, hq, D, device=dev, dtype=torch.bfloat16)
     qo = torch.arange(0, batch + 1, device=dev, dtype=torch.int32) * q_len
     ws = torch.empty(256 << 20, device=dev, dtype=torch.uint8)
@@ -103,10 +121,10 @@ def bench_prefill(batch, q_len, prefix, hq, hkv):
             w = flashinfer.BatchPrefillWithPagedKVCacheWrapper(ws, "NHD")
             w.plan(qo.cpu(), indptr.cpu(), indices, last.cpu(), hq, hkv, D, PAGE, causal=True,
                    q_data_type=torch.bfloat16, **kw)
-            return timeit(lambda: w.run(q, (k, v)), iters=20)
+            return timeit(lambda i: w.run(q, kv[i]), len(kv))
         res[name] = fi_try(run)
-    res["pi"] = timeit(lambda: ext.prefill(q, k, v, qo, indptr, indices, lens, q_len, kv_len,
-                                           1 / math.sqrt(D), 0), iters=20)
+    res["pi"] = timeit(lambda i: ext.prefill(q, *kv[i], qo, indptr, indices, lens, q_len, kv_len, 1 / math.sqrt(D), 0),
+                       len(kv))
     return res
 
 
