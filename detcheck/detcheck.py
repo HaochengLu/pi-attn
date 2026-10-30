@@ -38,10 +38,15 @@ import numpy as np
 import requests
 
 
+NONFINITE = 0xFFFFFFFF  # a logprob the server sent as null (JSON has no NaN / inf)
+
+
 def with_logprobs(ids, logprobs):
     """One int per token: the id in the low 32 bits, the logprob's float32 bits above them."""
-    bits = np.asarray(logprobs, dtype=np.float32).view(np.uint32)
-    return [int(t) | (int(b) << 32) for t, b in zip(ids, bits)]
+    if len(logprobs) != len(ids):
+        raise SystemExit(f"server returned {len(logprobs)} log-probabilities for {len(ids)} tokens")
+    bits = [NONFINITE if x is None else int(np.float32(x).view(np.uint32)) for x in logprobs]
+    return [int(t) | (b << 32) for t, b in zip(ids, bits)]
 
 
 def token_ids(seq):
@@ -62,6 +67,8 @@ class Server:
                 **({"return_logprob": True} if self.logprobs else {})}, timeout=self.timeout)
             r.raise_for_status()
             out = r.json()
+            if len(out["output_ids"]) != max_tokens:
+                raise SystemExit(f"server returned {len(out['output_ids'])} tokens for max_tokens {max_tokens}")
             if not self.logprobs:
                 return list(out["output_ids"])
             return with_logprobs(out["output_ids"], [x[0] for x in out["meta_info"]["output_token_logprobs"]])
@@ -73,8 +80,12 @@ class Server:
         choice = r.json()["choices"][0]
         if "token_ids" not in choice:
             raise SystemExit("server does not return completion token ids (return_token_ids)")
+        if len(choice["token_ids"]) != max_tokens:  # ignore_eos: every request runs to max_tokens
+            raise SystemExit(f"server returned {len(choice['token_ids'])} tokens for max_tokens {max_tokens}")
         if not self.logprobs:
             return list(choice["token_ids"])
+        if not choice.get("logprobs") or choice["logprobs"].get("token_logprobs") is None:
+            raise SystemExit("server does not return log-probabilities (logprobs: 0)")
         return with_logprobs(choice["token_ids"], choice["logprobs"]["token_logprobs"])
 
     _model = None
@@ -297,11 +308,13 @@ def main():
         report["sample"] = check_sample(srv, prompts, a.tokens, rng, a.concurrency, vocab)
         print("sample", json.dumps(report["sample"]), flush=True)
     if a.save:
-        json.dump({"prompts": prompts, "tokens": a.tokens,
+        json.dump({"prompts": prompts, "tokens": a.tokens, "logprobs": a.logprobs,
                    **references(srv, prompts, a.tokens, a.concurrency[-1])}, open(a.save, "w"))
         print("saved references to", a.save, flush=True)
     if a.compare:
         saved = json.load(open(a.compare))
+        if saved.get("logprobs", False) != a.logprobs:
+            raise SystemExit(f"references were saved with logprobs={saved.get('logprobs', False)}; run with the same mode")
         got = references(srv, saved["prompts"], saved["tokens"], a.concurrency[-1])
         report["compare"] = compare_refs(saved, got)
         print("compare", json.dumps(report["compare"]), flush=True)
