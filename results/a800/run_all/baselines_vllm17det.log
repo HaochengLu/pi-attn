@@ -1,0 +1,3 @@
+Qwen3-1.7B vllm17-det detcheck exit=1
+Qwen3-1.7B vllm17-det loadgen exit=0
+BASELINES_DONE

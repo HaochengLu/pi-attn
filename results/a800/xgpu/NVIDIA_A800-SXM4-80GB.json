@@ -320,6 +320,118 @@
   "8B lm_head M=1024": {
    "pi": "4d5b9efd59b9a2e1",
    "cublas": "4d5b9efd59b9a2e1"
+  },
+  "3.5-4B qkvz M=1": {
+   "pi": "4bcc44912c2c556d",
+   "cublas": "4bcc44912c2c556d"
+  },
+  "3.5-4B qkvz M=8": {
+   "pi": "2d33a7335cae226d",
+   "cublas": "8bbfc322faec3928"
+  },
+  "3.5-4B qkvz M=128": {
+   "pi": "2a15cac9b327e7af",
+   "cublas": "2a15cac9b327e7af"
+  },
+  "3.5-4B qkvz M=1024": {
+   "pi": "bfbefe1dada27d89",
+   "cublas": "bfbefe1dada27d89"
+  },
+  "3.5-4B ba M=1": {
+   "pi": "19f75eb34c9c0a40",
+   "cublas": "19f75eb34c9c0a40"
+  },
+  "3.5-4B ba M=8": {
+   "pi": "7b0d116e303b183c",
+   "cublas": "cd0b24dac6f8549a"
+  },
+  "3.5-4B ba M=128": {
+   "pi": "6f3687976348a9f1",
+   "cublas": "3e1cba8b4631531a"
+  },
+  "3.5-4B ba M=1024": {
+   "pi": "d283f0aab6f438a6",
+   "cublas": "49d52ae628f99205"
+  },
+  "3.5-4B gdn out M=1": {
+   "pi": "1ab023a651954ca5",
+   "cublas": "08ba9669b49c1325"
+  },
+  "3.5-4B gdn out M=8": {
+   "pi": "55c21380c91d2089",
+   "cublas": "d5a4aba26178b17a"
+  },
+  "3.5-4B gdn out M=128": {
+   "pi": "b967521843c76f7f",
+   "cublas": "b0a5f92b281d23ac"
+  },
+  "3.5-4B gdn out M=1024": {
+   "pi": "7b6ba12399ed4896",
+   "cublas": "7b6ba12399ed4896"
+  },
+  "3.5-4B attn qkv M=1": {
+   "pi": "d4b6d05eb3856642",
+   "cublas": "d4b6d05eb3856642"
+  },
+  "3.5-4B attn qkv M=8": {
+   "pi": "50c7476698f3d721",
+   "cublas": "e3cc198b9b731b02"
+  },
+  "3.5-4B attn qkv M=128": {
+   "pi": "0db8e27cac1f5ef9",
+   "cublas": "0db8e27cac1f5ef9"
+  },
+  "3.5-4B attn qkv M=1024": {
+   "pi": "eaef87a5c09828de",
+   "cublas": "eaef87a5c09828de"
+  },
+  "3.5-4B gateup M=1": {
+   "pi": "74c8036ba7cdd485",
+   "cublas": "156499422677b37c"
+  },
+  "3.5-4B gateup M=8": {
+   "pi": "feae47cf443de60e",
+   "cublas": "a7ee0dc66b8568ab"
+  },
+  "3.5-4B gateup M=128": {
+   "pi": "823ec69141cbf70f",
+   "cublas": "823ec69141cbf70f"
+  },
+  "3.5-4B gateup M=1024": {
+   "pi": "e358ab6d3a1b6abf",
+   "cublas": "e358ab6d3a1b6abf"
+  },
+  "3.5-4B down M=1": {
+   "pi": "e9eaf74d98e67bb5",
+   "cublas": "b7bbd3ec4c20af69"
+  },
+  "3.5-4B down M=8": {
+   "pi": "ea7481480e019e7e",
+   "cublas": "38d8ad90ec912f2b"
+  },
+  "3.5-4B down M=128": {
+   "pi": "be87155cd7e9c193",
+   "cublas": "255f82ee6012688b"
+  },
+  "3.5-4B down M=1024": {
+   "pi": "c5bebeb9610d5360",
+   "cublas": "280daf450bf64446"
+  },
+  "3.5-4B lm_head M=1": {
+   "pi": "199decc4ecd7c895",
+   "cublas": "f03ec1382062a07e"
+  },
+  "3.5-4B lm_head M=8": {
+   "pi": "de4521b53239586b",
+   "cublas": "de4521b53239586b"
+  },
+  "3.5-4B lm_head M=128": {
+   "pi": "650f3857f51071fd",
+   "cublas": "650f3857f51071fd"
+  },
+  "3.5-4B lm_head M=1024": {
+   "pi": "503a0913231eac7d",
+   "cublas": "503a0913231eac7d"
   }
  },
  "attention": {

@@ -8,6 +8,7 @@
   1100,
   2600
  ],
+ "logprobs": true,
  "batch": [
   {
    "concurrency": 4,
@@ -64,5 +65,5 @@
   ],
   "distinct_reference_samples": 16
  },
- "seconds": 491.8
+ "seconds": 485.1
 }

@@ -4,43 +4,35 @@
 
 ## Abstract
 
-LLM serving engines return different tokens for the same request depending on what else
-is in the batch, whether the prompt prefix is cached, where chunked prefill cuts the
-prompt, and whether a token is produced by decode or by prefill. Existing
-"deterministic modes" remove this by pinning or disabling the optimizations that create
-it: fixed KV-split sizes, a single split, aligned chunk boundaries, and on some backends
-no prefix cache. On our GPU SGLang's deterministic mode runs at 1/1.9 to 1/3.5 of SGLang's
-own throughput, and it still leaves prefill and decode numerically different. Bitwise reproducibility needs
-every query row and every output element to execute one *canonical operation sequence*
-that depends on positions and shapes, never on the schedule; prior work states this
-requirement and meets it by pinning or slowing kernels. We treat it as a design problem:
-the schedule may still partition work freely at the sequence's associativity points, so
-the task is to choose a canonical sequence whose natural partitions are the ones fast
-kernels want. For attention we use an online
-softmax over 32-key tiles inside absolute 512-key fold groups, followed by a
-fixed-order fold of the groups. Prefill kernels then have FlashAttention-2's structure,
-decode kernels parallelise over groups like FlashDecoding, and prefill, chunked prefill,
-prefix-cache hits and decode are bitwise identical by construction. For projections we
-fix each output element's k order, cut into a number of segments fixed by the weight's
-shape, which leaves the tile free to be autotuned. On an RTX 4090 D our decode attention
-takes 0.64–1.02× the time of FlashInfer's faster decode and our prefill 0.51–1.09× on all but one
-long-prefix extend shape. Our Rust serving engine with `--deterministic` is bitwise reproducible
-across concurrency, cache state, shared-prefix batches, decode vs re-prefill, seeded
-sampling, chunk sizes, CUDA graphs, page sizes, batch limits and restarts. On Qwen3
-0.6B–8B its end-to-end throughput is −1.8% to +8.5% relative to the non-deterministic
-engine, and 1.9–3.5× that of SGLang's deterministic mode. Its decode throughput is lower
-only at batch 1 on 1.7B and 8B (by 0.6–1.8%), where its weight-streaming projections run
-2–4% behind cuBLAS's GEMV on the widest and longest weights, and at one 0.6B point with
-128 concurrent requests (1.6%), which a component ablation places in the attention
-backend although none of its kernels is slower at that run's shapes. On prefill-bound
-requests its throughput is −0.3% to +2.2%, with time to first token up to 1.6% higher on
-the longest 32-head prompts. GSM8K
-accuracy is unchanged, and every generation is identical between client concurrency 1
-and 16. On an A800 (sm_80) every PI kernel case and every GSM8K generation gives the same
-bits as on the RTX 4090 D. On the A800, end-to-end throughput relative to the
-non-deterministic engine is −9.1% to +14.3% over the same workloads, and 2.2–4.1× that of
-SGLang's deterministic mode. Long prompts pay up to 18% in time to first token, the cost
-of the canonical 32-key online step on full-rate tensor cores.
+LLM serving engines return different tokens and log-probabilities for the same request
+depending on what else is in the batch, whether the prompt prefix is cached, where chunked
+prefill cuts the prompt, and whether a token is produced by decode or by prefill; an RL trainer
+that rescores the rollout with its own forward gets yet another value. Existing
+deterministic modes pin or disable the optimizations that cause this, and still leave prefill
+and decode numerically different. We make every query row and every output element execute
+one *canonical operation sequence* that depends on positions and shapes only, and choose that
+sequence so that its natural partitions are the ones fast kernels want. For attention it is
+an online softmax over 32-key tiles inside absolute 512-key fold groups, folded in a fixed
+order: prefill kernels keep FlashAttention-2's structure, decode kernels parallelise over
+groups, and prefill, chunked prefill, prefix-cache hits and decode are bitwise identical by
+construction. For projections each output element's k order is fixed and cut into a number
+of segments fixed by the weight's shape, which leaves the tile free to be autotuned;
+declaring the largest tensor-parallel degree in that rule makes outputs independent of the
+degree as well. In a Rust serving engine with radix caching, chunked prefill, CUDA graphs and
+CPU/GPU overlap all on, `--deterministic` is bitwise reproducible, tokens and
+log-probabilities, across every load, cache and configuration change we test, and a PyTorch
+forward on the same kernels, as an RL trainer runs it over packed micro-batches, reproduces
+the log-probability of every one of 55,593 sampled tokens on Qwen3 0.6B–8B (a standard bf16
+trainer forward misses 1% importance-ratio accuracy on 10–22% of them). On an A800, end-to-end
+throughput relative to the same engine without determinism is −5.9% to +14.2% on 40
+workload points, within 2.8% of vLLM 0.17.1's where it is behind, and 2.0–3.7× that of
+vLLM 0.17.1's batch-invariant mode, the one baseline that is also deterministic there. Prefill pays: prompts
+of 16K–30K tokens take 12–18% longer to the first token, and Qwen3-0.6B serving 2K-token
+prompts at 64 requests loses 8% of throughput, the cost of the canonical 32-key online step
+on full-rate tensor cores. Kernel outputs and GSM8K generations are bitwise identical
+between the A800 and an RTX 4090 D. The same principle makes Gated DeltaNet decode run the
+trainer's chunked program, bitwise inside vLLM with speculative decoding on or off, at
+0.96–1.08× of stock vLLM's throughput.
 
 ## 1 Introduction
 
@@ -107,8 +99,7 @@ Contributions:
     registers.
   - Decode runs one CTA per (request, KV head, group), with the 32-key tile split across
     warps without changing any element's sequence.
-  - On the same GPU, decode takes 0.64–1.02× the time of FlashInfer's faster decode, and
-    prefill 0.51–1.09× except one long-prefix extend shape (1.21×).
+  - Kernel-against-kernel costs on the A800 are in Section 7.4.
 - **GEMM and sampling.** A row-invariant GEMM family, bitwise identical across all of
   its members:
   - hand-written small-M and balanced weight-streaming kernels;
@@ -120,17 +111,25 @@ Contributions:
     the canonical order, and segment-split decode kernels, which give each segment a warp
     and fold in shared memory.
 
-  Sampling uses a batched sampler with per-row Philox streams.
+  Sampling uses a batched sampler with per-row Philox streams, and the sampled tokens'
+  log-probabilities come from a log-softmax with one fixed reduction order per row.
 - **Engine (Section 6).** `--deterministic` in a Rust/libtorch serving engine with radix
   prefix caching, chunked prefill, mixed prefill/decode batches, decode and
   segmented-prefill CUDA graphs and CPU/GPU overlap, all enabled.
+- **Rollout log-probabilities equal the trainer's (Section 7.3).** A PyTorch forward on the
+  engine's kernels, as an RL trainer would run it over packed micro-batches, reproduces the
+  engine's log-probability of every sampled token bit for bit, so importance ratios are
+  exactly 1; a standard bf16 trainer forward misses by more than 1% on 10–22% of tokens.
+- **Exact Gated DeltaNet decode (Section 8).** The same principle for linear attention:
+  hybrid models decode with the trainer's own chunked program, with speculative
+  verification and rollback for free, bitwise inside vLLM at stock throughput.
 - **Evaluation (Section 7).** detcheck, a black-box checker for any OpenAI-compatible
-  server. With it we show bitwise identity across concurrency, cache state, shared-prefix
-  batches, decode vs re-prefill, seeded sampling, a restart and six other server
-  configurations. The measured costs and same-GPU comparisons against SGLang's and vLLM's
-  deterministic modes are in Section 7. All of it is repeated on an A800, whose kernel
-  outputs on every tested case and GSM8K generations are bitwise identical to the RTX 4090
-  D's (Section 7.5).
+  server, which compares tokens and their log-probabilities bit for bit. With it we show
+  bitwise identity across concurrency, cache state, shared-prefix batches, decode vs
+  re-prefill, seeded sampling, a restart and six other server configurations, on an A800
+  with the final engine. Kernel outputs on every tested case and GSM8K generations are
+  bitwise identical between the A800 and an RTX 4090 D (Section 7.2). The test suite is
+  checked against deliberately broken kernels, which it must reject (Section 7.7).
 
 ## 2 Background: where serving nondeterminism comes from
 
@@ -168,7 +167,8 @@ matmul, and attention with a fixed split size for decode.
   sampling backend. Its announcement [SGL25] reports a ~34% average slowdown on H100. On our GPU its FlashInfer
   path disables the radix cache.
 - **vLLM's `VLLM_BATCH_INVARIANT`** overrides aten matmul and reductions and forces
-  one-split attention. Its 0.11.x documentation requires compute capability ≥ 9.0. An open
+  one-split attention. Its documentation requires compute capability ≥ 9.0; on the A800,
+  0.11.2 is not batch-invariant and 0.17.1 is (Section 7.1). An open
   pull request for DeepSeek-V4.1-Flash [VLLM62365] runs every causal row, prefill or
   decode, through the unsplit (one CTA per row) sparse decode kernel "so a token decodes
   to the same bits it gets as a prompt token"; it reports 0.84–0.91× of the throughput
@@ -234,8 +234,8 @@ summation [DN13] makes sums order-independent at higher cost; we instead fix the
 **Guarantee and scope.** For a fixed GPU model, engine binary (with its CUDA, driver and
 library versions) and weights, every response is a bitwise function of the request's
 token ids, sampling parameters and seed. The claim does not extend to other GPU models,
-other builds, tensor parallelism or FP8 (Section 8). We test it on one physical RTX 4090 D;
-that two boards of the same model agree follows from A1–A4 and is not tested.
+other builds, tensor parallelism or FP8 (Section 10). We test it on one A800 and one RTX
+4090 D; that two boards of the same model agree follows from A1–A4 and is not tested.
 
 **Model of computation.** We assume:
 - **(A1)** A tensor-core MMA instruction computes each output element as a deterministic
@@ -333,13 +333,21 @@ row-wise only under conditions worth stating.
 - **Sampler softmax.** It reduces each vocabulary row in one block whose access pattern
   depends on the row's alignment. Rows are 16-byte aligned because 4·|V| is a multiple of
   16 (|V| = 151,936), so every row is reduced the same way.
+- **Token log-probability.** log softmax(z)[t] for the sampled token t, in fp32, is a new
+  row reduction, so we fix it explicitly: one CTA of 1024 threads per row; thread j reads
+  columns j, j + 1024, … in ascending order for the exact maximum m and then for
+  Σ 2^((z − m)·log₂e); the per-thread sums are added in a fixed shared-memory tree; the result
+  is (z_t − m) − log₂(Σ)·ln 2. Only explicitly rounded operations and the `ex2`/`lg2`
+  approximate instructions are used (A2 extended to `lg2`), so the bits do not depend on
+  the compiler's contraction choices, and a trainer linking the same header computes the
+  same value.
 - **Greedy argmax.** Greedy decoding uses argmax over bf16 logits, where exact ties are
   common. Its cross-block combine is batch-dependent, but it selects the first maximal
   index, a total order, so the result is not.
 
-**Theorem.** In deterministic mode, every activation, KV entry and logit computed for token
-t is a function of tokens 0..t only. With per-row Philox streams indexed by
-(seed, position), sampled tokens are a function of tokens 0..t and the seed only.
+**Theorem.** In deterministic mode, every activation, KV entry, logit and log-probability
+computed for token t is a function of tokens 0..t only. With per-row Philox streams indexed
+by (seed, position), sampled tokens are a function of tokens 0..t and the seed only.
 
 ## 5 PI-Attn kernels
 
@@ -370,16 +378,23 @@ are not free to change any element's sequence.
 On sm_80 a second variant keeps the Q fragments in registers and moves the fp32 group
 totals, touched once per 512 keys, to shared memory (80 KB, still two CTAs on the A100/A800's
 164 KB). It cuts the per-tile shared-memory traffic of the Q operand. On sm_89 only the
-48 KB variant fits two CTAs in 100 KB. Both variants run every row's identical sequence;
-the tests and the cross-GPU hashes (Section 7.5) check both on every case.
+48 KB variant fits two CTAs in 100 KB. On sm_80 the register variant also runs with 8 warps
+(128 rows) per CTA, one CTA per SM: each K/V tile is copied to shared memory once for twice
+as many rows, which halves the copy traffic per row. It is 5–8% faster on long and batched
+prefills and up to 12% slower on short extends, whose few CTAs then leave SMs idle, so the
+launcher takes it when the 128-row CTAs fill two waves
+(`archive/ceiling_probes/a800/close/probe_prefill_warps.txt`). All variants run every row's
+identical sequence; the tests check every variant and split count on every case.
 
 The 16-row choice is deliberate. We first used 32 rows per warp, FlashInfer's
 choice, with the cross-group total kept in an fp32 scratch in L2. In an earlier kernel
 version that variant measured 8–10% slower on long prompts (ceiling probe 5), because the
 total's read-modify-write every 512 keys costs more L2 bandwidth than the halved fragment
-reuse of 16-row warps. On the A800, 32-row warps with the totals in shared memory fit two
-64-row CTAs per SM, so 4 warps per SM instead of 8, and run 1.4–1.8× the shipped kernel's
-time (`archive/ceiling_probes/a800/prefill_wide_warps.txt`).
+reuse of 16-row warps. On the A800 we built 32-row warps with the totals in shared memory:
+two 64-row CTAs per SM, so 4 warps per SM instead of 8, at 255 registers with 840 bytes of
+spills (64 without the S pipeline); the faster, unpipelined one ran 1.4–1.8× the 4-warp kernel's time
+(`archive/ceiling_probes/a800/prefill_wide_warps.txt`). That measures this build, not the
+design: a spill-free 32-row step that fuses both 16-row halves was not built.
 
 For long prefixes with few query rows, a wave-model planner splits a row tile's groups
 across CTAs. Each CTA writes group partials, and a merge kernel folds them. When the row
@@ -435,10 +450,13 @@ M-bucket), and that choice has no numerical effect. The variants are:
 - hand-written small-M kernels with deep `cp.async` pipelines (128–256 k per stage),
   which fold segments in registers;
 - *balanced* kernels for M ≤ 64, described next;
-- CUTLASS 2.x sm80 tensor-op tiles from 32×64 to 128×256 for mid and large M. On
-  segmented shapes they run a kernel derived from CUTLASS's own, which calls the mainloop
-  once per segment from a zero accumulator and folds into a register total before the
-  stock epilogue;
+- CUTLASS 2.x sm80 tensor-op tiles from 32×64 to 128×256 for mid and large M, with 32- or
+  64-deep k stages. On segmented shapes they run a kernel derived from CUTLASS's own,
+  which calls the mainloop once per segment from a zero accumulator and folds into a
+  register total before the stock epilogue. A stage's depth does not enter the program: the
+  warp-level MMAs still step through k in ascending 16-wide steps. At M = 128–512 the
+  64-deep tiles halve the mainloop's barriers per k and took several projections from
+  1.1–1.3× cuBLAS's time to 0.85–1.05× (`archive/ceiling_probes/a800/close/probe_gemm_cfg.txt`);
 - deterministic stream-K kernels, for M ≤ 8 and over CUTLASS tiles, and segment-parallel
   and segment-split kernels for segmented shapes, all described below.
 
@@ -446,12 +464,12 @@ The balanced kernels split (n8 output tile, segment) work items contiguously ove
 per SM, and the warps share each X stage. With S > 1 a warp writes its fp32 partial, and
 the last warp to arrive on a tile folds it, as in decode attention. These kernels exist
 because decode GEMMs stream weights. With fixed 32-column tiles, a 4096-wide projection
-gives 128 CTAs on 114 SMs, which leaves some SMs with twice the bytes of others. With
+gives 128 CTAs on the RTX 4090 D's 114 SMs, which leaves some SMs with twice the bytes of others. With
 whole-K tiles, a 1024-wide projection has 128 work items for 114 SMs, which is why such
 shapes get segments.
 
 *Deterministic stream-K.* Some projections have too few n8 tiles to divide evenly over
-the SMs; 8B's down projection has 512 tiles for 114 SMs. Segments would fix this, but they
+the SMs; 8B's down projection has 512 tiles for 114 SMs (108 on the A800). Segments would fix this, but they
 change the program for every M, and they cost prefill 1–5% (probe 3). Instead, a stream-K
 kernel for M ≤ 8 splits the (tile, k-step) pairs of all tiles evenly over one worker warp
 per (SM, warp). A tile cut between workers w and w+1 stays one chain: w runs the first k
@@ -505,7 +523,7 @@ arrival counter and a re-read on the critical path, plus a second pipeline pass 
 whose items cross the segment boundary. In a decode graph that made them 7% slower than
 cuBLAS's GEMV (probe 16). The segment-split kernel gives each n8 tile one CTA and each
 segment one warp with its own `cp.async` ring; the warps fold their partials through
-shared memory in ascending segment order. At M = 1 it takes 6.01 µs on 0.6B o (balanced
+shared memory in ascending segment order. On the RTX 4090 D, at M = 1 it takes 6.01 µs on 0.6B o (balanced
 6.97, cuBLAS 6.57) and 8.27 µs on down (9.33, 8.75; `results/kernels/gemm_burst.txt`).
 
 Timing a single microsecond kernel after an L2 flush misranks candidates. For M ≤ 512
@@ -514,7 +532,7 @@ at least twice the L2 size: the weight itself and every weight-sized slice of a 
 buffer. Every launch streams its weights from DRAM, as consecutive layers do in a forward;
 a weight larger than the scratch is its own ring. The bursts must not be launch-bound.
 Launched from Python, kernels shorter than about 10 µs are, and cuBLAS's launch path is
-the slower one (0.6B o at M = 1: 9.24 µs per launch eagerly, 6.49 µs in a CUDA graph), so
+the slower one (0.6B o at M = 1 on the RTX 4090 D: 9.24 µs per launch eagerly, 6.49 µs in a CUDA graph), so
 our benchmarks capture each burst in a graph, as the engine runs decode. The tuner
 launches from C++; its choices at M = 1 are the graph-captured best or within 1% of it.
 
@@ -531,6 +549,11 @@ nothing:
    stream is keyed by (request seed, position) rather than by batch row. Requests without
    a seed get a random one, echoed in the response, so any output can be reproduced.
 
+A completion request with `logprobs: 0` also receives each sampled token's log-probability
+(Section 4), in either mode. The kernel runs only in steps where a row asks for it, reads
+the logits the sampler already holds, and its result travels to the host in the same
+asynchronous copy as the token ids, so the CPU/GPU overlap is unchanged.
+
 Sampling parameters are packed into one pinned, non-blocking upload per step. After graph
 capture has run every projection, the engine tunes each projection shape for every M
 bucket up to the largest forward (chunk size plus running requests) and logs the kernel
@@ -539,324 +562,119 @@ then steps of 64, 128 and 256), so every graph runs the kernel timed at its own 
 power-of-two buckets the prefill graphs between powers of two ran a kernel tuned for a
 larger M, 2.7% slower on average and up to 1.55× (`archive/ceiling_probes`, probe 13).
 Candidates are timed on random operands: on zeros some tiles run up to 7.5% faster
-and are misranked (probe 15). Tuning takes 3.7 s (0.6B), 8.2 s (1.7B), 9.9 s (4B) and 17.3 s (8B) at startup
-(`results/e2e_matrix/tuning.txt`, which also lists every choice).
+and are misranked (probe 15). Tuning takes 4.0 s (0.6B), 7.8 s (1.7B), 10.1 s (4B) and 15.5 s (8B) at startup on the A800
+(`results/a800/e2e_matrix/tuning.txt`, which also lists every choice).
 With lazy tuning, the first mixed batches of each new size stalled inside measured
 requests, and time to first token at concurrency 32 rose by 17%.
 A tuning failure falls back to a heuristic choice, which is numerically identical.
+Because tuning runs after capture, a tuned kernel may need a larger CUTLASS scratch buffer than
+the captured graphs were recorded with. *Scratch:* a grown buffer keeps its predecessor alive,
+since freeing it left the graphs launching into freed memory, which crashed 0.6B at 128
+running requests on its first request in the regeneration run.
 
 For ablation, `--attention-backend pi` runs PI attention with cuBLAS projections, and
 `--row-invariant-gemm` runs the row-invariant GEMM and the deterministic sampler with
-the backend chosen by `--attention-backend` (FlashInfer in Section 7.3). Neither is
+the backend chosen by `--attention-backend` (FlashInfer in Section 7.4). Neither is
 deterministic on its own.
 
 ## 7 Evaluation
 
-**Setup.** One RTX 4090 D (sm_89, 114 SMs, 72 MB L2, driver 535, CUDA 12.6), Qwen3
-0.6B/1.7B/4B/8B in bf16. "Original" is llm_infer_rust with FlashInfer 0.6.18 attention,
-cuBLAS projections and its default sampler; "PI" is the same binary with
-`--deterministic`. The original engine (and the kernel benchmarks' FlashInfer baseline)
-uses FlashInfer's CUDA-core paged decode (`use_tensor_cores=False`, the wrapper's
-default); Section 7.3 also compares against its tensor-core decode. Both run with radix
-prefix caching, chunked prefill (2048 tokens),
-mixed batches, CUDA graphs and overlap enabled. Baselines on the same GPU: SGLang
-0.5.5.post3 (`--enable-deterministic-inference`) and vLLM 0.11.2
-(`VLLM_BATCH_INVARIANT=1`). Exact versions are in VERSIONS.txt. Every number in this
-section comes from one regeneration run (`eval/run_all.sh`, engine commit fdc184b), except
-the SGLang and vLLM rows, which run in their own environments (`results/README.md`), the
-component ablation in Section 7.3 (`eval/e2e_ablation.sh`, engine commit 870c171, which
-adds only the ablation flag), and results marked as probes, whose scripts and outputs are in `archive/ceiling_probes/`.
+**Setup.** One A800-SXM4-80GB (sm_80, 108 SMs, 40 MB L2, driver 535.129.03, CUDA 12.6,
+PyTorch 2.13, FlashInfer 0.6.18), Qwen3 0.6B/1.7B/4B/8B in bf16. We did not change clocks:
+under load the SM clock sat at the board's 1410 MHz boost in 78% of one-minute samples and
+never fell below 1170 MHz (`results/a800/run_all/clocks.log`). "Original" is llm_infer_rust
+with FlashInfer attention, cuBLAS projections and its default sampler; "PI" is the same binary
+with `--deterministic`. The original engine (and the kernel benchmarks' FlashInfer baseline)
+uses FlashInfer's CUDA-core paged decode (`use_tensor_cores=False`, the wrapper's default);
+the kernel benchmarks also time its tensor-core decode. Both modes run with radix prefix
+caching, chunked prefill (2048 tokens), mixed batches, CUDA graphs and overlap enabled.
+Baselines on the same GPU: SGLang 0.5.5.post3 (`--enable-deterministic-inference`), vLLM
+0.11.2 and vLLM 0.17.1 (`VLLM_BATCH_INVARIANT=1`).
 
-Section 7.5 repeats the whole evaluation on an A800 with engine commit 38c32da. That
-commit adds the following, all from Section 5:
-- the pipelined prefill kernel, with its sm_80 variant and planner rule;
-- stream-K on segmented shapes and over tile pairs;
-- the decode grid order.
-
-On sm_89 the engine runs the 48 KB prefill variant, and the tuner may pick the new GEMM
-kernels. Every kernel gives on the A800 the same bits as the RTX 4090 D's kernel output
-hashes (Section 7.5). None of these changes has been timed on sm_89, because the RTX 4090
-D was no longer available. Sections 7.1–7.4 are therefore the 4090 D with the earlier
-engine.
+Every number in this section comes from one regeneration run (`eval/run_all.sh`; outer
+commit a51ba7e, engine 34203cf; `results/a800/`, environment in `results/a800/ENV.txt`). That
+run exposed a crash at 128 running requests on 0.6B (Section 6, *scratch*); the stages it
+touches, and every bitwise check, were rerun on the fixed engine 1ee2bc7: kernel tests,
+the cross-configuration and detcheck checks, rollout log-probabilities, the
+high-concurrency and ablation runs and the vLLM 0.17.1 batch-invariant baseline. The fix
+changes no kernel. Probes, whose scripts and outputs are in `archive/ceiling_probes/`, are
+marked as such. An RTX 4090 D (sm_89) with the earlier engine fdc184b supplies the cross-GPU
+comparison (Section 7.2) and Section 7.6. The A800 has one GPU, so tensor parallelism is
+evaluated with emulated ranks (Section 9).
 
 ### 7.1 Determinism
 
 detcheck sends token-id prompts (24–2600 tokens, 256 output tokens, `ignore_eos`) and
-compares completion token ids. Within one server instance (Qwen3-1.7B), the table counts
-mismatching requests:
+compares, request by request, the completion's token ids and each token's fp32
+log-probability bits. Within one server instance (Qwen3-1.7B,
+`results/a800/baselines/Qwen3-1.7B/SUMMARY.md`), the table counts requests whose tokens or
+log-probabilities differ from the reference:
 
 | engine | batch c4/c16 | shared prefix ×32 | decode vs re-prefill | seeded re-prefill | repeat ×200 (distinct) | seeded sampling c4/c16 | prefix full/partial hit |
 |---|---|---|---|---|---|---|---|
-| original (FlashInfer) | 3/1 of 16 | 9/32 | 1/24 | 9/24 | 14 | 6/6 of 16 | 0/0 of 8 |
+| original (FlashInfer) | 16/16 of 16 | 32/32 | 24/24 | 24/24 | 169 | 16/16 of 16 | 5/6 of 8 |
 | **PI (`--deterministic`)** | **0/0** | **0/32** | **0/24** | **0/24** | **1** | **0/0** | **0/0** |
-| SGLang | 2/2 | 11/32 | 0/24 | 8/24 | 7 | 6/6 | 0/0 |
-| SGLang deterministic (FlashInfer) | 0/0 | 14/32 | 1/24 | 8/24 | 1 | 1/1 | 0/0 † |
-| SGLang deterministic (Triton) | server stalled (request timed out after 1200 s) | | | | | | |
-| vLLM | 3/3 | 14/32 | 0/24 | 8/24 | 11 | 5/6 | 1/1 |
-| vLLM batch-invariant ‡ | 2/3 | 14/32 | 1/24 | 8/24 | 12 | 5/6 | 0/0 |
+| SGLang | 16/16 | 32/32 | 24/24 | 24/24 | 33 | 16/16 | 8/8 |
+| SGLang deterministic (FlashInfer) | 5/5 | 30/32 | 24/24 | 24/24 | 1 | 4/6 | 0/0 † |
+| SGLang deterministic (Triton) | server stalled (request timed out after 1200 s) ‡ | | | | | | |
+| vLLM 0.11.2 | 16/16 | 32/32 | 24/24 | 24/24 | 169 | 16/16 | 8/6 |
+| vLLM 0.11.2 batch-invariant § | 16/16 | 32/32 | 24/24 | 24/24 | 168 | 16/16 | 7/2 |
+| vLLM 0.17.1 | 16/16 | 32/32 | 24/24 | 24/24 | 167 | 16/16 | 8/6 |
+| vLLM 0.17.1 batch-invariant | 0/0 | 0/32 | 0/24 | 8/24 ‖ | 1 | 0/0 | 0/0 |
 
 † SGLang disables the radix cache in deterministic mode with the FlashInfer backend, so the
 prefix check exercises no cache hits.
-‡ vLLM 0.11.x documents batch invariance for compute capability ≥ 9.0. On sm_89 it engages
-(attention forced to FLASH_ATTN, aten kernels overridden) but is not batch-invariant.
+‡ From the first A800 run; the regeneration run did not repeat it.
+§ vLLM documents batch invariance for compute capability ≥ 9.0. On sm_80, version 0.11.2
+engages it (aten kernels overridden, attention forced to one split) but is not
+batch-invariant. Version 0.17.1 is, with FlashAttention 2 named as the attention backend (it
+refuses to start otherwise) and prefix caching on.
+‖ The seeded-sampling variant of decode vs re-prefill holds only if the sampler keys its
+random stream by (seed, position); vLLM keys it by the request's start, so a re-prefilled
+request draws different numbers. The greedy variant, which compares the same
+log-probabilities without a sampler, passes (0/24).
 
-SGLang's deterministic mode is the closest competitor. It removes plain batch dependence,
-but 32 requests that share a prefix still diverge in 14 of 32, a token decoded at
-position p and the same token re-processed by prefill still differ, and seeded sampling
-still changes with concurrency.
+Log-probabilities are the stricter test. At token level (the earlier A800 run with engine
+38c32da, `results/a800/baselines_38c32da_tokens/`), the original engine matched itself on
+decode vs re-prefill (0 of 24) and on prefix-cache hits (0 of 8), and SGLang's deterministic
+mode differed on 1 of 24 decode-vs-re-prefill requests. With log-probabilities every one of
+the 24 differs, for both: a token decoded at position p and the same token re-processed by
+prefill always get different values, even where the argmax agrees. SGLang's deterministic
+mode removes most plain batch dependence of tokens, but its log-probabilities still change
+with concurrency (5 of 16) and across 30 of 32 requests that share a prefix.
 
-All seven checks pass with PI on Qwen3 0.6B, 1.7B, 4B and 8B
-(`results/detcheck/final_*.log`). For example, on every model 200 repeats of one prompt
-give one distinct completion, and seeded sampling at concurrency 4 and 16 matches the
-sequential reference in all 16 requests.
+detcheck passes on all four models with log-probabilities compared
+(`results/a800/detcheck/final_*.log`): on every model 200 repeats of one prompt give one
+distinct completion, and seeded sampling at concurrency 4 and 16 matches the sequential
+reference in all 16 requests.
 
-**Across restarts and configurations** (Qwen3-0.6B, 16 greedy + 16 seeded-sampled requests;
-references saved from a base server, compared against seven others). PI is identical in
-all eight configurations: chunk size 512, chunked prefill off, CUDA graphs off (eager), at
-most 4 running requests, overlap off, page size 32, and a plain restart. The original
-engine fails 13–14 of the 32 comparisons in each, including the plain restart (13).
+**Across restarts and configurations** (Qwen3-0.6B, 16 greedy + 16 seeded-sampled
+requests; references saved from a base server, compared against seven others;
+`results/a800/crossconfig/`). PI is identical in all eight configurations: chunk size 512,
+chunked prefill off, CUDA graphs off (eager), at most 4 running requests, overlap off, page
+size 32, and a plain restart. The original engine fails 11–13 of the 32 comparisons in each,
+including the plain restart (11).
 
 **Evaluation reproducibility.** GSM8K 5-shot through lm-eval at client concurrency 1 and 16
-(`eval/accuracy.sh`, `eval/compare_accuracy.py`):
+(`eval/accuracy.sh`, `eval/compare_accuracy.py`, `results/a800/accuracy/`):
 
 | model | mode | strict acc c=1 | c=16 | generations differing c=1 vs c=16 |
 |---|---|---|---|---|
-| Qwen3-1.7B (1319) | original | 69.22 | 69.37 | 908 |
+| Qwen3-1.7B (1319) | original | 69.37 | 68.69 | 888 |
 | Qwen3-1.7B (1319) | PI | 69.07 | 69.07 | **0** |
-| Qwen3-8B (500) | original | 90.00 | 90.60 | 332 |
+| Qwen3-8B (500) | original | 89.80 | 89.80 | 322 |
 | Qwen3-8B (500) | PI | 90.20 | 90.20 | **0** |
 
-With the original engine about two-thirds of the generations change with client
-concurrency. In this run the 1.7B score moves by 0.15 points and the 8B score by 0.60;
-earlier runs of the same check moved the 1.7B score by up to 0.83 points. Both are more
-than the gap between the two modes. The original engine's score is a sample, not a value.
-With PI the evaluation is a pure function of the model.
+With the original engine two-thirds of the 1.7B generations change with client concurrency,
+and its score moves by 0.68 points, more than the gap between the two modes. The original
+engine's score is a sample, not a value. With PI the evaluation is a pure function of the
+model.
 
-### 7.2 Accuracy
+### 7.2 Same bits on two GPUs, and accuracy
 
-Top-1 agreement with an fp32 HF reference over 1,280 teacher-forced positions per model (`eval/fp32_agreement.sh`):
-
-| | 0.6B | 1.7B | 4B | 8B |
-|---|---|---|---|---|
-| original | 99.14% | 99.53% | 99.30% | 99.45% |
-| PI | 99.61% | 99.30% | 98.91% | 99.53% |
-
-The two modes differ by at most 6 disagreements per model, in either direction. Every disagreement is at a
-position whose fp32 top-2 margin is below 0.17 logits. On GSM8K (above) PI is within noise
-of the original engine.
-
-### 7.3 Cost
-
-**End to end.** Output throughput, PI relative to the original engine
-(`eval/e2e_matrix.sh`, median of 3, 32 requests per point, greedy; sampled at T = 0.8 is
-within 1.4 points of greedy everywhere):
-
-| model | 64/256 c1 | 512/256 c8 | 512/256 c32 | 2048/256 c16 | 4096/128 c4 |
-|---|---|---|---|---|---|
-| 0.6B | +2.0% | +8.5% | +4.3% | +5.6% | +5.8% |
-| 1.7B | −1.4% | +5.7% | +4.9% | +3.4% | +3.9% |
-| 4B | +0.1% | +5.9% | +6.1% | +3.2% | +3.0% |
-| 8B | −0.6% | +1.5% | +3.3% | +0.6% | +0.9% |
-
-On batched workloads PI is faster than the non-deterministic engine it replaces.
-At batch 1 it ranges from −1.4% (1.7B) to +2.0% (0.6B) greedy and from −1.7% to +1.2%
-sampled; Section 7.4 breaks the batch-1 step down.
-
-**Components.** Each half of the mode run alone (`eval/e2e_ablation.sh`; greedy, 32
-requests per point, or 256 at c128; four modes interleaved over 3 launches, median;
-`results/e2e_ablation/SUMMARY.md`). Output throughput relative to the original engine:
-
-| model | workload | PI attention, cuBLAS GEMM | row-invariant GEMM, FlashInfer | both (`--deterministic`) |
-|---|---|---|---|---|
-| 0.6B | 64/256 c1 | +2.0% | −0.1% | +1.9% |
-| 0.6B | 512/256 c32 | +1.5% | +2.4% | +3.3% |
-| 0.6B | 512/256 c128 | −1.3% | +0.1% | −1.4% |
-| 1.7B | 64/256 c1 | +0.9% | −2.3% | −1.0% |
-| 1.7B | 512/256 c32 | +0.8% | +4.3% | +4.9% |
-| 8B | 64/256 c1 | +1.1% | −1.9% | −0.6% |
-| 8B | 512/256 c32 | +0.6% | +2.6% | +3.2% |
-
-The three launches of each cell are within 0.5% of each other at batch 1 and within
-0.8% elsewhere, except GEMM-only 1.7B at c32 (1.7%). The last column is a separate
-launch from the matrix above and the high-concurrency table below, and differs from them
-by up to 1.0 point (0.6B c32).
-
-PI attention alone is faster at batch 1 and at c32 on every model. The row-invariant
-GEMM is what costs at batch 1 (−1.9% to −2.3% on 1.7B and 8B), and it contributes most
-of the batched gain (+2.4% to +4.3% at c32), consistent with the tuned kernels' lead
-over cuBLAS at M = 8–64 (Kernels, below). The two effects add to within 0.7 points of
-the combined mode.
-
-The 0.6B c128 loss comes from attention, and mostly after the first token: time per
-output token rises from 13.97 to 14.16 ms (+1.4%), TTFT by 0.8%. Those steps are pure
-decode steps, which run the decode kernel inside a CUDA graph, and mixed steps, in which
-both backends run the decode rows (q = 1) through their prefill kernel together with new
-prompts. Neither kernel is slower at that run's shapes (batch 128, 16 query and 8 KV
-heads, 512–768 keys). PI decode takes 0.94–0.99× the time of FlashInfer's, with uniform or
-mixed lengths and contiguous or shuffled pages, and sizing its grid for the engine's
-8192-key page table, as the decode graph does, adds under 1 µs (probe 20). PI prefill on
-mixed batches of up to four 512-token prompts and 124–128 decode rows takes 0.95–0.98×
-(probe 21). The planner does no device synchronisation. We have not found the cause.
-
-Long-context and shared-prefix workloads (`eval/e2e_extended.sh`, 3 interleaved launches
-per mode, median):
-
-| model | workload (in / out / concurrency) | Δ throughput | Δ TTFT |
-|---|---|---|---|
-| 1.7B | 64 / 256 / c1 | −1.8% | −5.8% |
-| 1.7B | 512 / 256 / c32 | +4.8% | −2.8% |
-| 1.7B | 2048 / 16 / c8 | +2.2% | −1.5% |
-| 1.7B | 4096 / 4 / c4 | −0.2% | +0.3% |
-| 1.7B | 4096 / 128 / c8, 3968-token shared prefix | +4.9% | −5.6% |
-| 1.7B | 8192 / 64 / c4, 8000-token shared prefix | +6.4% | −3.7% |
-| 1.7B | 16384 / 256 / c2 | +2.3% | −0.5% |
-| 1.7B | 30000 / 128 / c1 | +1.0% | −1.5% |
-| 8B | 64 / 256 / c1 | −0.7% | −4.6% |
-| 8B | 512 / 256 / c32 | +3.1% | −3.2% |
-| 8B | 2048 / 16 / c8 | +0.3% | −0.9% |
-| 8B | 4096 / 4 / c4 | −0.3% | +0.3% |
-| 8B | 4096 / 128 / c8, 3968-token shared prefix | +3.2% | +1.4% |
-| 8B | 8192 / 64 / c4, 8000-token shared prefix | +2.8% | −0.5% |
-| 8B | 16384 / 256 / c1 (prefill only §) | | +1.6% |
-
-Throughput is output tokens/s, or requests/s for the short-output (16 and 4 token) rows.
-TTFT is 0.3% higher on the prefill-bound 4096-token rows and 1.6% higher on the 8B 16K
-prompt, in line with the long 32-query-head prefill shapes in the Kernels paragraph below
-(1.05–1.09×). It is also 1.4% higher on the 8B 3968-token shared-prefix row (176.0 →
-178.5 ms), outside the spread of either mode's three launches, although the
-corresponding extend shape is faster in isolation (0.91×); we have not attributed it.
-
-**High concurrency** (`eval/e2e_highconc.sh`, same method):
-
-| model | workload | Δ throughput | Δ TTFT |
-|---|---|---|---|
-| 0.6B | 512 / 256 / c64 | +1.0% | −1.4% |
-| 0.6B | 512 / 256 / c128 | −1.6% | +1.3% |
-| 0.6B | 128 / 512 / c128 | −0.0% | +2.4% |
-| 0.6B | 2048 / 128 / c64 | +0.9% | −1.6% |
-| 1.7B | 512 / 256 / c64 | +3.1% | −6.8% |
-| 1.7B | 512 / 256 / c128 | +0.5% | −1.2% |
-| 1.7B | 128 / 512 / c128 | +2.3% | +0.9% |
-| 1.7B | 2048 / 128 / c64 | +1.8% | −2.0% |
-| 4B | 512 / 256 / c64 | +3.7% | −2.0% |
-| 4B | 128 / 512 / c64 | +6.7% | −1.7% |
-
-0.6B at 512 / 256 / c128 is the one batched point where PI is slower (−1.6%). The
-component ablation above places the loss in the attention backend, not in the
-projections, but no attention kernel is slower at that run's shapes, and the cause is not
-identified (probes 19–21).
-
-§ 16384 + 256 exceeds the 8B server's context limit, so each request produces one token
-and only TTFT is meaningful.
-
-**Same-GPU baselines,** greedy output tok/s on Qwen3-1.7B (`eval/baselines.sh`; its
-original and PI rows are a separate launch from the matrix above, which explains their
-differences of up to 0.8% from it):
-
-| engine | 64/256 c1 | 512/256 c8 | 512/256 c32 | 2048/256 c16 | 4096/128 c4 |
-|---|---|---|---|---|---|
-| original | 234 | 1392 | 3507 | 1283 | 378 |
-| **PI** | **230** | **1472** | **3685** | **1325** | **393** |
-| SGLang | 228 | 1377 | 3713 | 1283 | 379 |
-| SGLang deterministic | 65 | 503 | 1712 | 693 | 175 |
-| vLLM | 198 | 1221 | 3298 | 1205 | 366 |
-| vLLM batch-invariant ‡ | 198 | 1202 | 3234 | 1192 | 363 |
-
-PI is 1.9–3.5× faster than SGLang's deterministic mode. It is also faster than SGLang
-without determinism on four of the five workloads, and faster than vLLM on all five.
-
-**Kernels** (`kernels/bench_attention.py`, `kernels/gemm_burst.py`, results/kernels/).
-- **Decode attention:** 0.64–1.02× the time of the faster of FlashInfer's CUDA-core and
-  tensor-core decode across batch 1–128 and contexts of 1K–32K. With FlashInfer's split size fixed at 2048 (the
-  batch-invariant configuration), PI is up to 3.3× faster at batch 1 and 32K context
-  (157 µs vs 522 µs).
-- **Prefill and extend:** 0.51–1.09× FlashInfer, except one extend shape. A 128-query
-  extend over a 16K prefix with 32 query heads takes 1.21× (387 µs vs 319 µs). Profiled
-  on its own (probe 5), its attention kernel took 321 µs against FlashInfer's 311 µs in
-  total, and the merge, which reads the fp32 group partials the canonical fold needs,
-  61 µs.
-- **Projections** (`gemm_burst.txt`: 64 back-to-back launches, each over another weight
-  copy so every launch streams from DRAM; the best PI kernel for each of the 20 shapes,
-  LM heads included, against cuBLAS):
-  - M = 1: 0.91–1.03×;
-  - M = 8–64: 0.55–1.04×;
-  - M = 128–512: 0.76–1.23×;
-  - M = 1024–2048: 0.90–1.01×.
-
-  Timed one launch at a time after an L2 flush (`gemm_cold.txt`), some M = 1 kernels
-  rank worse (4B and 8B gate-up 1.16×, 8B down 1.20× cuBLAS): a lone eager launch adds a
-  ramp that back-to-back launches in a graph hide. The decode trace agrees with the
-  burst numbers (8B down: 110.8 µs per launch traced, 110.4 µs in the burst; Section 7.4).
-
-  Every gap above 1.05× is at M = 128–256: 0.6B's two segmented projections (o 1.19× at
-  M = 128 and 256, down 1.14× and 1.23×) and 1.7B down at M = 128 (1.13×). cuBLAS runs
-  split-K there. Neither smaller segment-parallel tiles nor four segments instead of two
-  close the 0.6B gaps (probe 18).
-
-### 7.4 Where the batch-1 cost goes
-
-Batch-1 decode streams every weight once per step. On this GPU a plain `ldg.128` stream of
-a 1.7B or 8B projection's weights reaches 932–992 GB/s (`archive/ceiling_probes/out.txt`),
-and cuBLAS's GEMV on the same projections 862–972 GB/s in a CUDA graph
-(`gemm_burst.txt`), so the projections leave little room either way. A node-level trace of greedy decode at batch 1
-(`scripts/nsys_decode.sh`, `scripts/nsys_compare.py`, `results/nsys/b1_compare.txt`)
-splits each step by kernel category. Tracing every graph node lengthens the gaps between
-kernels, so these numbers attribute the difference; the step times are those of
-Section 7.3.
-
-| per step, PI − original (µs) | 0.6B | 1.7B | 4B | 8B |
-|---|---|---|---|---|
-| projections | −18 | +38 | +121 | +262 |
-| attention | −35 | +1 | −93 | −108 |
-| other kernels | +11 | +20 | +35 | +40 |
-| between kernels | +8 | −26 | −24 | −27 |
-| traced step (original) | 2129 | 4362 | 9204 | 16524 |
-
-**Attention** is faster or equal on every model, by up to 108 µs per step.
-
-**Projections** carry the cost. Per launch, PI's M = 1 kernels are at most 1.5% slower
-than cuBLAS's GEMV on 15 of the 20 projections, and 1.9–3.8% slower on three gate-ups, the
-widest weights (0.6B 14.7 → 15.1 µs, 1.7B 53.4 → 54.4 µs, 4B 103.2 → 105.6 µs), and on the
-longest rows (1.7B down 29.6 → 30.2 µs, 8B down 106.7 → 110.8 µs). 0.6B's o and down
-projections, whose two segments made them 6–7% slower than the GEMV in an earlier trace
-(probe 16), now take 6.05 and 8.26 µs against 6.59 and 8.77 with segment-split kernels
-(Section 5), and 0.6B's projections as a whole take 18 µs less per step than cuBLAS's.
-
-8B down is the largest single gap. Our M ≤ 8 kernels give each warp or CTA whole n8 tiles
-(8 weight rows) and stream K in stages. At a fixed 96 MB, the same access pattern without
-any MMA loses more as rows get longer: at K = 12288 it reads in 111.8 µs with 128- to
-256-column stages, against 101.4 µs for a linear stream and 105.0 µs for cuBLAS, while
-1024-column stages with one tile in flight per CTA take 106.8 µs (probe 14). So the gap is
-burst length on long rows, not the 512-tile/114-SM split: a balanced deterministic
-stream-K and a two-segment program both remove the split and still take 112–113.5 µs.
-Stream-K workers with 1024-column stages bring 8B down to 110.4 µs at M = 1 (cuBLAS
-107.0) and 113.0 µs at M = 8 (cuBLAS 119.7; `gemm_burst.txt`). What remains is the
-activation half of each warp's copy ring and the MMA chain; nothing in it is a property of
-the canonical program, which fixes only each element's k order.
-
-**Other kernels** are the same RMSNorm, RoPE, KV-store and activation kernels in both
-modes, yet most take up to 0.25 µs longer per launch in the PI trace. In isolation a
-FlashInfer norm costs the same after a PI GEMM as after cuBLAS (probe 17), so this part is
-unattributed; it is 0.2–0.5% of a traced step.
-
-### 7.5 A800 (sm_80)
-
-**Setup.** One A800-SXM4-80GB (sm_80, 108 SMs, 40 MB L2, driver 535.129.03), the same
-CUDA, PyTorch, FlashInfer, SGLang and vLLM versions as above, and engine commit 38c32da.
-Every number in this section comes from one regeneration run on that commit
-(`results/a800/`, environment in `results/a800/ENV.txt`), with three exceptions, listed in
-`results/README.md`:
-- the SGLang and vLLM rows come from the first A800 run, in their own environments;
-- the batch-1 traces were retaken after the run (below);
-- the cross-GPU comparisons are computed from both GPUs' files.
-
-Probes, and the traces cited in "Why the A800 differs", are in
-`archive/ceiling_probes/a800/`. The box has one GPU, so tensor parallelism was not
-tested.
-
-**Same bits on both GPUs.** The kernel-hash harness (`eval/xgpu_hashes.py`) runs 80 GEMM
-cases (20 projections × M = 1, 8, 128, 1024) and five attention cases on fixed inputs.
-It hashes the outputs. Compared with the RTX 4090 D (`results/a800/xgpu/compare_4090D_A800.txt`):
+The kernel-hash harness (`eval/xgpu_hashes.py`) runs 80 GEMM cases (20 projections × M = 1,
+8, 128, 1024) and five attention cases on fixed inputs and hashes the outputs. Compared with
+the RTX 4090 D (`results/a800/xgpu/compare_4090D_A800.txt`):
 
 | | identical on both GPUs |
 |---|---|
@@ -865,284 +683,499 @@ It hashes the outputs. Compared with the RTX 4090 D (`results/a800/xgpu/compare_
 | PI attention | 5 of 5 |
 | FlashInfer | 1 of 5 |
 
-The 4090 D hashes were produced by the earlier engine. The kernels added since then
-change the schedule, not the program, and the check runs in two steps:
-- The attention hashes come from the shipped A800 kernels and match the 4090 D directly.
-- The GEMM hashes come from two reference kernels (ids 1 and 13). On the A800,
-  `test_gemm.py` checks every other kernel against them bit for bit, including the new
-  stream-K kernels. The new GEMM kernels therefore match the 4090 D through the
-  references.
+The 4090 D hashes were produced by the earlier engine. The kernels added since then change
+the schedule, not the program, and the check runs in two steps. The attention hashes come
+from the shipped A800 kernels and match the 4090 D directly. The GEMM hashes come from two
+reference kernels (ids 1 and 13); on the A800, `test_gemm.py` checks every other kernel,
+including the 64-deep tiles and stream-K kernels added since, against them bit for bit.
 
-The same holds end to end. GSM8K generations through lm-eval
-(`results/a800/accuracy/xgpu_4090D_vs_A800.md`) are identical between the two GPUs for
-PI: 0 of 1319 differ for 1.7B and 0 of 500 for 8B, at client concurrency 1 and at 16. The
-original engine differs in 906–910 of 1319 and in 325–343 of 500.
+The same holds end to end. GSM8K generations (`results/a800/accuracy/xgpu_4090D_vs_A800.md`)
+are identical between the two GPUs for PI: 0 of 1319 differ for 1.7B and 0 of 500 for 8B,
+at client concurrency 1 and at 16. The original engine differs in 906–910 of 1319 and in
+325–343 of 500.
 
-**Determinism and accuracy.** Every check of Section 7.1 repeats on the A800:
-- detcheck passes on all four models (`results/a800/detcheck/`).
-- PI is identical in all eight server configurations. The original engine fails 9–15 of
-  32 comparisons in each, including 9 after a plain restart.
-- In the baseline table (`results/a800/baselines/Qwen3-1.7B/SUMMARY.md`), SGLang's
-  deterministic mode again diverges on shared prefixes (15 of 32), on decode vs
-  re-prefill (1 of 24) and on seeded re-prefill (7 of 24). PI has 0 everywhere.
-- GSM8K strict accuracy, c = 1 / c = 16:
+**Accuracy.** Top-1 agreement with an fp32 HF reference over 1,280 teacher-forced positions
+per model (`eval/fp32_agreement.sh`):
 
-  | model | PI | original |
-  |---|---|---|
-  | 1.7B | 69.07 / 69.07, 0 generations differ | 69.37 / 68.69, 901 differ |
-  | 8B | 90.20 / 90.20, 0 differ | 89.80 / 90.00, 329 differ |
+| | 0.6B | 1.7B | 4B | 8B |
+|---|---|---|---|---|
+| original | 99.53% | 99.14% | 99.30% | 99.53% |
+| PI | 99.61% | 99.30% | 98.91% | 99.53% |
 
-  The PI scores equal the 4090 D's, as identical generations require.
-- fp32 top-1 agreement:
+The two modes differ by at most 5 disagreements per model, in either direction, and every
+disagreement is at a position whose fp32 top-2 margin is below 0.17 logits. The PI row equals
+the 4090 D's, as identical bits require. On GSM8K (above) PI is within noise of the original
+engine.
 
-  | | 0.6B | 1.7B | 4B | 8B |
-  |---|---|---|---|---|
-  | PI | 99.61% | 99.30% | 98.91% | 99.53% |
-  | original | 99.53% | 99.14% | 99.30% | 99.53% |
+Attention error is also asserted in the kernel tests, not only printed (Section 7.7): against
+float64, PI-Attn's mean and maximum error are below FlashInfer's on every GQA geometry and
+query scale tested.
 
-  The PI row equals the 4090 D's. Every disagreement is at an fp32 top-2 margin below
-  0.17 logits.
+### 7.3 Rollout log-probabilities equal the trainer's
 
-**End to end.** Output throughput, PI relative to the original engine on the A800 (same
-method as Section 7.3; `results/a800/e2e_matrix/SUMMARY.md`; sampled within 1.6 points
-of greedy):
+An RL trainer recomputes the log-probability of every sampled token with its own forward
+and divides by the rollout engine's value to get an importance ratio. When the two
+programs differ, the ratio drifts from 1 on tokens that the policy never changed, and
+methods such as truncated or masked importance sampling exist to absorb that noise. Row
+invariance removes the noise at its source, provided the trainer's forward runs the same
+canonical program as the engine.
+
+The engine returns each sampled token's log-probability with `logprobs: 0` on
+`/v1/completions`, computed by the fixed-order log-softmax of Section 4 (`pi_logprob.cuh`).
+
+The trainer side (`kernels/engine_forward.py`) is the engine's Qwen3 forward in PyTorch: the
+PI GEMM, PI-Attn's causal prefill over a paged cache, the engine's own RMSNorm, q/k-norm,
+RoPE and SiLU kernels (compiled from the engine's source with its flags), and the same
+log-softmax. It is forward-only: a trainer back-propagates through its own differentiable
+copy, as FlashAttention recomputes its forward.
+
+`eval/rollout_logprobs.py` (`results/a800/rollout/`) sends 64 GSM8K questions per model (chat template, 256 tokens,
+temperature 1 with a per-request seed, every fourth request greedy) to the deterministic
+engine at concurrency 16, then stops the server and scores exactly those sequences with
+two trainers: the PI forward, each sequence alone and in two random packings of 2–8
+sequences per micro-batch, and HF transformers in bf16 with SDPA attention and an fp32
+log-softmax, alone and in right-padded batches of 8.
+
+| model | completion tokens | PI trainer, bitwise equal (alone / packing 0 / packing 1) | HF trainer, bitwise equal | HF: tokens with |ratio − 1| > 1% | HF ratio range |
+|---|---|---|---|---|---|
+| 0.6B | 13,063 | all / all / all | 136 (1.0%) | 22.2% | 0.59–1.52 |
+| 1.7B | 14,293 | all / all / all | 5,275 (36.9%) | 11.5% | 0.49–1.64 |
+| 4B | 13,975 | all / all / all | 5,698 (40.8%) | 10.4% | 0.61–2.51 |
+| 8B | 14,262 | all / all / all | 5,084 (35.6%) | 11.4% | 0.61–1.44 |
+
+(HF columns: each sequence scored alone; batches of 8 give 10.6–22.1% and ratios
+0.49–2.11.) With the PI forward every one of the 55,593 completion tokens has the engine's
+log-probability bit for bit, whichever packing the trainer uses, so every importance ratio
+is exactly 1. The engine's tokens came from decode steps in batches of up to 16 requests
+under chunked prefill; the trainer recomputes them in one prefill per micro-batch.
+
+### 7.4 Cost
+
+**End to end.** Output throughput, PI relative to the original engine
+(`eval/e2e_matrix.sh`, `results/a800/e2e_matrix/SUMMARY.md`; median of 3 interleaved
+launches, 32 requests per point, greedy):
 
 | model | 64/256 c1 | 512/256 c8 | 512/256 c32 | 2048/256 c16 | 4096/128 c4 |
 |---|---|---|---|---|---|
-| 0.6B | −1.6% | +8.2% | +0.9% | +5.0% | +5.7% |
-| 1.7B | +5.7% | −5.9% | −0.2% | −1.4% | −0.4% |
-| 4B | +14.3% | +2.4% | −0.7% | −2.4% | −1.8% |
-| 8B | +6.8% | +1.0% | +1.2% | −1.0% | −2.5% |
+| 0.6B | −3.4% | +7.1% | +0.6% | +4.5% | +4.3% |
+| 1.7B | +5.7% | −5.8% | −0.4% | −0.7% | +0.2% |
+| 4B | +13.8% | +2.5% | −0.6% | −2.2% | −1.5% |
+| 8B | +6.2% | +1.1% | +1.2% | −1.1% | −2.5% |
 
-The three launches of each cell agree within 0.5 points, except 1.7B at c32 (1.5), 4B at
-c1 (1.1) and 8B at c1 (0.8).
+Sampled at T = 0.8 every cell is within 1.7 points of greedy (overall range −5.9% to
++14.2%). The three launches of a cell agree within 1 point except at nine points, the widest
+being 0.6B at batch 1 (−3.4, −6.4, −3.4) and sampled 0.6B 2048/256 c16 (+4.0, +8.6, +4.0).
+At batch 1 PI is faster on 1.7B, 4B and 8B by 5.7–13.8% and slower on 0.6B; Section 7.5 breaks
+the step down. Batched workloads are within ±2.5% except 1.7B at 8 requests (−5.8%) and three 0.6B
+points (+4.3% to +7.1%).
 
-Component ablation (`results/a800/e2e_ablation/SUMMARY.md`), relative to the original
-engine:
+**Components.** Each half of the mode run alone (`eval/e2e_ablation.sh`; greedy, 32
+requests per point, or 256 at c128; four modes interleaved over 3 launches, median;
+`results/a800/e2e_ablation/SUMMARY.md`). Output throughput relative to the original engine:
 
-| model | workload | PI attention, cuBLAS GEMM | row-invariant GEMM, FlashInfer | both |
-|---|---|---|---|---|
-| 0.6B | 64/256 c1 | +3.2% | −4.7% | −1.7% |
-| 0.6B | 512/256 c32 | +1.5% | −0.5% | +1.1% |
-| 0.6B | 512/256 c128 | +1.3% | −2.9% | −1.5% |
-| 1.7B | 64/256 c1 | +2.0% | +4.0% | +5.8% |
-| 1.7B | 512/256 c32 | +1.5% | −1.8% | −0.1% |
-| 8B | 64/256 c1 | +4.7% | +1.2% | +6.5% |
-| 8B | 512/256 c32 | +0.5% | +0.5% | +1.2% |
+| model | workload (in / out / concurrency) | original tok/s | PI attention only | row-invariant GEMM only | both (`--deterministic`) |
+|---|---|---|---|---|---|
+| 0.6B | 64 / 256 / c1 | 513.5 | +3.3% | −6.1% | −2.9% |
+| 0.6B | 512 / 256 / c32 | 7454.7 | +1.3% | −0.8% | +0.4% |
+| 0.6B | 512 / 256 / c128 | 11641.0 | −0.3% | −1.4% | −1.7% |
+| 1.7B | 64 / 256 / c1 | 282.7 | +1.8% | +3.9% | +5.9% |
+| 1.7B | 512 / 256 / c32 | 5080.5 | +1.1% | −1.6% | −0.6% |
+| 8B | 64 / 256 / c1 | 89.9 | +4.7% | +1.4% | +6.8% |
+| 8B | 512 / 256 / c32 | 1813.7 | +0.5% | +0.5% | +1.1% |
 
-On both GPUs PI attention alone is faster everywhere (here +0.5% to +4.7%), and the
-row-invariant GEMM carries the batch-1 cost: 1.7B and 8B on the 4090 D, 0.6B here. What
-flips is the source of the batched gain. On the 4090 D it is the GEMM; on the A800 it is
-attention, and the GEMM costs up to 1.8% at c32.
+PI attention alone is never slower than FlashInfer by more than 0.3% on these decode-heavy
+points and gains 1.8–4.7% at batch 1, where its unsplit-or-folded decode replaces
+FlashInfer's CUDA-core kernel and merge (Section 7.5). The row-invariant GEMM costs up to 1.6%
+at 32 and 128 requests (8B gains 0.5%) and 6.1% on 0.6B at batch 1, whose o and down projections are its
+slowest shapes (Section 7.4, *Kernels*); on 1.7B and 8B at batch 1 it gains 1.4–3.9%. The
+two halves roughly add.
 
-Long-context and shared-prefix workloads (`results/a800/e2e_extended/SUMMARY.md`):
+**Long-context and shared-prefix workloads** (`eval/e2e_extended.sh`, 3 interleaved launches
+per mode, median; `results/a800/e2e_extended/SUMMARY.md`):
 
-| model | workload | Δ throughput | Δ TTFT |
+| model | workload (in / out / concurrency) | Δ throughput | Δ TTFT |
 |---|---|---|---|
-| 1.7B | 64 / 256 / c1 | +5.9% | +10.0% |
-| 1.7B | 512 / 256 / c32 | −0.6% | +1.3% |
-| 1.7B | 2048 / 16 / c8 | −3.5% | +3.9% |
-| 1.7B | 4096 / 4 / c4 | −4.3% | +4.8% |
-| 1.7B | 4096 / 128 / c8, 3968-token shared prefix | +1.2% | +5.3% |
-| 1.7B | 8192 / 64 / c4, 8000-token shared prefix | +1.4% | +10.2% |
-| 1.7B | 16384 / 256 / c2 | −4.4% | +14.4% |
-| 1.7B | 30000 / 128 / c1 | −9.1% | +17.8% |
-| 8B | 64 / 256 / c1 | +6.6% | +9.0% |
-| 8B | 512 / 256 / c32 | +1.2% | +3.1% |
-| 8B | 2048 / 16 / c8 | −4.3% | +5.1% |
-| 8B | 4096 / 4 / c4 | −5.6% | +6.1% |
-| 8B | 4096 / 128 / c8, 3968-token shared prefix | +7.9% | +6.4% |
-| 8B | 8192 / 64 / c4, 8000-token shared prefix | +5.5% | +7.4% |
-| 8B | 16384 / 256 / c1 (prefill only §) | | +14.8% |
+| 1.7B | 64 / 256 / c1 | +5.6% | +8.8% |
+| 1.7B | 512 / 256 / c32 | −0.3% | −0.6% |
+| 1.7B | 2048 / 16 / c8 | −1.7% | +0.1% |
+| 1.7B | 4096 / 4 / c4 | −2.7% | +2.9% |
+| 1.7B | 4096 / 128 / c8, 3968-token shared prefix | +1.6% | +5.4% |
+| 1.7B | 8192 / 64 / c4, 8000-token shared prefix | +1.2% | +12.3% |
+| 1.7B | 16384 / 256 / c2 | −3.7% | +12.2% |
+| 1.7B | 30000 / 128 / c1 | −9.4% | +18.3% |
+| 8B | 64 / 256 / c1 | +6.2% | +3.6% |
+| 8B | 512 / 256 / c32 | +1.1% | +3.6% |
+| 8B | 2048 / 16 / c8 | −4.4% | +5.2% |
+| 8B | 4096 / 4 / c4 | −5.8% | +6.3% |
+| 8B | 4096 / 128 / c8, 3968-token shared prefix | +8.1% | +3.9% |
+| 8B | 8192 / 64 / c4, 8000-token shared prefix | +5.5% | +6.3% |
+| 8B | 16384 / 256 / c1 (prefill only ¶) | | +13.2% |
 
-At high concurrency (`results/a800/e2e_highconc/SUMMARY.md`) PI ranges from −3.4% to
-+6.5%:
+Throughput is output tokens/s, or requests/s for the short-output (16 and 4 token) rows.
+Prefill is where PI pays on this GPU: time to first token rises by up to 6.3% on 2K–4K prompts and
+by 12–18% on 16K–30K prompts and on 1.7B's 8000-token shared prefix, and the 30000-token request loses 9.4% of its throughput. The
+batch-1 TTFT increases (+3.6% and +8.8%) are 0.5 ms on 64-token prompts. Shared-prefix
+decode gains (+1.2% to +8.1%) despite the higher TTFT.
 
-| model | workload | Δ throughput | Δ TTFT |
+¶ 16384 + 256 exceeds the 8B server's context limit, so each request produces one token and
+only TTFT is meaningful.
+
+**High concurrency** (`eval/e2e_highconc.sh`, same method; `results/a800/e2e_highconc/SUMMARY.md`):
+
+| model | workload (in / out / concurrency) | Δ throughput | Δ TTFT |
 |---|---|---|---|
-| 0.6B | 512/256 c64 | +1.5% | +0.2% |
-| 0.6B | 512/256 c128 | −1.4% | +14.0% |
-| 0.6B | 128/512 c128 | −0.6% | +2.8% |
-| 0.6B | 2048/128 c64 | −2.6% | +5.9% |
-| 1.7B | 512/256 c64 | +0.1% | +1.3% |
-| 1.7B | 512/256 c128 | −2.4% | +3.0% |
-| 1.7B | 128/512 c128 | −3.4% | +2.1% |
-| 1.7B | 2048/128 c64 | −0.9% | +0.4% |
-| 4B | 512/256 c64 | +6.4% | +4.0% |
-| 4B | 128/512 c64 | +6.5% | +2.7% |
+| 0.6B | 512 / 256 / c64 | +1.2% | +6.8% |
+| 0.6B | 512 / 256 / c128 | −2.0% | +18.9% |
+| 0.6B | 128 / 512 / c128 | +1.4% | −2.5% |
+| 0.6B | 2048 / 128 / c64 | −8.0% | +11.3% |
+| 1.7B | 512 / 256 / c64 | +0.7% | +0.8% |
+| 1.7B | 512 / 256 / c128 | −0.3% | +2.3% |
+| 1.7B | 128 / 512 / c128 | +0.9% | −0.1% |
+| 1.7B | 2048 / 128 / c64 | −2.9% | +3.4% |
+| 4B | 512 / 256 / c64 | +6.5% | +2.8% |
+| 4B | 128 / 512 / c64 | +7.5% | +2.8% |
 
-The +14.0% TTFT of 0.6B at 512/256 c128 is the largest TTFT increase outside long prompts.
-Those first tokens come from batched 512-token prefills, which run at 1.30–1.47×
-FlashInfer's time on this GPU (Kernels, below).
+Decode-heavy points at 64–128 requests are within −2.0% to +7.5%. The cost is again prefill:
+0.6B's 2048-token prompts at 64 requests lose 8.0% of throughput, and 0.6B's time to first
+token at 128 requests rises 18.9%, where every step is a large batched prefill whose
+attention and projections are a larger share of a small model's step. On 1.7B the same points
+cost 2.9% and 2.3%.
 
-**Same-GPU baselines,** greedy output tok/s on Qwen3-1.7B:
+**Same-GPU baselines,** greedy output tok/s on Qwen3-1.7B (`eval/baselines.sh`; its original
+and PI rows are a separate launch from the matrix above, which explains differences of up to
+1.7% from it):
 
 | engine | 64/256 c1 | 512/256 c8 | 512/256 c32 | 2048/256 c16 | 4096/128 c4 |
 |---|---|---|---|---|---|
-| original | 283 | 1895 | 5016 | 1879 | 539 |
-| **PI** | **299** | **1785** | **4978** | **1850** | **537** |
-| SGLang | 253 | 1770 | 4838 | 1836 | 529 |
-| SGLang deterministic | 73 | 553 | 1991 | 842 | 192 |
-| vLLM | 236 | 1595 | 4141 | 1696 | 508 |
-| vLLM batch-invariant ‡ | 244 | 1535 | 4059 | 1668 | 494 |
+| original | 283 | 1894 | 5014 | 1878 | 539 |
+| **PI** | **298** | **1790** | **4951** | **1863** | **542** |
+| SGLang | 253 | 1768 | 4865 | 1837 | 530 |
+| SGLang deterministic | 73 | 554 | 1993 | 843 | 192 |
+| vLLM 0.11.2 | 237 | 1599 | 4149 | 1694 | 508 |
+| vLLM 0.11.2 batch-invariant § | 244 | 1539 | 4083 | 1671 | 495 |
+| vLLM 0.17.1 | 270 | 1842 | 4890 | 1885 | 553 |
+| vLLM 0.17.1 batch-invariant | 80 | 609 | 2228 | 921 | 223 |
 
-PI is 2.2–4.1× faster than SGLang's deterministic mode. It is also faster than SGLang and
-vLLM without determinism on all five workloads. vLLM's batch invariance is again outside
-its documented support (compute capability ≥ 9.0).
+The relevant comparison is with engines that are not deterministic, since that is the price
+of determinism. PI is within −2.8% to +10.4% of the current vLLM release without determinism
+(behind it on three workloads by 1.2–2.8%) and ahead of SGLang on all five. SGLang's
+deterministic mode, which disables the radix cache and fixes its split sizes, runs at 29–46%
+of SGLang's own throughput here; we list it because it is the deterministic mode a user can
+run on this GPU, not as the bar. vLLM 0.17.1's batch-invariant mode is the one baseline
+that passes detcheck's numeric checks here (Section 7.1). It runs at 30–49% of vLLM 0.17.1's
+own throughput, and PI at 2.0–3.7× of it. It replaces aten matmul and reductions with
+batch-invariant Triton kernels and runs attention unsplit, outside its documented
+compute-capability range; on Hopper, its supported target, the gap may differ.
 
-**Kernels** (`results/a800/kernels/`).
-- **Decode attention:** 0.64–1.01× the time of the faster FlashInfer decode at batch
-  ≤ 32. At batch 128 it is 0.97–1.06×, behind FlashInfer's tensor-core decode.
-- **Prefill and extend:** 0.41–1.00× on the four short single-request shapes (512-token
-  prompts and 128-token extends over 4K keys), and 1.01–1.47× on the rest, including
-  batched short prompts (1.30–1.47×). On the 4090 D the same shapes were 0.51–1.09×,
-  except one extend at 1.21×.
-- **Projections:**
-  - In a decode step's projections replayed as a graph (`gemm_step_graph.txt`, 0.6B),
-    PI takes 1.06× cuBLAS's time at M = 1, 0.75× at M = 8 and 1.02× at M = 32.
-  - Per shape (`gemm_burst.txt`), M = 128–512 is 1.10–1.38× on 31 of the 60 shapes,
-    22 of them o and down projections, and 0.6B's segmented o and down are 1.14–1.28× at M = 1.
+**Kernels** (`results/a800/kernels/`). Attention is timed kernel against kernel
+(`kernels/bench_attention.py`): each measurement replays a CUDA graph of at least ten calls,
+each over another layer's KV cache from a ring larger than L2, as consecutive layers run in a
+forward, so neither launch overhead nor a warm L2 enters. FlashInfer is planned for each exact
+shape.
 
-**Why the A800 differs.** The canonical program is the same on both GPUs. What changes is
-what it costs.
+- **Decode attention:** at batch 8–32, 0.91–1.06× the time of the faster of FlashInfer's
+  CUDA-core and tensor-core decode; with 8 or 32 requests sharing a 4096-token prefix, 0.73–0.85×;
+  at batch 128, 1.05–1.10× FlashInfer's tensor-core decode. At batch 1, 1.03–1.10× at 8K–32K
+  keys and 1.92× at 1024 keys (24.8 vs 12.9 µs): two groups give two CTAs per KV head, each
+  running its 16 tiles in order, where FlashInfer splits the keys more finely. With
+  FlashInfer's split size fixed at 2048 (the batch-invariant configuration), PI is 5.2× faster
+  at batch 1 and 32K keys (95.3 vs 500.0 µs). In the engine at batch 1, with contexts below
+  one group, PI's decode kernel takes 12.9 µs per layer on 8B against 30.6 µs for
+  FlashInfer's decode and merge kernels (Section 7.5's trace).
+- **Prefill and extend:** 1.12–1.80× FlashInfer on 17 of 18 shapes (and 0.55× on 512-token
+  prompts with 16 query heads, where FlashInfer's time exceeds its own 32-head time): long
+  single prompts 1.22–1.34×, batched short prompts 1.42–1.52×, extends over 4K–16K prefixes
+  1.22–1.80×.
+- **Projections** (`gemm_burst.txt`: 64 back-to-back launches captured in a graph, each over
+  another weight copy so every launch streams from DRAM; the best PI kernel for each of the
+  20 Qwen3 projections, LM heads included, against cuBLAS):
+  - M = 1: 0.78–1.37×; only 0.6B o (1.37×) and down (1.21×) exceed 1.05×;
+  - M = 8–64: 0.43–1.26×, above 1.05× on 17 of 80, all o and down projections;
+  - M = 128–512: 0.81–1.33×, above 1.05× on 18 of 60;
+  - M = 1024–2048: 0.76–1.22×, above 1.05× on 7 of 40.
 
-- **Prefill.** An RTX 4090 D runs the fp32-accumulate MMA at half rate, so MMA time
-  dominates prefill. That hides two costs the canonical program imposes:
-  - the per-32-key online step, a serial chain of shuffles and exp2 between the QK and
-    P·V MMAs;
-  - the ldmatrix traffic of 16-row warps. Each loaded K or V fragment feeds one MMA.
-    32-row warps would halve it, but with the fp32 group totals of the cross-group fold
-    they fit 4 warps per SM instead of 8.
+  A decode step's projections replayed as one graph (`gemm_step_graph.txt`, 0.6B) take
+  1.11× cuBLAS's time at M = 1, 0.77× at M = 8 and 1.03× at M = 32.
 
-  On the A800 the MMA runs at full rate. In the kernel before pipelining, MMA plus
-  ldmatrix alone already took as long as FlashInfer's whole kernel (hq = 32, q = 8192:
-  3.13 vs 3.04 ms; `prefill_ablation_flags.txt`).
-  - The pipelined kernel of Section 5 cut the kernel from 1.36–1.89× to 1.13–1.47×, and
-    30000-token TTFT from +41.8% to +17.8%.
-  - 32-row warps are bitwise identical but run 1.4–1.8× the shipped kernel's time at the
-    4 warps per SM they leave room for (probe file `prefill_wide_warps.txt`).
-- **Decode.** At 1.7B and 8 requests
-  (`archive/ceiling_probes/a800/nsys_c8_38c32da.txt`), PI's kernels keep the GPU busy
-  332 µs longer per traced step. The traced wall step is 213 µs longer, because PI spends
-  less time between kernels.
-  - **Attention, 222 µs.** Each working CTA runs its group's 16 tiles in order, at
-    1.1–1.4 µs per tile, plus the fold. FlashInfer splits the keys more finely and merges
-    the parts.
-  - **Projections, 155 µs, mostly o and down.** cuBLAS runs them as split-K with a
-    reduction kernel (`splitKreduce`) and as K-sliced CTAs (`sliced1x2`). Both change
-    each element's k order. The deterministic stream-K kernels of Section 5 recover
-    part of it (1.7B down at M = 8: 28.0 → 24.6 µs; cuBLAS 21.2).
-- **Mid-size projections.** We attribute the M = 128–512 gaps to the same two cuBLAS
-  techniques, but have not traced cuBLAS at those sizes on the A800. 9 of the 31 gaps are
-  on qkv and gate-up projections. One case shows the mechanism: 1.7B down at M = 128 has
-  32 tiles of 64 × 64 for 108 SMs. Stream-K balances that work but cannot parallelise an
-  element's k chain, and smaller tiles lose more on L2 traffic than they gain.
+Kernel numbers for attention in earlier versions of this paper, and the RTX 4090 D numbers
+quoted from them, timed one launch at a time and included host launch overhead, which hides
+short kernels' differences; they are superseded by the numbers above.
 
-**Probes on the A800.** Every probe below was measured on the A800 and checked bitwise.
-The decode changes were kept only if they were faster in the engine. The GEMM and
-planner changes were kept on kernel-level measurements (`gemm_streamk_*.txt`,
-`prefill_split_planner.txt`).
+### 7.5 Where the cost goes
 
-Shipped (all in 38c32da):
-- the pipelined prefill kernel (Section 5);
-- planner rule: no tail splits on sm_80;
-- stream-K over segments and over n8 tile pairs;
-- the decode grid order. In the probe's end-to-end check, 1.7B c8 went from −9.5% to
-  −6.6% (`decode_grid_order.txt`). The final run measures −5.9%.
-
-Measured and reverted:
-- a device-gated deep decode kernel. It is 20–40% faster when the cache fits in L2, and
-  saves ~2.8 µs per layer in the engine. A second launch costs ~2.4 µs per layer, so it
-  does not pay.
-- a deeper K/V ring. Its gain vanishes at the engine's capture grids.
-- warp-pair specialisation and 32-row prefill warps, which are slower.
-
-Fable checked the remaining scheduling levers against the traces and found none with a
-credible engine-level gain:
-- the prefill grid and wave quantisation;
-- the GEMM grids;
-- the merge kernels.
-
-What remains is the price of the contract, as broken down above. Lowering it would mean
-changing the canonical program itself, for example the 32-key tile or the 512-key group.
-That would break the identity with the 4090 D.
-
-**Batch-1 trace** (`results/a800/nsys/b1_compare.txt`, same method as Section 7.4):
+**Batch 1.** A node-level trace of greedy decode at batch 1 (`scripts/nsys_decode.sh`,
+`scripts/nsys_compare.py`, `results/a800/nsys/b1_compare.txt`) splits each step by kernel
+category. Tracing every graph node lengthens the gaps between kernels, so these numbers
+attribute the difference; the step times are those of Section 7.4.
 
 | per step, PI − original (µs) | 0.6B | 1.7B | 4B | 8B |
 |---|---|---|---|---|
-| projections | +49 | −139 | −13 | +97 |
-| attention | −12 | −117 | −689 | −616 |
-| other kernels | −9 | +5 | −186 | −18 |
-| between kernels | −38 | −55 | −323 | −304 |
-| traced step (original) | 2104 | 3632 | 7586 | 11398 |
+| projections | +49 | −123 | −13 | +58 |
+| attention | −86 | −100 | −679 | −640 |
+| other kernels | −36 | +6 | −187 | −17 |
+| between kernels | −73 | −46 | −324 | −303 |
+| traced step (original) | 2316 | 3632 | 7567 | 11400 |
 
-At batch 1 the A800 favours PI more than the 4090 D does, mostly through attention. About
-a third of the 4B and 8B difference is time between kernels, which tracing inflates
-(Section 7.4).
+Attention is faster on every model, by 86–679 µs per step: PI's decode is one kernel, whose
+single-group requests finish in place, where the original engine runs FlashInfer's decode and
+a merge per layer. On 4B and 8B the original engine also spends 303–324 µs more per step
+between kernels; tracing inflates that part. PI's projections take at most 0.6% longer per step than
+cuBLAS's on 1.7B–8B; on 1.7B the stream-K down projection is faster (25.94 → 20.71 µs per launch).
 
-1.7B down is faster in PI: 25.95 → 20.74 µs, with the stream-K kernel (id 43).
+0.6B is the exception, and its loss is in the projections. Its two segmented projections, o
+and down, take 9.25 and 10.66 µs per launch against cuBLAS's GEMV at 7.33 and 9.28. These
+shapes need two segments per output, of 1024 and 1536 elements. Their 4 and 6 MB of weights
+take only 2–3 µs to stream, so both kernels are latency-bound, and the gap is the round trip
+of the two-segment fold or hand-off, which every scheme we measured pays (segment chain,
+segment split, stream-K over segments and over tile pairs). The canonical program's two
+segments make that round trip unavoidable. In the trace the 0.6B PI step is still shorter,
+because of the time between kernels; untraced, 0.6B is 3.4% slower at batch 1.
 
-0.6B is the exception, and its loss is in the projections. Its two segmented projections,
-o and down, take 8.05 and 9.42 µs per launch, against cuBLAS's GEMV at 6.61 and 8.50.
-These shapes need two segments per output, of 1024 and 1536 elements. Their 4 and 6 MB of
-weights take only 2–3 µs to stream, so both kernels are latency-bound. The gap is the
-round trip of the two-segment fold or hand-off, which every scheme we measured pays
-(segment chain, segment split, stream-K over segments and over pairs). The canonical
-program's two segments make that round trip unavoidable.
+**Why this GPU charges prefill.** The canonical program is the same on every GPU; what
+changes is what it costs. An RTX 4090 D runs the fp32-accumulate MMA at half rate, so MMA
+time dominates prefill and hides two costs the program imposes: the per-32-key online step,
+a serial chain of shuffles and exp2 between the QK and P·V MMAs, and the ldmatrix traffic of
+16-row warps, where each loaded K or V fragment feeds one MMA. On the A800 the MMA runs at full
+rate. In the kernel before pipelining, MMA plus ldmatrix alone already took as long as
+FlashInfer's whole kernel (32 query heads, 8192 queries: 3.13 vs 3.04 ms;
+`archive/ceiling_probes/a800/prefill_ablation_flags.txt`). Pipelining S(t+1) behind tile t's
+online step and, for long and batched prefills, 8-warp CTAs (Section 5) brought 30000-token
+TTFT from +41.8% to +18.3%. 32-row warps would halve the ldmatrix traffic, but with the fp32
+group totals they fit 4 warps per SM instead of 8; built, they ran 1.4–1.8× the shipped
+kernel's time (`prefill_wide_warps.txt`).
 
-In the trace the 0.6B PI step is still 11 µs shorter, again because of the time between
-kernels. Untraced, 0.6B is 1.6% slower at batch 1, the only model that is. Tracing used
-`--cuda-flush-interval=100`; without it nsys dropped the kernel records of the 0.6B PI
-run, whose start-up tuning launches over 10⁵ kernels.
+**Batched decode.** At 1.7B and 8 requests (`archive/ceiling_probes/a800/nsys_c8_38c32da.txt`,
+engine 38c32da), PI's kernels keep the GPU busy 332 µs longer per traced step; the wall step
+is 213 µs longer, because PI spends less time between kernels.
+- **Attention, 222 µs.** Each working CTA runs its group's 16 tiles in order, at 1.1–1.4 µs
+  per tile, plus the fold. FlashInfer splits the keys more finely and merges the parts.
+- **Projections, 155 µs, mostly o and down.** cuBLAS runs them as split-K with a reduction
+  kernel (`splitKreduce`) and as K-sliced CTAs (`sliced1x2`). Both change each element's k
+  order. The deterministic stream-K kernels of Section 5 recover part of it (1.7B down at
+  M = 8: 28.0 → 24.6 µs; cuBLAS 21.2).
 
-## 8 Limitations
+We attribute the M = 128–512 projection gaps to the same two cuBLAS techniques. One case
+shows the mechanism: 1.7B down at M = 128 has 32 tiles of 64 × 64 for 108 SMs. Stream-K
+balances that work but cannot parallelise an element's k chain, and smaller tiles lose more
+on L2 traffic than they gain.
 
-- **Scope of the guarantee.** Bitwise claims hold for one GPU model and one build
-  (A1–A4). Across GPUs, an RTX 4090 D (sm_89) and an A800 (sm_80) gave identical bits for
-  every PI kernel case and identical GSM8K generations (Section 7.5). That is a
-  measurement, not a guarantee: the segment rule depends on shapes only, but the MMA
-  instruction's internal accumulation is not specified across architectures, and Hopper's
-  `wgmma` is a different instruction. One route to guaranteed cross-architecture identity
-  is explicit IEEE fp32 accumulation, as in [2609.25624]; we have not measured its cost
-  for this program. The cross-GPU identity also rules out tuning the canonical program per
-  GPU: the segment rule and the fold groups must stay the same everywhere.
-- **Engine features.** No tensor parallelism in the engine; head_dim 128 and GQA groups
-  ≤ 16 only; FP8 is not covered.
-- **Residual gaps.** On the RTX 4090 D:
-  - One long-prefix extend shape is 1.21× FlashInfer.
-  - 0.6B's segmented projections are 1.14–1.23× cuBLAS at M = 128–256 (Section 7.3).
-  - Batch-1 decode of 1.7B pays 1.4–1.8% and of 8B 0.6–0.7%, which the ablation assigns to
-    the row-invariant GEMM.
-  - 0.6B at concurrency 128 pays 1.6%, which it assigns to the attention backend,
-    although no attention kernel is slower at that run's shapes.
+**Measured and not shipped** (`archive/ceiling_probes/a800/`, each checked bitwise): a
+device-gated deep decode kernel, 20–40% faster when the cache fits in L2 but paying a second
+launch per layer (~2.4 µs) for a ~2.8 µs saving; a deeper K/V ring, whose gain vanishes at
+the engine's capture grids; warp-pair specialisation and 32-row prefill warps, both slower;
+tail splits of the prefill planner on sm_80, all slower than one split. What remains is the
+price of the contract as broken down above. Lowering it would mean changing the canonical
+program itself, for example the 32-key tile or the 512-key group, and with it every bit.
 
-  On the A800 (Section 7.5):
-  - Long and batched prefills are 1.01–1.47× FlashInfer. Time to first token on
-    16K–30K-token prompts is 14–18% higher, and throughput on a 30000-token prompt is 9.1%
-    lower.
-  - Prefill-bound short-output workloads lose up to 5.6% (8B 4096/4 c4).
-  - 1.7B with 8 requests is 5.9% slower.
-  - 0.6B at batch 1 is 1.6% slower, because its segmented o and down projections take
-    1.14–1.28× cuBLAS's time at M = 1.
-  - Projections at M = 128–512 are up to 1.38× cuBLAS.
+### 7.6 RTX 4090 D (earlier engine)
 
-  These gaps come from the per-32-key online step, from the 16-tile chain of a decode
-  group, and from cuBLAS's split-K and K-slicing, which the canonical k order rules out.
-  Closing them would mean changing the canonical program, and with it every bit.
-- **Single stream.** The GEMM segment, stream-K and segment-parallel workspaces and
-  counters and the decode fold counters are static per-device state that every launch
-  leaves zeroed. Launches that use
-  them must not run concurrently, as the engine's single forward stream guarantees. A
-  launch aborted mid-kernel (e.g. by a device fault) can leave a counter set, which would
-  make the next launch fold early. The process must then be restarted, which any sticky
-  CUDA error forces anyway.
-- **Baseline coverage.** Baselines run on sm_89 and sm_80. On both, vLLM's batch
-  invariance is outside its documented support (compute capability ≥ 9.0), and SGLang can
-  only use its FlashInfer path, because its Triton deterministic backend stalls. Hopper
-  numbers, and the cost of guaranteed cross-architecture identity there, are future work.
-  Each test box had one GPU, so the engine's lack of tensor parallelism went untested
-  either way.
+The 4090 D ran the whole evaluation with engine fdc184b before the board became unavailable
+(`results/`, outside `results/a800/`). The kernels added since (Section 5's pipelined
+prefill, 8-warp CTAs, 64-deep tiles, stream-K over segments, the decode grid order, the
+log-probability kernel) were not timed on it. Its determinism results match the A800's at
+token level: PI passes every detcheck check on all four models and all eight server
+configurations, where the original engine fails 13–14 of 32 comparisons in each, and
+SGLang's deterministic mode diverges on 14 of 32 shared-prefix requests and on 1 of 24
+decode-vs-re-prefill requests. End to end, PI relative to the original engine:
+
+| model | 64/256 c1 | 512/256 c8 | 512/256 c32 | 2048/256 c16 | 4096/128 c4 |
+|---|---|---|---|---|---|
+| 0.6B | +2.0% | +8.5% | +4.3% | +5.6% | +5.8% |
+| 1.7B | −1.4% | +5.7% | +4.9% | +3.4% | +3.9% |
+| 4B | +0.1% | +5.9% | +6.1% | +3.2% | +3.0% |
+| 8B | −0.6% | +1.5% | +3.3% | +0.6% | +0.9% |
+
+TTFT was within +1.6% on every long-prompt workload, including 16K–30K-token prompts. The
+contrast with the A800 is the subject of Section 7.5: with half-rate fp32-accumulate MMAs,
+the canonical program's online step and fragment traffic are hidden behind the MMAs. On the
+4090 D the component ablation placed the batched gain in the row-invariant GEMM, which leads
+cuBLAS at M = 8–64 there, and the batch-1 cost (−0.6% to −1.4% on 1.7B and 8B) in it as well.
+
+### 7.7 Can the tests fail?
+
+A bitwise check that never fails proves little unless it can see a violation. We checked
+that ours can (`kernels/test_mutants.py`, `results/a800/run_all/kernel_tests.log`):
+
+- **Mutated attention kernels.** Each mutant is a copy of the shipped sources with one change
+  to one computation path; the shipped files are not touched. The split-prefill merge folding
+  groups in descending order is caught by the split check; prefill closing a fold group every
+  256 keys instead of 512 by the decode-vs-prefill, split and head-shard checks. The decode
+  merge folding with two roundings instead of one fma, a one-ulp fp32 difference, reached the
+  bf16 output too rarely for the decode-vs-prefill check as first written, which probed a
+  dozen positions per request: it passed. The check now decodes every position of every
+  request (about 4,300 positions, two random batchings) and catches it (60 failures). This
+  is the one change the mutation testing forced.
+- **Controls on the GEMM checks.** cuBLAS run through the M-invariance check (row 0 alone
+  against row 0 inside M rows) fails on 26 of 27 projections, and the fold check rejects a
+  weight computed with one segment where its canonical count is two.
+- **End to end.** detcheck now compares every token's log-probability bits, not only the
+  tokens; the original engine, which matched the deterministic one on the prefix-cache check
+  at token level, fails it at log-probability level (Section 7.1). The tensor-parallel test
+  has its own negative control (Section 9).
+
+Accuracy is asserted, not printed:
+- **Attention.** Error against float64 must be within 1.05× (mean) and 1.25× (maximum) of
+  FlashInfer's single-prefill kernel on the same inputs, over every GQA geometry and query
+  scale of `test_matrix.py`. FlashInfer is the reference because it rounds P to bf16 as we do;
+  torch SDPA on these inputs runs its math backend, which keeps P in fp32 and so sits near
+  bf16 rounding of the exact result (`archive/ceiling_probes/a800/close/acc_probe.txt`). PI's
+  error is below FlashInfer's in every case (for 4096 keys: mean 8.1e-5 vs 8.3e-5 at query
+  scale 1, 7.5e-4 vs 7.7e-4 at scale 6).
+- **GEMM.** Every fp32 output element lies within the standard fp32 summation bound
+  (K + S)·2⁻²³·Σ|x_k w_k| of the float64 product, and every bf16 output is exactly the
+  rounding of the fp32 one, for every projection of the four models.
+
+## 8 The same principle for linear attention: exact Gated DeltaNet decode
+
+Hybrid models (Qwen3.5, Qwen3-Next, Kimi Linear) interleave full-attention layers with Gated
+DeltaNet (GDN) layers. GDN is trained with a *chunked* forward (fla's
+`chunk_gated_delta_rule`, 64-token chunks: an intra-chunk triangular solve plus a state
+carried between chunks) and served with a *recurrent* kernel that updates an fp32 state per
+token. These are two floating-point programs, so the sampler's log-probabilities are not the
+trainer's, and when speculative verification runs a third kernel they also depend on whether
+speculation is on. Section 4's principle applies unchanged: fix one canonical program per
+row and make every serving path execute it. For GDN the natural canonical program is the
+trainer's own chunk program, and the serving engine must decode with it. Everything in this
+section is in `gdn/` and `results/a800/gdn/` (A800; RTX 4090 D logs in `results/gdn/`).
+
+**The premise.** fla's chunk program is row-causal and resumable bitwise
+(`experiments/e1_premise.py`): truncating the sequence, resuming from the fp32 state at any
+64-token boundary, replaying a partial chunk token by token and varlen packing all reproduce
+the full forward's rows. fla's own recurrent kernel differs on every row (relative L2
+4.7e-3). On Qwen3.5 0.8B and 4B with row-invariant dense ops, a GDN-exact replay makes
+decode equal to the teacher-forced forward on all 724 scored positions, while the recurrent
+decode flips the argmax at 0.8–1.2% of them (`e2_*_rowinv.log`). Once dense ops are row
+invariant, GDN is the entire remaining gap.
+
+**The kernel** (`exact_decode.py`). A decode step computes the current token's row of the
+chunk program from the slot's state at the last 64-token boundary and the chunk's cached
+rows; once a chunk's 64th row is accepted, a fold advances the boundary state with the chunk
+kernel's own arithmetic. Two kernels split the work so that the state is read as a bf16 copy;
+the fp32 state is not stored beside it but recovered exactly from the bf16 copy plus its
+dropped 16 bits and one rounding bit (a lossless codec checked on every fp32 bit-pattern
+class). Memory per slot and layer is 4.33 MiB against the recurrent state's 2 MiB. Per
+layer and step on the Qwen3.5-4B shape the kernel takes 2.01× vLLM 0.17.1's GDN decode at
+batch 1, 1.40× at 8, 0.99× at 32 and 0.79–0.85× at 64–256 (`bench_vllm_gdn.log`).
+
+**Speculation is free and invisible.** A verification window of up to 16 tokens computes
+more rows of the same chunk program, so its rows are the trainer's whatever the window size.
+Rejected rows are overwritten by the next window, and a chunk is folded only after its 64th
+row is accepted, so rollback needs no per-draft state copies; vLLM's speculative path keeps
+1 + drafts fp32 states per request (10 MiB per layer for 4 drafts) and the window of 4 runs at
+0.73–0.84× of its time at batch ≥ 32.
+
+**In vLLM 0.17.1** (`gdn/vllm/exact_gdn.py`, installed by monkeypatching, state kept in vLLM's
+own pool). Prefill runs fla 0.5.0's chunk program, decode and verification run the exact
+kernel, and the dense projections run PI-Attn's GEMM through vLLM's batch-invariant hook
+(`kernels/pi_vllm.py`). The self-check generates 128 greedy tokens for 16 prompts and then
+scores every sequence in one prefill; it counts generated tokens whose decode-time fp32
+log-probability equals the prefill-time one bitwise (`results/a800/gdn/vllm/selfcheck.log`):
+
+| | stock GDN | exact GDN | stock GDN, batch-invariant dense | exact GDN, batch-invariant dense |
+|---|---|---|---|---|
+| Qwen3.5-0.8B | 274/2048 | 264/2048 | 311/2048 | 2048/2048 |
+| Qwen3.5-4B | 120/2048 | 131/2048 | 181/2048 | 2048/2048 |
+
+With both on, the result is 2048/2048 and its hash is unchanged with n-gram or MTP drafting,
+chunked prefill, prompts ending on a chunk boundary, slot reuse, preemption and seeded
+sampling. Throughput on Qwen3.5-4B (256 requests unless stated, `throughput.log`): the
+bitwise configuration runs at 1.01× stock vLLM on 200/256-token requests, 1.08× with MTP
+drafting, 1.03× at 8 requests, 0.98× at one and 0.96× on prefill-bound work. With vLLM's own
+batch-invariant matmul in place of PI-Attn's GEMM the same configuration runs at 0.27× at one
+request and 0.83× at 256: the dense projections, not GDN, are where batch invariance costs
+in vLLM. The price of exactness is memory per request: the pool holds 2.0× fewer 472-token
+requests than stock without speculation, 0.96× as many 32K-token ones, and more than stock
+with speculation.
+
+**Scope.** "Bitwise the trainer's" holds against fla 0.5.0's chunk forward with its autotune
+pinned (`pin_fla_configs`: three of fla's configurations are different programs) and the
+same Triton version, on sm_80 and sm_89. The end-to-end trainer used here is HF with
+row-invariant dense ops, not a training framework; vLLM vendors an older fla whose chunk
+forward differs from 0.5.0 (`e13_vllm_vendored_fla.log`), so a vLLM prefill equals a
+fla-0.5.0 trainer only when the engine is pointed at the trainer's fla. Prefix caching and
+tensor parallelism are not handled in the vLLM integration.
+
+## 9 Tensor-parallel degree, as a canonical choice
+
+Everything above is invariant to how one GPU partitions the work. Tensor parallelism adds one
+more partition: Megatron splits the K sum of the row-parallel projections (attention output,
+MLP down) over the ranks and adds the partials with an all-reduce, so the summation order
+depends on the degree t. We keep every projection column-parallel instead: a rank holds the
+weight rows of its output columns over the whole K, the layer input is all-gathered first and
+the output after. An all-gather copies bits, so every output element runs the program it runs at
+t = 1, for any t, including degrees that do not divide the head or column counts
+(`kernels/tp_invariance.md`).
+
+What this costs is the chain floor. A narrow column shard keeps the whole K on few columns, and
+one MMA chain advances a 16-wide k step about every 28 ns on the A800, so a 1024-column shard of
+Llama-3-70B's down projection (t = 8) is bounded by its chains, not by weight bandwidth. The
+segment count is the lever, and it has to be part of the canonical program: S = S(N, K, t_max)
+grows with the largest degree a deployment declares, t_max, and every launch, on any shard,
+passes the whole weight's S. Bits are then the same for every t ≤ t_max and beyond; two
+deployments that declare different t_max compute different bits, and t_max = 1 keeps every
+shape's S as before.
+
+Verified on one GPU with the ranks emulated (`results/a800/kernels/`): the column shards of seven
+row-parallel shapes (Qwen3 4B/8B, Qwen3.5-4B, 70B o and down) concatenate to the whole-weight
+result for t = 1–8 with every kernel id that runs the shard; Qwen3-8B with real weights gives
+bitwise the t = 1 logits at t = 2, 3, 4 and 8, prefill and 8 decode steps, while Megatron
+row-parallel o/down at t = 2 changes 77–93% of the logits (fp32 partials summed in fp32, so only
+the order differs, still 79–93%). Per-rank GEMM time of the column shard against the Megatron
+row shard of the same bytes is 1.02–1.26× at t = 2 for 70B, and 1.12–2.4× at t = 8, worst on
+small models' narrow shards at M ≤ 32 (`tp_invariance.md` has the tables). The column layout
+moves more bytes: four all-gathers per layer instead of two all-reduces, 1.63× the bytes per
+token for Llama-3-70B at t = 8 (o_proj alone: equal bytes, down: 2.25×). We had no multi-GPU
+machine, so the communication cost and end-to-end TP throughput are not measured.
+
+## 10 Limitations
+
+- **Scope of the guarantee.** Bitwise claims hold for one GPU model and one build (A1–A4).
+  Across GPUs, an RTX 4090 D (sm_89) and an A800 (sm_80) gave identical bits for every PI
+  kernel case and identical GSM8K generations (Section 7.2). That is a measurement, not a
+  guarantee: the segment rule depends on shapes only, but the MMA instruction's internal
+  accumulation is not specified across architectures, and Hopper's `wgmma` is a different
+  instruction. One route to guaranteed cross-architecture identity is explicit IEEE fp32
+  accumulation, as in [2609.25624]; we have not measured its cost for this program. The
+  cross-GPU identity also rules out tuning the canonical program per GPU: the segment rule
+  and the fold groups must stay the same everywhere. The rollout equality of Section 7.3 is
+  likewise per architecture: the log-softmax uses `ex2`/`lg2.approx`.
+- **Engine features.** No tensor parallelism in the engine (Section 9 verifies the
+  projection program on one GPU with emulated ranks); head_dim 128 and GQA groups ≤ 16 only;
+  FP8 and MoE are not covered. Log-probabilities are returned for the sampled token only
+  (`logprobs: 0`), not for top-k alternatives, and not on streaming or chat requests.
+- **Trainer equality.** The trainer of Section 7.3 is the engine's forward in PyTorch,
+  forward only; a training framework would back-propagate through its own differentiable copy.
+  We have not run an RL training loop on it, and the GDN result of Section 8 is against HF with
+  row-invariant dense ops, not a training framework.
+- **Residual cost on the A800** (Section 7.4):
+  - Prefill attention takes 1.12–1.80× FlashInfer's kernel time. Time to first token on
+    16K–30K-token prompts is 12–18% higher, and throughput on a 30000-token prompt 9.4% lower;
+    prefill-bound workloads lose up to 5.8% (8B 4096/4 c4), and 8.0% on 0.6B with 2048-token
+    prompts at 64 requests, whose time to first token at 128 requests rises 18.9%.
+  - Decode attention at batch 1 with 1024 keys takes 1.92× FlashInfer's kernel time; 1.7B
+    with 8 requests is 5.8% slower end to end.
+  - 0.6B at batch 1 is 3.4% slower, because its segmented o and down projections take
+    1.21–1.37× cuBLAS's time at M = 1.
+  - Projections at M = 8–512 are up to 1.33× cuBLAS, mostly on o and down shapes.
+
+  These gaps come from the per-32-key online step, from the 16-tile chain of a decode group,
+  and from cuBLAS's split-K and K-slicing, which the canonical k order rules out. Closing them
+  would mean changing the canonical program, and with it every bit. On the RTX 4090 D, whose
+  half-rate fp32-accumulate MMAs hide the first two, the earlier engine paid at most 1.8% end
+  to end (Section 7.6).
+- **Single stream.** The GEMM segment, stream-K and segment-parallel workspaces and counters
+  and the decode fold counters are static per-device state that every launch leaves zeroed.
+  Launches that use them must not run concurrently, as the engine's single forward stream
+  guarantees. A launch aborted mid-kernel (e.g. by a device fault) can leave a counter set,
+  which would make the next launch fold early. The process must then be restarted, which any
+  sticky CUDA error forces anyway. Grown CUTLASS scratch buffers are kept for the process's
+  lifetime, because captured graphs still launch into them.
+- **Baseline coverage.** vLLM's batch invariance is outside its documented support
+  (compute capability ≥ 9.0) on both GPUs; version 0.17.1 is nonetheless deterministic on
+  the A800, and its cost there need not be its cost on Hopper. SGLang can only use its
+  FlashInfer path, because its Triton deterministic backend stalls. Hopper numbers, and the cost of
+  guaranteed cross-architecture identity there, are future work. Each test box had one GPU,
+  so tensor-parallel communication cost is not measured.
 
 ## References
 

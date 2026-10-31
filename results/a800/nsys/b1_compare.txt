@@ -1,36 +1,36 @@
 == Qwen3-0.6B: FlashInfer mode -> deterministic
-steps: 142 vs 142; us per step (a -> b, b - a)
-  projections        1175.3 ->   1224.5    +49.1
-  attention           375.8 ->    363.8    -12.0
-  other kernels       433.0 ->    424.5     -8.5
-  argmax               11.8 ->     10.7     -1.1
-  between kernels     108.1 ->     69.8    -38.3
-  step               2104.1 ->   2093.3    -10.8
-us per launch: qkv 9.14 -> 8.90  o 6.61 -> 8.05  gate_up 11.58 -> 11.00  down 8.50 -> 9.42  lm_head 171.99 -> 178.04
+steps: 128 vs 137; us per step (a -> b, b - a)
+  projections        1265.7 ->   1315.1    +49.3
+  attention           399.7 ->    314.0    -85.6
+  other kernels       493.5 ->    457.5    -36.0
+  argmax               13.5 ->     11.5     -2.0
+  between kernels     143.2 ->     70.7    -72.5
+  step               2315.6 ->   2168.8   -146.8
+us per launch: qkv 9.93 -> 9.34  o 7.33 -> 9.25  gate_up 12.36 -> 11.33  down 9.28 -> 10.66  lm_head 176.63 -> 178.88
 == Qwen3-1.7B: FlashInfer mode -> deterministic
-steps: 81 vs 89; us per step (a -> b, b - a)
-  projections        2687.0 ->   2548.0   -139.0
-  attention           382.5 ->    265.4   -117.1
-  other kernels       436.8 ->    442.1     +5.3
-  argmax               11.1 ->     11.2     +0.1
-  between kernels     114.3 ->     59.2    -55.1
-  step               3631.7 ->   3325.9   -305.8
-us per launch: qkv 14.11 -> 14.25  o 10.46 -> 9.93  gate_up 33.13 -> 33.81  down 25.95 -> 20.74  lm_head 344.59 -> 343.52
+steps: 82 vs 88; us per step (a -> b, b - a)
+  projections        2686.9 ->   2563.7   -123.2
+  attention           378.7 ->    279.1    -99.6
+  other kernels       436.9 ->    443.1     +6.2
+  argmax               11.1 ->     10.8     -0.3
+  between kernels     117.9 ->     71.6    -46.3
+  step               3631.5 ->   3368.3   -263.2
+us per launch: qkv 14.11 -> 14.41  o 10.46 -> 10.29  gate_up 33.13 -> 33.94  down 25.94 -> 20.71  lm_head 344.80 -> 341.80
 == Qwen3-4B: FlashInfer mode -> deterministic
-steps: 38 vs 46; us per step (a -> b, b - a)
-  projections        5271.3 ->   5258.7    -12.6
-  attention          1160.5 ->    471.5   -689.0
-  other kernels       764.0 ->    578.4   -185.6
-  argmax               11.0 ->     10.9     -0.2
-  between kernels     379.3 ->     56.5   -322.9
-  step               7586.2 ->   6376.0  -1210.3
-us per launch: qkv 22.37 -> 21.94  o 16.01 -> 16.13  gate_up 62.90 -> 62.81  down 33.05 -> 32.88  lm_head 435.53 -> 443.26
+steps: 39 vs 46; us per step (a -> b, b - a)
+  projections        5271.6 ->   5258.9    -12.8
+  attention          1139.4 ->    461.0   -678.5
+  other kernels       764.1 ->    577.4   -186.6
+  argmax               11.0 ->     10.4     -0.6
+  between kernels     380.6 ->     56.8   -323.8
+  step               7566.7 ->   6364.5  -1202.3
+us per launch: qkv 22.37 -> 21.97  o 16.00 -> 16.11  gate_up 62.93 -> 62.78  down 33.03 -> 32.92  lm_head 435.58 -> 442.61
 == Qwen3-8B: FlashInfer mode -> deterministic
 steps: 25 vs 27; us per step (a -> b, b - a)
-  projections        9287.7 ->   9384.3    +96.6
-  attention          1104.7 ->    488.4   -616.3
-  other kernels       630.4 ->    612.6    -17.8
+  projections        9288.2 ->   9346.4    +58.3
+  attention          1105.1 ->    465.5   -639.7
+  other kernels       631.1 ->    614.2    -16.9
   argmax               10.5 ->     10.7     +0.2
-  between kernels     364.2 ->     59.9   -304.2
-  step              11397.6 ->  10556.0   -841.6
-us per launch: qkv 32.63 -> 34.62  o 23.81 -> 24.79  gate_up 118.65 -> 118.16  down 63.74 -> 63.81  lm_head 689.77 -> 694.94
+  between kernels     365.0 ->     62.0   -303.0
+  step              11399.9 ->  10498.9   -901.0
+us per launch: qkv 32.62 -> 33.14  o 23.80 -> 24.22  gate_up 118.68 -> 118.74  down 63.74 -> 64.23  lm_head 689.61 -> 694.79

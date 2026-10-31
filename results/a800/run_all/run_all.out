@@ -1,0 +1,23 @@
+[22:52] build
+[22:57] kernel-tests
+test_invariance exit=0
+test_directed exit=0
+test_matrix exit=0
+test_gemm exit=0
+test_mutants exit=0
+[23:07] xgpu-hashes
+[23:08] kernel-benches
+[23:57] crossconfig
+[00:04] detcheck
+[00:35] e2e-matrix
+[01:51] e2e-extended
+[02:31] e2e-highconc
+[02:48] e2e-ablation
+[03:38] baselines
+[04:52] accuracy
+[06:39] fp32
+[06:50] rollout
+[06:56] nsys
+[07:02] done
+RUN_ALL_DONE
+FINAL_DONE

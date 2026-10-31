@@ -8,6 +8,7 @@
   1100,
   2600
  ],
+ "logprobs": false,
  "compare": {
   "greedy": {
    "requests": 16,

@@ -1,0 +1,8 @@
+64 rollouts, 13063 completion tokens
+Qwen3-0.6B score exit=0 PI TRAINER == ENGINE: True
+64 rollouts, 14293 completion tokens
+Qwen3-1.7B score exit=0 PI TRAINER == ENGINE: True
+64 rollouts, 13975 completion tokens
+Qwen3-4B score exit=0 PI TRAINER == ENGINE: True
+64 rollouts, 14262 completion tokens
+Qwen3-8B score exit=0 PI TRAINER == ENGINE: True

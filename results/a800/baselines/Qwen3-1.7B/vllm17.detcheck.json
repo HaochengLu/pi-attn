@@ -1,0 +1,174 @@
+{
+ "url": "http://127.0.0.1:18098",
+ "tokens": 256,
+ "prompts": 16,
+ "lengths": [
+  24,
+  300,
+  1100,
+  2600
+ ],
+ "logprobs": true,
+ "batch": [
+  {
+   "concurrency": 4,
+   "requests": 16,
+   "mismatched": 16,
+   "first_divergence_tokens": [
+    0,
+    0,
+    0,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1
+   ]
+  },
+  {
+   "concurrency": 16,
+   "requests": 16,
+   "mismatched": 16,
+   "first_divergence_tokens": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    1,
+    1
+   ]
+  }
+ ],
+ "prefix": {
+  "full_hit": 8,
+  "partial_hit": 6,
+  "requests": 8
+ },
+ "shared": {
+  "requests": 32,
+  "prefix_tokens": 2616,
+  "mismatched": 32,
+  "first_divergence_tokens": [
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0
+  ]
+ },
+ "path": {
+  "requests": 24,
+  "mismatched": 24,
+  "first_divergence_tokens": [
+   1,
+   64,
+   128,
+   2,
+   64,
+   135,
+   4,
+   66,
+   128,
+   2,
+   64,
+   128,
+   1,
+   64,
+   128,
+   6,
+   66,
+   128,
+   3,
+   65,
+   128,
+   5,
+   66,
+   130
+  ]
+ },
+ "sample_path": {
+  "requests": 24,
+  "mismatched": 24,
+  "first_divergence_tokens": [
+   1,
+   64,
+   128,
+   2,
+   64,
+   135,
+   4,
+   66,
+   128,
+   2,
+   64,
+   128,
+   1,
+   64,
+   128,
+   6,
+   66,
+   128,
+   3,
+   65,
+   128,
+   5,
+   66,
+   130
+  ]
+ },
+ "repeat": {
+  "samples": 200,
+  "unique_completions": 167
+ },
+ "sample": {
+  "rows": [
+   {
+    "concurrency": 4,
+    "requests": 16,
+    "mismatched": 16,
+    "first_divergence_tokens": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
+     1,
+     1,
+     2
+    ]
+   },
+   {
+    "concurrency": 16,
+    "requests": 16,
+    "mismatched": 16,
+    "first_divergence_tokens": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
+     1,
+     1,
+     1,
+     1
+    ]
+   }
+  ],
+  "distinct_reference_samples": 16
+ },
+ "seconds": 183.0
+}

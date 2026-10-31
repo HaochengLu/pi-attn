@@ -8,99 +8,167 @@
   1100,
   2600
  ],
+ "logprobs": true,
  "batch": [
   {
    "concurrency": 4,
    "requests": 16,
-   "mismatched": 1,
+   "mismatched": 16,
    "first_divergence_tokens": [
-    45
+    0,
+    0,
+    0,
+    0,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1
    ]
   },
   {
    "concurrency": 16,
    "requests": 16,
-   "mismatched": 2,
+   "mismatched": 16,
    "first_divergence_tokens": [
-    9,
-    126
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    1,
+    1,
+    1,
+    1
    ]
   }
  ],
  "prefix": {
-  "full_hit": 1,
-  "partial_hit": 0,
+  "full_hit": 8,
+  "partial_hit": 6,
   "requests": 8
  },
  "shared": {
   "requests": 32,
   "prefix_tokens": 2616,
-  "mismatched": 11,
+  "mismatched": 32,
   "first_divergence_tokens": [
-   6,
-   9,
-   10,
-   11,
-   20,
-   44,
-   51,
-   68,
-   144,
-   234
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0
   ]
  },
  "path": {
   "requests": 24,
-  "mismatched": 1,
+  "mismatched": 24,
   "first_divergence_tokens": [
-   44
+   1,
+   64,
+   128,
+   1,
+   65,
+   136,
+   1,
+   65,
+   130,
+   2,
+   64,
+   128,
+   1,
+   64,
+   128,
+   2,
+   69,
+   131,
+   1,
+   65,
+   128,
+   5,
+   71,
+   130
   ]
  },
  "sample_path": {
   "requests": 24,
-  "mismatched": 7,
+  "mismatched": 24,
   "first_divergence_tokens": [
    1,
+   64,
+   128,
+   1,
+   65,
+   136,
+   1,
+   65,
+   130,
+   2,
+   64,
+   128,
+   1,
+   64,
+   128,
+   2,
+   69,
+   131,
+   1,
+   65,
+   128,
+   5,
    71,
-   135,
-   92,
-   4,
-   86,
-   140
+   130
   ]
  },
  "repeat": {
   "samples": 200,
-  "unique_completions": 14
+  "unique_completions": 169
  },
  "sample": {
   "rows": [
    {
     "concurrency": 4,
     "requests": 16,
-    "mismatched": 5,
+    "mismatched": 16,
     "first_divergence_tokens": [
-     73,
-     106,
-     116,
-     121,
-     206
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
+     1,
+     1,
+     1
     ]
    },
    {
     "concurrency": 16,
     "requests": 16,
-    "mismatched": 5,
+    "mismatched": 16,
     "first_divergence_tokens": [
-     73,
-     106,
-     180,
-     209,
-     246
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
+     1,
+     1,
+     1,
+     1
     ]
    }
   ],
   "distinct_reference_samples": 16
  },
- "seconds": 194.0
+ "seconds": 217.5
 }

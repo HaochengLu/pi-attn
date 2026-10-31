@@ -1,0 +1,8 @@
+batch  [{"concurrency": 4, "requests": 16, "mismatched": 1, "first_divergence_tokens": [9]}, {"concurrency": 16, "requests": 16, "mismatched": 3, "first_divergence_tokens": [9, 15, 44]}]
+prefix {"full_hit": 0, "partial_hit": 0, "requests": 8}
+shared {"requests": 32, "prefix_tokens": 2616, "mismatched": 11, "first_divergence_tokens": [2, 11, 15, 15, 15, 22, 61, 89, 148, 156]}
+path   {"requests": 24, "mismatched": 1, "first_divergence_tokens": [9]}
+spath  {"requests": 24, "mismatched": 7, "first_divergence_tokens": [1, 98, 129, 92, 4, 68, 137]}
+repeat {"samples": 200, "unique_completions": 11}
+sample {"rows": [{"concurrency": 4, "requests": 16, "mismatched": 5, "first_divergence_tokens": [9, 39, 111, 121, 249]}, {"concurrency": 16, "requests": 16, "mismatched": 6, "first_divergence_tokens": [9, 24, 96, 180, 185, 246]}], "distinct_reference_samples": 16}
+NONDETERMINISTIC (44 failing comparisons)

@@ -8,6 +8,7 @@
   1100,
   2600
  ],
+ "logprobs": false,
  "compare": {
   "greedy": {
    "requests": 16,
@@ -20,5 +21,5 @@
    "first_divergence_tokens": []
   }
  },
- "seconds": 3.3
+ "seconds": 3.4
 }

@@ -1,5 +1,5 @@
-L=517: PI err mean 5.753e-04 max 1.224e-02 | SDPA err mean 5.670e-04 max 1.224e-02
-L=2049: PI err mean 4.437e-04 max 9.453e-03 | SDPA err mean 4.517e-04 max 9.511e-03
+L=517 hq=16 hkv=8: PI err mean 5.753e-04 max 1.224e-02 | FlashInfer err mean 6.882e-04 max 1.496e-02 | bf16(exact) err mean 5.122e-04
+L=2049 hq=16 hkv=8: PI err mean 4.437e-04 max 9.453e-03 | FlashInfer err mean 4.581e-04 max 9.453e-03 | bf16(exact) err mean 4.013e-04
 checks failed: 0 []
 test_invariance exit=0
 baseline: fails=0 [] nan_or_negzero=False
@@ -14,36 +14,108 @@ hq=16 hkv=1 (group 16): fails=0 [] nan_or_negzero=False
 group 32 rejected: GQA group size must be <= 16 (one 16-row MMA group per kv head)
 DIRECTED FAILURES: 0
 test_directed exit=0
+L=4096 hq=16 hkv=8: PI err mean 8.084e-05 max 7.901e-03 | FlashInfer err mean 8.296e-05 max 7.901e-03 | bf16(exact) err mean 5.515e-05
 hq=16 hkv=8 qscale=1.0: failures 0 | err vs fp64 mean 8.08e-05 max 7.90e-03 []
+L=4096 hq=16 hkv=8: PI err mean 7.466e-04 max 1.458e-02 | FlashInfer err mean 7.709e-04 max 1.458e-02 | bf16(exact) err mean 7.258e-04
 hq=16 hkv=8 qscale=6.0: failures 0 | err vs fp64 mean 7.47e-04 max 1.46e-02 []
+L=4096 hq=32 hkv=8: PI err mean 8.066e-05 max 8.708e-03 | FlashInfer err mean 8.278e-05 max 8.708e-03 | bf16(exact) err mean 5.501e-05
 hq=32 hkv=8 qscale=1.0: failures 0 | err vs fp64 mean 8.07e-05 max 8.71e-03 []
+L=4096 hq=32 hkv=8: PI err mean 7.467e-04 max 1.561e-02 | FlashInfer err mean 7.707e-04 max 1.561e-02 | bf16(exact) err mean 7.260e-04
 hq=32 hkv=8 qscale=6.0: failures 0 | err vs fp64 mean 7.47e-04 max 1.56e-02 []
+L=4096 hq=8 hkv=8: PI err mean 8.122e-05 max 8.571e-03 | FlashInfer err mean 8.330e-05 max 8.571e-03 | bf16(exact) err mean 5.566e-05
 hq=8 hkv=8 qscale=1.0: failures 0 | err vs fp64 mean 8.12e-05 max 8.57e-03 []
+L=4096 hq=8 hkv=8: PI err mean 7.455e-04 max 1.397e-02 | FlashInfer err mean 7.702e-04 max 1.397e-02 | bf16(exact) err mean 7.247e-04
 hq=8 hkv=8 qscale=6.0: failures 0 | err vs fp64 mean 7.45e-04 max 1.40e-02 []
+L=4096 hq=32 hkv=4: PI err mean 8.123e-05 max 8.757e-03 | FlashInfer err mean 8.334e-05 max 8.757e-03 | bf16(exact) err mean 5.573e-05
 hq=32 hkv=4 qscale=1.0: failures 0 | err vs fp64 mean 8.12e-05 max 8.76e-03 []
+L=4096 hq=32 hkv=4: PI err mean 7.470e-04 max 1.589e-02 | FlashInfer err mean 7.718e-04 max 1.589e-02 | bf16(exact) err mean 7.265e-04
 hq=32 hkv=4 qscale=6.0: failures 0 | err vs fp64 mean 7.47e-04 max 1.59e-02 []
 long ctx 32768/20001: failures 0 []
 TOTAL FAILURES: 0
 test_matrix exit=0
-0.6B qkv      N=  4096 K= 1024: max|err| pi(fp32 out) 6.48e-06 pi(bf16) 7.79e-03 cublas(bf16) 7.79e-03
-0.6B o        N=  1024 K= 2048: max|err| pi(fp32 out) 5.98e-06 pi(bf16) 9.86e-03 cublas(bf16) 9.86e-03
-0.6B gateup   N=  6144 K= 1024: max|err| pi(fp32 out) 6.81e-06 pi(bf16) 7.81e-03 cublas(bf16) 7.81e-03
-0.6B down     N=  1024 K= 3072: max|err| pi(fp32 out) 1.20e-05 pi(bf16) 1.55e-02 cublas(bf16) 1.55e-02
-0.6B lm_head  N=151936 K= 1024: max|err| pi(fp32 out) 6.79e-06 pi(bf16) 7.82e-03 cublas(bf16) 7.82e-03
-1.7B qkv      N=  4096 K= 2048: max|err| pi(fp32 out) 1.44e-05 pi(bf16) 1.17e-02 cublas(bf16) 1.17e-02
-1.7B o        N=  2048 K= 2048: max|err| pi(fp32 out) 1.53e-05 pi(bf16) 1.37e-02 cublas(bf16) 1.37e-02
-1.7B gateup   N= 12288 K= 2048: max|err| pi(fp32 out) 1.68e-05 pi(bf16) 1.47e-02 cublas(bf16) 1.47e-02
-1.7B down     N=  2048 K= 6144: max|err| pi(fp32 out) 7.90e-05 pi(bf16) 1.56e-02 cublas(bf16) 2.98e-02
-1.7B lm_head  N=151936 K= 2048: max|err| pi(fp32 out) 1.88e-05 pi(bf16) 1.56e-02 cublas(bf16) 1.56e-02
-4B qkv        N=  6144 K= 2560: max|err| pi(fp32 out) 2.35e-05 pi(bf16) 1.51e-02 cublas(bf16) 1.51e-02
-4B o          N=  2560 K= 4096: max|err| pi(fp32 out) 4.59e-05 pi(bf16) 1.57e-02 cublas(bf16) 1.57e-02
-4B gateup     N= 19456 K= 2560: max|err| pi(fp32 out) 2.40e-05 pi(bf16) 1.56e-02 cublas(bf16) 1.56e-02
-4B down       N=  2560 K= 9728: max|err| pi(fp32 out) 1.51e-04 pi(bf16) 3.05e-02 cublas(bf16) 3.98e-02
-4B lm_head    N=151936 K= 2560: max|err| pi(fp32 out) 2.65e-05 pi(bf16) 1.56e-02 cublas(bf16) 1.56e-02
-8B qkv        N=  6144 K= 4096: max|err| pi(fp32 out) 4.68e-05 pi(bf16) 1.56e-02 cublas(bf16) 1.56e-02
-8B o          N=  4096 K= 4096: max|err| pi(fp32 out) 4.76e-05 pi(bf16) 1.56e-02 cublas(bf16) 1.56e-02
-8B gateup     N= 24576 K= 4096: max|err| pi(fp32 out) 4.96e-05 pi(bf16) 1.56e-02 cublas(bf16) 1.56e-02
-8B down       N=  4096 K=12288: max|err| pi(fp32 out) 2.23e-04 pi(bf16) 3.10e-02 cublas(bf16) 5.77e-02
-8B lm_head    N=151936 K= 4096: max|err| pi(fp32 out) 5.08e-05 pi(bf16) 1.57e-02 cublas(bf16) 1.57e-02
+tp 4B o         N= 2560 K= 4096 t_max=8 S=4 M=   1: 1836 shard launches
+tp 4B o         N= 2560 K= 4096 t_max=8 S=4 M=   8: 1836 shard launches
+tp 4B o         N= 2560 K= 4096 t_max=8 S=4 M=  12: 1512 shard launches
+tp 4B o         N= 2560 K= 4096 t_max=8 S=4 M=  33: 1296 shard launches
+tp 4B o         N= 2560 K= 4096 t_max=8 S=4 M= 300: 1260 shard launches
+tp 4B o         N= 2560 K= 4096 t_max=8 S=4 M=4096: 416 shard launches
+tp 4B down      N= 2560 K= 9728 t_max=8 S=2 M=   1: 1728 shard launches
+tp 4B down      N= 2560 K= 9728 t_max=8 S=2 M=   8: 1728 shard launches
+tp 4B down      N= 2560 K= 9728 t_max=8 S=2 M=  12: 1512 shard launches
+tp 4B down      N= 2560 K= 9728 t_max=8 S=2 M=  33: 1296 shard launches
+tp 4B down      N= 2560 K= 9728 t_max=8 S=2 M= 300: 1260 shard launches
+tp 4B down      N= 2560 K= 9728 t_max=8 S=2 M=4096: 416 shard launches
+tp 8B o         N= 4096 K= 4096 t_max=8 S=4 M=   1: 1836 shard launches
+tp 8B o         N= 4096 K= 4096 t_max=8 S=4 M=   8: 1836 shard launches
+tp 8B o         N= 4096 K= 4096 t_max=8 S=4 M=  12: 1512 shard launches
+tp 8B o         N= 4096 K= 4096 t_max=8 S=4 M=  33: 1296 shard launches
+tp 8B o         N= 4096 K= 4096 t_max=8 S=4 M= 300: 1260 shard launches
+tp 8B o         N= 4096 K= 4096 t_max=8 S=4 M=4096: 413 shard launches
+tp 8B down      N= 4096 K=12288 t_max=8 S=4 M=   1: 1836 shard launches
+tp 8B down      N= 4096 K=12288 t_max=8 S=4 M=   8: 1836 shard launches
+tp 8B down      N= 4096 K=12288 t_max=8 S=4 M=  12: 1512 shard launches
+tp 8B down      N= 4096 K=12288 t_max=8 S=4 M=  33: 1296 shard launches
+tp 8B down      N= 4096 K=12288 t_max=8 S=4 M= 300: 1260 shard launches
+tp 8B down      N= 4096 K=12288 t_max=8 S=4 M=4096: 413 shard launches
+tp 3.5-4B down  N= 2560 K= 9216 t_max=8 S=4 M=   1: 1728 shard launches
+tp 3.5-4B down  N= 2560 K= 9216 t_max=8 S=4 M=   8: 1728 shard launches
+tp 3.5-4B down  N= 2560 K= 9216 t_max=8 S=4 M=  12: 1512 shard launches
+tp 3.5-4B down  N= 2560 K= 9216 t_max=8 S=4 M=  33: 1296 shard launches
+tp 3.5-4B down  N= 2560 K= 9216 t_max=8 S=4 M= 300: 1260 shard launches
+tp 3.5-4B down  N= 2560 K= 9216 t_max=8 S=4 M=4096: 416 shard launches
+tp 70B o        N= 8192 K= 8192 t_max=8 S=2 M=   1: 1836 shard launches
+tp 70B o        N= 8192 K= 8192 t_max=8 S=2 M=   8: 1836 shard launches
+tp 70B o        N= 8192 K= 8192 t_max=8 S=2 M=  12: 1512 shard launches
+tp 70B o        N= 8192 K= 8192 t_max=8 S=2 M=  33: 1296 shard launches
+tp 70B o        N= 8192 K= 8192 t_max=8 S=2 M= 300: 1260 shard launches
+tp 70B o        N= 8192 K= 8192 t_max=8 S=2 M=4096: 402 shard launches
+tp 70B down     N= 8192 K=28672 t_max=8 S=2 M=   1: 1836 shard launches
+tp 70B down     N= 8192 K=28672 t_max=8 S=2 M=   8: 1836 shard launches
+tp 70B down     N= 8192 K=28672 t_max=8 S=2 M=  12: 1512 shard launches
+tp 70B down     N= 8192 K=28672 t_max=8 S=2 M=  33: 1296 shard launches
+tp 70B down     N= 8192 K=28672 t_max=8 S=2 M= 300: 1260 shard launches
+tp 70B down     N= 8192 K=28672 t_max=8 S=2 M=4096: 402 shard launches
+S=8 8B down: checked
+S=8 70B down: checked
+0.6B qkv      N=  4096 K= 1024: max|err| pi(fp32 out) 5.96e-06 pi(bf16) 7.80e-03 cublas(bf16) 7.80e-03
+0.6B o        N=  1024 K= 2048: max|err| pi(fp32 out) 6.65e-06 pi(bf16) 1.01e-02 cublas(bf16) 1.01e-02
+0.6B gateup   N=  6144 K= 1024: max|err| pi(fp32 out) 6.61e-06 pi(bf16) 7.80e-03 cublas(bf16) 7.80e-03
+0.6B down     N=  1024 K= 3072: max|err| pi(fp32 out) 1.20e-05 pi(bf16) 1.56e-02 cublas(bf16) 1.56e-02
+0.6B lm_head  N=151936 K= 1024: max|err| pi(fp32 out) 8.26e-06 pi(bf16) 7.82e-03 cublas(bf16) 7.82e-03
+1.7B qkv      N=  4096 K= 2048: max|err| pi(fp32 out) 1.49e-05 pi(bf16) 1.19e-02 cublas(bf16) 1.19e-02
+1.7B o        N=  2048 K= 2048: max|err| pi(fp32 out) 1.36e-05 pi(bf16) 1.40e-02 cublas(bf16) 1.40e-02
+1.7B gateup   N= 12288 K= 2048: max|err| pi(fp32 out) 1.94e-05 pi(bf16) 1.56e-02 cublas(bf16) 1.56e-02
+1.7B down     N=  2048 K= 6144: max|err| pi(fp32 out) 7.33e-05 pi(bf16) 1.57e-02 cublas(bf16) 2.73e-02
+1.7B lm_head  N=151936 K= 2048: max|err| pi(fp32 out) 1.95e-05 pi(bf16) 1.56e-02 cublas(bf16) 1.56e-02
+4B qkv        N=  6144 K= 2560: max|err| pi(fp32 out) 2.39e-05 pi(bf16) 1.54e-02 cublas(bf16) 1.54e-02
+4B o          N=  2560 K= 4096: max|err| pi(fp32 out) 4.36e-05 pi(bf16) 1.56e-02 cublas(bf16) 1.56e-02
+4B gateup     N= 19456 K= 2560: max|err| pi(fp32 out) 2.41e-05 pi(bf16) 1.55e-02 cublas(bf16) 1.55e-02
+4B down       N=  2560 K= 9728: max|err| pi(fp32 out) 1.56e-04 pi(bf16) 3.01e-02 cublas(bf16) 3.52e-02
+4B lm_head    N=151936 K= 2560: max|err| pi(fp32 out) 2.57e-05 pi(bf16) 1.56e-02 cublas(bf16) 1.56e-02
+8B qkv        N=  6144 K= 4096: max|err| pi(fp32 out) 4.41e-05 pi(bf16) 1.56e-02 cublas(bf16) 1.56e-02
+8B o          N=  4096 K= 4096: max|err| pi(fp32 out) 4.57e-05 pi(bf16) 1.56e-02 cublas(bf16) 1.56e-02
+8B gateup     N= 24576 K= 4096: max|err| pi(fp32 out) 4.84e-05 pi(bf16) 1.57e-02 cublas(bf16) 1.57e-02
+8B down       N=  4096 K=12288: max|err| pi(fp32 out) 2.44e-04 pi(bf16) 3.13e-02 cublas(bf16) 5.70e-02
+8B lm_head    N=151936 K= 4096: max|err| pi(fp32 out) 5.66e-05 pi(bf16) 1.57e-02 cublas(bf16) 1.57e-02
+3.5-4B qkvz   N= 12288 K= 2560: max|err| pi(fp32 out) 2.17e-05 pi(bf16) 1.56e-02 cublas(bf16) 1.56e-02
+3.5-4B ba     N=    64 K= 2560: max|err| pi(fp32 out) 8.33e-06 pi(bf16) 8.89e-03 cublas(bf16) 8.89e-03
+3.5-4B gdn out N=  2560 K= 4096: max|err| pi(fp32 out) 4.29e-05 pi(bf16) 1.56e-02 cublas(bf16) 1.56e-02
+3.5-4B attn qkv N= 10240 K= 2560: max|err| pi(fp32 out) 2.70e-05 pi(bf16) 1.55e-02 cublas(bf16) 1.55e-02
+3.5-4B gateup N= 18432 K= 2560: max|err| pi(fp32 out) 2.36e-05 pi(bf16) 1.56e-02 cublas(bf16) 1.56e-02
+3.5-4B down   N=  2560 K= 9216: max|err| pi(fp32 out) 1.26e-04 pi(bf16) 3.08e-02 cublas(bf16) 3.72e-02
+3.5-4B lm_head N=248320 K= 2560: max|err| pi(fp32 out) 2.66e-05 pi(bf16) 1.56e-02 cublas(bf16) 1.56e-02
 INVARIANCE FAILURES: 0 []
 test_gemm exit=0
+L=517 hq=16 hkv=8: PI err mean 5.753e-04 max 1.224e-02 | FlashInfer err mean 6.882e-04 max 1.496e-02 | bf16(exact) err mean 5.122e-04
+L=2049 hq=16 hkv=8: PI err mean 4.437e-04 max 9.453e-03 | FlashInfer err mean 4.581e-04 max 9.453e-03 | bf16(exact) err mean 4.013e-04
+mutant merge_reversed: 24 failed checks, kinds ['split']
+L=517 hq=16 hkv=8: PI err mean 5.752e-04 max 8.733e-03 | FlashInfer err mean 6.866e-04 max 1.459e-02 | bf16(exact) err mean 5.125e-04
+L=2049 hq=16 hkv=8: PI err mean 4.420e-04 max 8.597e-03 | FlashInfer err mean 4.568e-04 max 8.597e-03 | bf16(exact) err mean 3.995e-04
+mutant decode_fold_unfused: 60 failed checks, kinds ['path']
+L=517 hq=16 hkv=8: PI err mean 5.704e-04 max 8.895e-03 | FlashInfer err mean 6.867e-04 max 1.453e-02 | bf16(exact) err mean 5.131e-04
+L=2049 hq=16 hkv=8: PI err mean 4.354e-04 max 8.596e-03 | FlashInfer err mean 4.587e-04 max 8.596e-03 | bf16(exact) err mean 4.014e-04
+mutant prefill_group_256: 6426 failed checks, kinds ['heads', 'path', 'split']
+cuBLAS M-invariance control: 26/27 projections vary with M
+wrong segment count control: S=1 result equals the S=2 fold: False
+UNCAUGHT MUTANTS: 0 []
+test_mutants exit=0

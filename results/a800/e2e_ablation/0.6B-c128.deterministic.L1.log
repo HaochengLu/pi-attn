@@ -1,1 +1,1 @@
-{"out_tok_s": 11482.35, "req_s": 44.85, "ttft_ms": 215.57, "tpot_ms": 10.07, "itl_ms": 10.62, "p99_ttft_ms": 564.51, "e2e_ms": 2782.56, "tokens": 65536, "in": 512, "out": 256, "concurrency": 128, "shared": 0, "repeats": 1, "out_tok_s_all": [11482.4]}
+{"out_tok_s": 11454.57, "req_s": 44.74, "ttft_ms": 220.97, "tpot_ms": 10.08, "itl_ms": 10.62, "p99_ttft_ms": 584.75, "e2e_ms": 2790.24, "tokens": 65536, "in": 512, "out": 256, "concurrency": 128, "shared": 0, "repeats": 1, "out_tok_s_all": [11454.6]}

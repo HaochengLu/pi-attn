@@ -8,32 +8,33 @@
   1100,
   2600
  ],
+ "logprobs": false,
  "compare": {
   "greedy": {
    "requests": 16,
-   "mismatched": 5,
+   "mismatched": 4,
    "first_divergence_tokens": [
-    6,
     14,
-    46,
+    37,
     61,
-    66
+    73
    ]
   },
   "sampled": {
    "requests": 16,
-   "mismatched": 8,
+   "mismatched": 9,
    "first_divergence_tokens": [
     0,
-    0,
-    2,
+    1,
+    1,
     7,
     10,
-    11,
-    23,
-    29
+    14,
+    17,
+    24,
+    27
    ]
   }
  },
- "seconds": 6.4
+ "seconds": 6.3
 }

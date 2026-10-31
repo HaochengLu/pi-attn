@@ -1,0 +1,8 @@
+pi alone              : 13063/13063 tokens bitwise equal to the engine | |dlogp| mean 0.00e+00 max 0.00e+00 | ratio [1.0000, 1.0000], 0.00% of tokens off by > 1%
+pi packing 0          : 13063/13063 tokens bitwise equal to the engine | |dlogp| mean 0.00e+00 max 0.00e+00 | ratio [1.0000, 1.0000], 0.00% of tokens off by > 1%
+pi packing 1          : 13063/13063 tokens bitwise equal to the engine | |dlogp| mean 0.00e+00 max 0.00e+00 | ratio [1.0000, 1.0000], 0.00% of tokens off by > 1%
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/311 [00:00<?, ?it/s]Loading weights: 100%|██████████| 311/311 [00:00<00:00, 7629.93it/s]
+hf alone              : 136/13063 tokens bitwise equal to the engine | |dlogp| mean 1.23e-02 max 5.28e-01 | ratio [0.5898, 1.5183], 22.18% of tokens off by > 1%
+hf batch 8            : 131/13063 tokens bitwise equal to the engine | |dlogp| mean 1.23e-02 max 4.98e-01 | ratio [0.6076, 1.6305], 22.07% of tokens off by > 1%
+PI TRAINER == ENGINE: True

@@ -1,0 +1,28 @@
+[07:16] build
+[07:21] kernel-tests
+test_invariance exit=0
+test_directed exit=0
+test_matrix exit=0
+test_gemm exit=0
+test_mutants exit=0
+[07:31] bench-prefill
+bench_prefill exit=0
+[07:33] crossconfig
+[07:37] detcheck
+Qwen3-0.6B detcheck exit=0 DETERMINISTIC
+Qwen3-1.7B detcheck exit=0 DETERMINISTIC
+Qwen3-4B detcheck exit=0 DETERMINISTIC
+Qwen3-8B detcheck exit=0 DETERMINISTIC
+[08:08] e2e-highconc
+[08:27] e2e-ablation
+[09:18] baselines-vllm17-det
+Qwen3-1.7B vllm17-det detcheck exit=1
+Qwen3-1.7B vllm17-det loadgen exit=0
+BASELINES_DONE
+[09:37] rollout
+Qwen3-0.6B score exit=0 PI TRAINER == ENGINE: True
+Qwen3-1.7B score exit=0 PI TRAINER == ENGINE: True
+Qwen3-4B score exit=0 PI TRAINER == ENGINE: True
+Qwen3-8B score exit=0 PI TRAINER == ENGINE: True
+[09:43] done
+FOLLOWUP_DONE
