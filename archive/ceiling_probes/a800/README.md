@@ -64,8 +64,8 @@ Not shipped:
   then feeds two MMAs, so ldmatrix per MMA falls from 1/2 to 3/8.
   - Q and the fold totals sit in smem (80 KB). Two CTAs per SM, as occupancy confirms,
     give 4 warps per SM.
-  - Bits are identical (0 invariance failures), but it runs 1.7–2.4× the shipped
-    kernel's time. Likely cause (no counters on this machine): each 32-key online step
+  - Bits are identical (0 invariance failures), but the unpipelined build runs 1.4–1.8× the
+    shipped kernel's time and the pipelined one 1.9–2.7×. Likely cause (no counters on this machine): each 32-key online step
     is a serial chain of shuffles and exp2 between the QK and PV MMAs, and with one warp
     per scheduler and two independent row blocks per warp, nothing hides it.
   - 8 warps per SM would need the fold totals in per-CTA global scratch; even linear

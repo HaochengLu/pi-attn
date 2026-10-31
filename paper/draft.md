@@ -1,6 +1,6 @@
 # Fix the Program, Not the Schedule: Bitwise-Reproducible LLM Serving with Every Optimization On
 
-*Draft. Every number below is produced by a script under eval/ or detcheck/ and stored in results/.*
+*Draft. Every number below is produced by a script under eval/, detcheck/, kernels/ or gdn/ and stored in results/, or, for probes, in archive/.*
 
 ## Abstract
 
@@ -482,7 +482,8 @@ partials to +0 in ascending segment order.
 
 At M = 8 a worker re-reads as many X bytes from L2 as weight bytes, so a variant runs
 chains over two adjacent n8 tiles that share each X fragment. On the A800 it cuts 1.7B's
-down projection at M = 8 from 28.0 to 24.6 µs (cuBLAS 21.2).
+down projection at M = 8 to 22.7 µs against cuBLAS's 21.2 (kernel 61,
+`results/a800/kernels/gemm_burst.txt`).
 
 `test_gemm.py` checks this, as for every kernel, on every output row of every shape for
 14 values of M from 1 to 4096 (including 7, 9, 17, 33 and 65, which straddle tile edges).
@@ -532,7 +533,8 @@ at least twice the L2 size: the weight itself and every weight-sized slice of a 
 buffer. Every launch streams its weights from DRAM, as consecutive layers do in a forward;
 a weight larger than the scratch is its own ring. The bursts must not be launch-bound.
 Launched from Python, kernels shorter than about 10 µs are, and cuBLAS's launch path is
-the slower one (0.6B o at M = 1 on the RTX 4090 D: 9.24 µs per launch eagerly, 6.49 µs in a CUDA graph), so
+the slower one (0.6B o at M = 1 on the RTX 4090 D: 9.24 µs per launch eagerly, 6.49 µs in a CUDA graph; probe
+`eager_vs_graph.py`, `archive/ceiling_probes/README.md`), so
 our benchmarks capture each burst in a graph, as the engine runs decode. The tuner
 launches from C++; its choices at M = 1 are the graph-captured best or within 1% of it.
 
@@ -708,8 +710,8 @@ the 4090 D's, as identical bits require. On GSM8K (above) PI is within noise of 
 engine.
 
 Attention error is also asserted in the kernel tests, not only printed (Section 7.7): against
-float64, PI-Attn's mean and maximum error are below FlashInfer's on every GQA geometry and
-query scale tested.
+float64, PI-Attn's mean error is below FlashInfer's, and its maximum error no larger, on every
+GQA geometry and query scale tested.
 
 ### 7.3 Rollout log-probabilities equal the trainer's
 
@@ -753,7 +755,7 @@ under chunked prefill; the trainer recomputes them in one prefill per micro-batc
 
 **End to end.** Output throughput, PI relative to the original engine
 (`eval/e2e_matrix.sh`, `results/a800/e2e_matrix/SUMMARY.md`; median of 3 interleaved
-launches, 32 requests per point, greedy):
+launches, 32 requests per point or twice the concurrency where larger, greedy):
 
 | model | 64/256 c1 | 512/256 c8 | 512/256 c32 | 2048/256 c16 | 4096/128 c4 |
 |---|---|---|---|---|---|
@@ -843,7 +845,7 @@ cost 2.9% and 2.3%.
 
 **Same-GPU baselines,** greedy output tok/s on Qwen3-1.7B (`eval/baselines.sh`; its original
 and PI rows are a separate launch from the matrix above, which explains differences of up to
-1.7% from it):
+1.8% from it):
 
 | engine | 64/256 c1 | 512/256 c8 | 512/256 c32 | 2048/256 c16 | 4096/128 c4 |
 |---|---|---|---|---|---|
@@ -862,7 +864,8 @@ of determinism. PI is within −2.8% to +10.4% of the current vLLM release witho
 deterministic mode, which disables the radix cache and fixes its split sizes, runs at 29–46%
 of SGLang's own throughput here; we list it because it is the deterministic mode a user can
 run on this GPU, not as the bar. vLLM 0.17.1's batch-invariant mode is the one baseline
-that passes detcheck's numeric checks here (Section 7.1). It runs at 30–49% of vLLM 0.17.1's
+that passes every detcheck check here except the seeded re-prefill variant, which tests its
+sampler's seeding rather than its arithmetic (Section 7.1, ‖). It runs at 30–49% of vLLM 0.17.1's
 own throughput, and PI at 2.0–3.7× of it. It replaces aten matmul and reductions with
 batch-invariant Triton kernels and runs attention unsplit, outside its documented
 compute-capability range; on Hopper, its supported target, the gap may differ.
@@ -880,7 +883,7 @@ shape.
   running its 16 tiles in order, where FlashInfer splits the keys more finely. With
   FlashInfer's split size fixed at 2048 (the batch-invariant configuration), PI is 5.2× faster
   at batch 1 and 32K keys (95.3 vs 500.0 µs). In the engine at batch 1, with contexts below
-  one group, PI's decode kernel takes 12.9 µs per layer on 8B against 30.6 µs for
+  one group, PI's decode kernel takes 12.9 µs per layer on 8B against 30.7 µs for
   FlashInfer's decode and merge kernels (Section 7.5's trace).
 - **Prefill and extend:** 1.12–1.80× FlashInfer on 17 of 18 shapes (and 0.55× on 512-token
   prompts with 16 query heads, where FlashInfer's time exceeds its own 32-head time): long
@@ -952,10 +955,10 @@ is 213 µs longer, because PI spends less time between kernels.
 - **Projections, 155 µs, mostly o and down.** cuBLAS runs them as split-K with a reduction
   kernel (`splitKreduce`) and as K-sliced CTAs (`sliced1x2`). Both change each element's k
   order. The deterministic stream-K kernels of Section 5 recover part of it (1.7B down at
-  M = 8: 28.0 → 24.6 µs; cuBLAS 21.2).
+  M = 8: 22.7 µs; cuBLAS 21.2).
 
 We attribute the M = 128–512 projection gaps to the same two cuBLAS techniques. One case
-shows the mechanism: 1.7B down at M = 128 has 32 tiles of 64 × 64 for 108 SMs. Stream-K
+shows the mechanism: 1.7B down at M = 128 has 64 tiles of 64 × 64 for 108 SMs. Stream-K
 balances that work but cannot parallelise an element's k chain, and smaller tiles lose more
 on L2 traffic than they gain.
 
@@ -1019,7 +1022,7 @@ Accuracy is asserted, not printed:
   scale of `test_matrix.py`. FlashInfer is the reference because it rounds P to bf16 as we do;
   torch SDPA on these inputs runs its math backend, which keeps P in fp32 and so sits near
   bf16 rounding of the exact result (`archive/ceiling_probes/a800/close/acc_probe.txt`). PI's
-  error is below FlashInfer's in every case (for 4096 keys: mean 8.1e-5 vs 8.3e-5 at query
+  mean error is below FlashInfer's in every case and its maximum error no larger (for 4096 keys: mean 8.1e-5 vs 8.3e-5 at query
   scale 1, 7.5e-4 vs 7.7e-4 at scale 6).
 - **GEMM.** Every fp32 output element lies within the standard fp32 summation bound
   (K + S)·2⁻²³·Σ|x_k w_k| of the float64 product, and every bf16 output is exactly the
@@ -1076,9 +1079,14 @@ log-probability equals the prefill-time one bitwise (`results/a800/gdn/vllm/self
 | Qwen3.5-0.8B | 274/2048 | 264/2048 | 311/2048 | 2048/2048 |
 | Qwen3.5-4B | 120/2048 | 131/2048 | 181/2048 | 2048/2048 |
 
-With both on, the result is 2048/2048 and its hash is unchanged with n-gram or MTP drafting,
-chunked prefill, prompts ending on a chunk boundary, slot reuse, preemption and seeded
-sampling. Throughput on Qwen3.5-4B (256 requests unless stated, `throughput.log`): the
+With both on, decode equals prefill on 2048/2048 tokens, with chunked prefill, prompts
+ending on a chunk boundary, slot reuse and preemption, and in each of these configurations
+n-gram or MTP drafting leaves the hash unchanged. The exception is MTP drafting with chunked
+prefill: the decode hash is still the unspeculated run's, but vLLM's prompt
+log-probabilities themselves change (decode equals them on 848/2048 tokens on 0.8B, and with
+PI-Attn's GEMM on 0/2048 and 23/2048 on 0.8B and 4B; `check_mtp_prompt_logprobs.log`).
+Under seeded sampling decode still equals prefill on 2048/2048 tokens; the sampled tokens,
+and so the hash, differ with speculation. Throughput on Qwen3.5-4B (256 requests unless stated, `throughput.log`): the
 bitwise configuration runs at 1.01× stock vLLM on 200/256-token requests, 1.08× with MTP
 drafting, 1.03× at 8 requests, 0.98× at one and 0.96× on prefill-bound work. With vLLM's own
 batch-invariant matmul in place of PI-Attn's GEMM the same configuration runs at 0.27× at one
@@ -1088,7 +1096,7 @@ requests than stock without speculation, 0.96× as many 32K-token ones, and more
 with speculation.
 
 **Scope.** "Bitwise the trainer's" holds against fla 0.5.0's chunk forward with its autotune
-pinned (`pin_fla_configs`: three of fla's configurations are different programs) and the
+pinned (`pin_fla_configs`: four of fla's autotune configurations, three of `l2norm_fwd_kernel` and one of `chunk_fwd_kernel_o`, are different programs) and the
 same Triton version, on sm_80 and sm_89. The end-to-end trainer used here is HF with
 row-invariant dense ops, not a training framework; vLLM vendors an older fla whose chunk
 forward differs from 0.5.0 (`e13_vllm_vendored_fla.log`), so a vLLM prefill equals a
@@ -1113,13 +1121,13 @@ segment count is the lever, and it has to be part of the canonical program: S = 
 grows with the largest degree a deployment declares, t_max, and every launch, on any shard,
 passes the whole weight's S. Bits are then the same for every t ≤ t_max and beyond; two
 deployments that declare different t_max compute different bits, and t_max = 1 keeps every
-shape's S as before.
+tested model's S as before.
 
 Verified on one GPU with the ranks emulated (`results/a800/kernels/`): the column shards of seven
 row-parallel shapes (Qwen3 4B/8B, Qwen3.5-4B, 70B o and down) concatenate to the whole-weight
 result for t = 1–8 with every kernel id that runs the shard; Qwen3-8B with real weights gives
 bitwise the t = 1 logits at t = 2, 3, 4 and 8, prefill and 8 decode steps, while Megatron
-row-parallel o/down at t = 2 changes 77–93% of the logits (fp32 partials summed in fp32, so only
+row-parallel o/down at t = 2 changes 77–87% of the logits (fp32 partials summed in fp32, so only
 the order differs, still 79–93%). Per-rank GEMM time of the column shard against the Megatron
 row shard of the same bytes is 1.02–1.26× at t = 2 for 70B, and 1.12–2.4× at t = 8, worst on
 small models' narrow shards at M ≤ 32 (`tp_invariance.md` has the tables). The column layout
@@ -1161,8 +1169,8 @@ machine, so the communication cost and end-to-end TP throughput are not measured
   These gaps come from the per-32-key online step, from the 16-tile chain of a decode group,
   and from cuBLAS's split-K and K-slicing, which the canonical k order rules out. Closing them
   would mean changing the canonical program, and with it every bit. On the RTX 4090 D, whose
-  half-rate fp32-accumulate MMAs hide the first two, the earlier engine paid at most 1.8% end
-  to end (Section 7.6).
+  half-rate fp32-accumulate MMAs hide the first two, the earlier engine paid at most 1.8% of throughput end
+  to end (1.7B, 64/256 c1, `results/e2e_extended/SUMMARY.md`; Section 7.6).
 - **Single stream.** The GEMM segment, stream-K and segment-parallel workspaces and counters
   and the decode fold counters are static per-device state that every launch leaves zeroed.
   Launches that use them must not run concurrently, as the engine's single forward stream

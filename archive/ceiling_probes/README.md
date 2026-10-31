@@ -193,7 +193,7 @@ streams a different copy from a >= 600 MB pool).
     remaining A800 gaps are three costs of the canonical structure that sm_80's full-rate
     fp32-accumulate MMAs expose:
     - 16-row prefill warps, forced by the fp32 fold totals (32-row warps measured: 4 warps
-      per SM, 1.7-2.4x slower);
+      per SM, 1.4-1.8x the shipped kernel's time);
     - one SM per 512-key fold group in decode (a device-gated small-grid kernel and a
       deeper K/V ring measured: no end-to-end gain; the decode grid order did gain);
     - no reduction split for narrow long-K GEMMs (stream-K over segments and tile pairs
