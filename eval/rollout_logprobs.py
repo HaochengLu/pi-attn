@@ -79,9 +79,11 @@ def packings(n, rng):
 
 def compare(name, rollouts, scored, report):
     """scored[i]: the trainer's f32 log-probabilities of rollout i's completion tokens."""
-    eng = np.concatenate([np.asarray(r["logprobs"], dtype=np.float32) for r in rollouts])
+    # The engine sends a non-finite logprob as null (JSON has no NaN / inf): it matches a non-finite one.
+    eng = np.concatenate([np.asarray([np.nan if x is None else x for x in r["logprobs"]], dtype=np.float32)
+                          for r in rollouts])
     tr = np.concatenate([np.asarray(s, dtype=np.float32) for s in scored])
-    same = int((bits(eng) == bits(tr)).sum())
+    same = int(((bits(eng) == bits(tr)) | (np.isnan(eng) & ~np.isfinite(tr))).sum())
     d = tr.astype(np.float64) - eng.astype(np.float64)
     ratio = np.exp(d)
     report[name] = {"tokens": int(eng.size), "bitwise_equal": same, "mean_abs_diff": float(np.abs(d).mean()),

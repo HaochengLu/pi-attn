@@ -31,9 +31,11 @@ for eng in $engines; do
     vllm|vllm-det|vllm17|vllm17-det)
       flush=vllm
       venv=venv-vllm; [[ $eng == vllm17* ]] && venv=venv-vllm17
+      # vLLM 0.17.1 batch-invariant mode refuses to start unless the attention backend is named.
+      b=(); [[ $eng == vllm17-det ]] && b=(--attention-backend FLASH_ATTN)
       VLLM_SERVER_DEV_MODE=1 VLLM_BATCH_INVARIANT=$([[ $eng == *-det ]] && echo 1 || echo 0) \
         $ROOT/env/$venv/bin/vllm serve $M --served-model-name default --port $port --max-num-seqs 32 \
-        --max-model-len 8192 --max-num-batched-tokens 2048 --gpu-memory-utilization 0.8 > $out/$eng.server.log 2>&1 & ;;
+        --max-model-len 8192 --max-num-batched-tokens 2048 --gpu-memory-utilization 0.8 "${b[@]}" > $out/$eng.server.log 2>&1 & ;;
   esac
   pid=$!
   ok=0

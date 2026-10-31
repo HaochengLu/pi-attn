@@ -31,8 +31,10 @@ HQ, HKV, D = 16, 8, 128
 SCALE = 1 / math.sqrt(D)
 KVSPLITS = int(__import__('os').environ.get('PI_KVSPLITS', '1'))
 # Prefill kernel variant: 0 = the device's choice, 1 = Q in smem, 2 = Q in registers, 3 / 4 = the same
-# with 8 warps per CTA.
+# with 8 warps per CTA. VARIANTS: those whose shared memory this GPU allows (4 does not fit sm_89).
 VARIANT = 0
+VARIANTS = [v for v in (1, 2, 3, 4)
+            if ext.prefill_smem_bytes(v) <= torch.cuda.get_device_properties(0).shared_memory_per_block_optin]
 # PI error vs float64 may exceed FlashInfer's by at most this factor (mean, max).
 ACC_SLACK = (1.05, 1.25)
 # Decode arrival counters, shared by every call as in the engine: each call must
@@ -204,7 +206,7 @@ def run_checks():
 
     # split / variant: prefill forced over 1..7 split CTAs per row tile, with every
     # prefill kernel variant (Q in smem / registers, 4 / 8 warps), vs the planner's run.
-    for VARIANT in (1, 2, 3, 4):
+    for VARIANT in VARIANTS:
         for KVSPLITS in (1, 2, 3, 7):
             for L in lens:
                 if not same(prefill(pool, [(seqs[L][0], pages[L], L)])[0], alone[L]):

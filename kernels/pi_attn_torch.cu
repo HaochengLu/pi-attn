@@ -68,7 +68,8 @@ at::Tensor prefill(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Ten
   }
   auto stream = at::cuda::getCurrentCUDAStream();
   auto launch = [&](auto kernel, int smem) {
-    cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem);
+    TORCH_CHECK(cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem) == cudaSuccess,
+                "prefill variant ", variant, " needs ", smem, " bytes of shared memory, more than this GPU allows");
     kernel<<<dim3(tiles, hkv, batch * splits), warps * 32, smem, stream>>>(
         (const __nv_bfloat16*)q.data_ptr(), (__nv_bfloat16*)out.data_ptr(),
         (const __nv_bfloat16*)k_cache.data_ptr(), (const __nv_bfloat16*)v_cache.data_ptr(),
@@ -134,6 +135,12 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         py::arg("kv_page_indptr"), py::arg("kv_page_indices"), py::arg("kv_lens"), py::arg("max_q_len"),
         py::arg("max_kv_len"), py::arg("sm_scale"), py::arg("kv_splits"), py::arg("variant") = 0);
   m.def("decode", &decode);
+  // Shared memory a prefill variant (1-4) needs per CTA; tests skip variants the GPU cannot run.
+  m.def("prefill_smem_bytes", [](int64_t variant) {
+    TORCH_CHECK(variant >= 1 && variant <= 4, "variant: 1 to 4");
+    return variant == 1 ? prefill_smem_bytes<false>() : variant == 2 ? prefill_smem_bytes<true>()
+         : variant == 3 ? prefill_smem_bytes<false, 8>() : prefill_smem_bytes<true, 8>();
+  });
   m.attr("TILE") = kTile;
   m.attr("DECODE_WARPS") = kDecodeWarps;
   m.attr("GROUP_KEYS") = kGroupKeys;

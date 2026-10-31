@@ -36,7 +36,7 @@ def run_geometry(hq, hkv, qscale, lens, seed):
     fails = []
     T.KVSPLITS = 1
     ref = {L: T.prefill(pool, [(seqs[L][0], pages[L], L)])[0] for L in lens}
-    for var, kvs in [(v, k) for v in (1, 2, 3, 4) for k in (1, 2, 5, 0)]:  # every variant; forced splits and the planner
+    for var, kvs in [(v, k) for v in T.VARIANTS for k in (1, 2, 5, 0)]:  # every variant; forced splits and the planner
         T.VARIANT, T.KVSPLITS = var, kvs
         # Split mode stores one f32 partial per (row, head, fold group): batch only the
         # requests whose workspace fits; longer ones get the extend case split mode is

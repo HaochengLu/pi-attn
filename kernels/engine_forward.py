@@ -50,6 +50,7 @@ ops = build_engine_ops()
 
 
 def linear(x, w):
+    # Kernel id 0 (= 13) rather than the engine's tuned id: every id gives the same bits.
     return G.ext.linear(x.contiguous(), w, 0, False)
 
 
