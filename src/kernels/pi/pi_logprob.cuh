@@ -8,7 +8,8 @@
 //   logprob = (x[token] - max) - log2(sum) ln 2.
 // Only explicitly rounded operations and approximate-transcendental instructions
 // are used, so the bits do not depend on the compiler's contraction choices: the
-// serving engine and a trainer that link this header compute the same values.
+// serving engine and a trainer that link this header compute the same values on the
+// same GPU architecture (ex2/lg2.approx are hardware approximations, A2 of the paper).
 #pragma once
 #include <cuda_bf16.h>
 #include <cstdint>

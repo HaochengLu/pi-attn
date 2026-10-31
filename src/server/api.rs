@@ -206,6 +206,10 @@ async fn completions_inner(
         Some(0) if request.stream => {
             return Err(ApiError::new(StatusCode::BAD_REQUEST, "logprobs are not supported with stream"));
         }
+        // The log-softmax is a PI kernel; without it every request batched with this one would fail.
+        Some(0) if !crate::kernels::pi::available() => {
+            return Err(ApiError::new(StatusCode::BAD_REQUEST, "logprobs need the PI kernels, which this build lacks"));
+        }
         Some(0) => true,
         Some(_) => {
             return Err(ApiError::new(

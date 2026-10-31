@@ -113,10 +113,11 @@ struct SegmentedKernel : Base {
 // Device scratch of the CUTLASS launches whose size depends on the launch, one buffer per
 // (device, use). A buffer grows when a launch needs more than it holds, never while the stream
 // is being captured (a CUDA graph cannot hold the allocation): the launch then refuses, and
-// pi_linear falls back to a kernel without scratch (every id gives the same bits). The engine's
-// tuner runs every id at the top of its M bucket before any capture, so capture-time launches
-// fit. As g_seg_ws, launches that share a buffer must not run concurrently on one device (the
-// engine runs its forward on one stream).
+// pi_linear falls back to a kernel without scratch (every id gives the same bits). A grown
+// buffer's predecessor is never freed: graphs captured earlier keep launching into it (the
+// engine's tuner also runs after capture, for M buckets no warm-up reached). As g_seg_ws,
+// launches that share a buffer must not run concurrently on one device (the engine runs its
+// forward on one stream).
 enum GemmWs { kWsSlots, kWsHandoff, kWsFrags };
 inline float* gemm_workspace(GemmWs use, size_t floats, cudaStream_t stream) {
   static std::mutex mutex;
@@ -129,10 +130,9 @@ inline float* gemm_workspace(GemmWs use, size_t floats, cudaStream_t stream) {
   cudaStreamCaptureStatus capturing;
   if (cudaStreamIsCapturing(stream, &capturing) != cudaSuccess || capturing != cudaStreamCaptureStatusNone)
     return nullptr;
-  if (cudaDeviceSynchronize() != cudaSuccess || cudaFree(buf) != cudaSuccess) return nullptr;
-  buf = nullptr;
-  cap = 0;
-  if (cudaMalloc(&buf, floats * sizeof(float)) != cudaSuccess) return nullptr;
+  float* grown = nullptr;
+  if (cudaMalloc(&grown, floats * sizeof(float)) != cudaSuccess) return nullptr;
+  buf = grown;
   cap = floats;
   return buf;
 }
