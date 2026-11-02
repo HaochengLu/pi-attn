@@ -1,91 +1,111 @@
-# PI-Attn: bitwise-deterministic LLM serving with every optimization on
+<div align="center">
 
-This directory holds the research project built on
-[llm_infer_rust](https://github.com/MabinogiX/llm_infer_rust) (this work: branch `pi-attn` of
-[HaochengLu/llm_infer_rust](https://github.com/HaochengLu/llm_infer_rust), checked out in `llm_infer_rust/`). It makes the engine's outputs a bitwise function of the model and
-the request alone — independent of batching, concurrency, prefix caching, chunked
-prefill, decode vs re-prefill, CUDA graphs, page size and restarts — without turning
-any of those optimizations off. `kernels/tp_invariance.md` extends this to the
-tensor-parallel degree (verified on one GPU with emulated ranks).
+# PI-Attn
 
-**Paper:** [`paper/paper.pdf`](paper/paper.pdf), *Fix the Program, Not the Schedule: Bitwise-Reproducible LLM Serving with Every Optimization On* (Haocheng Lu).
+**Bitwise-reproducible LLM serving — with every optimization on, at full speed.**
+
+[Paper (PDF)](paper/paper.pdf) · [Engine (`llm_infer_rust`, branch `pi-attn`)](https://github.com/HaochengLu/llm_infer_rust/tree/pi-attn) · [Results](results/README.md)
+
+</div>
+
+![PI-Attn keeps full throughput where batch-invariant modes keep 29–49%; its trainer reproduces every rollout log-probability; its outputs are identical across GPUs](paper/figs/fig0_teaser.png)
+
+Ask an LLM server the same question twice at temperature 0 and you can get two different answers. Batching, prefix caching, chunked prefill, split-KV decode and the prefill/decode split all reorder floating-point sums. Existing deterministic modes switch those optimizations off and lose more than half their throughput.
+
+**PI-Attn fixes the floating-point *program* instead of the *schedule*.** Every query row and every output element executes one canonical sequence of operations that depends only on positions and shapes. That sequence is chosen so that its free partitions are exactly the ones fast kernels want. Prefill, chunked prefill, prefix-cache hits and decode become bitwise identical by construction, while tiling, pipelining, stream-K and even the tensor-parallel degree stay free.
+
+## Highlights
+
+On one A800, Qwen3 0.6B–8B, with radix caching, chunked prefill, CUDA graphs and CPU/GPU overlap all enabled:
+
+- **No throughput cost.** On average (geometric mean over 40 workloads) the deterministic mode is **1.2% faster** than the same engine without determinism. It is on par with vLLM 0.17.1.
+- **2.0–3.7× faster than vLLM's batch-invariant mode**, the only other engine that passes our numeric checks.
+- **Bitwise identical** tokens *and* log-probabilities across concurrency, prefix-cache state, chunking, decode vs. re-prefill, seeded sampling, eight server configurations and restarts.
+- **Rollout = trainer.** A PyTorch forward on the same kernels reproduces all **55,593** rollout log-probabilities bit for bit, so every importance ratio is exactly 1. A standard bf16 trainer misses by more than 1% on 10–22% of tokens.
+- **Same bits on two GPU architectures.** Every kernel output and every GSM8K generation is identical across an A800 (sm_80) and an RTX 4090 D (sm_89).
+- **Beyond softmax attention.** Gated DeltaNet decodes with the trainer's own chunked program inside vLLM, bitwise and at stock throughput, with speculative decoding for free.
+
+## How it works
+
+<p align="center"><img src="paper/figs/fig1_attention_program.png" width="88%"></p>
+
+**Attention.** Keys are cut at absolute positions into 512-key fold groups. Each group is an online softmax over 32-key tiles, and the groups fold in a fixed order. A prefill kernel is FlashAttention-2 restarting its state every 512 keys, and a decode kernel gives every group its own CTA. Any chunked or cached split runs the same per-row sequence.
+
+**Projections.** Each output element runs one `mma.m16n8k16` chain over K, cut into a number of segments fixed by the weight's shape. Tiles never enter the chain, so an autotuner can choose freely among small-M streaming kernels, CUTLASS tiles, segment-parallel kernels and **deterministic stream-K**. Stream-K hands the fp32 accumulator from worker to worker, which gives split-K's load balance without its reduction.
+
+The full numerical contract, which parameters define the bits and which are free, is in §2.3 of the [paper](paper/paper.pdf).
+
+## Quick start
+
+```bash
+git clone https://github.com/HaochengLu/pi-attn.git && cd pi-attn
+git clone -b pi-attn https://github.com/HaochengLu/llm_infer_rust.git
+bash setup_env.sh && source env.sh      # CUDA 12.6, gcc 13, Rust, Python 3.12, four venvs, Qwen3 models, all under env/
+(cd llm_infer_rust && FLASHINFER_CUDA_ARCH=80 cargo build --release)   # 80 = A100/A800, 89 = Ada
+
+scripts/serve.sh 8000 models/Qwen3-1.7B --deterministic
+python detcheck/detcheck.py --url http://127.0.0.1:8000 --tokenizer models/Qwen3-1.7B --logprobs
+```
+
+`--deterministic` turns on PI-Attn, the row-invariant GEMM and (seed, position)-keyed sampling, and disables nothing. Requests with `"logprobs": 0` also return each sampled token's log-probability. Requests without a seed get a random one, echoed in the response, so any output can be replayed.
+
+[`detcheck`](detcheck/detcheck.py) works against any OpenAI-compatible server (vLLM and SGLang included). It compares token ids and the fp32 bits of every log-probability.
+
+## Reproduce the paper
+
+```bash
+eval/run_all.sh        # rebuilds the engine, runs every test and benchmark (~8 h on one A800)
+cd paper && python figures.py ../results figs && bash build.sh    # redraw the figures, rebuild paper.pdf
+```
+
+[`results/README.md`](results/README.md) maps every table and figure to the files that hold its numbers. The A800 run is in `results/a800/`; the earlier RTX 4090 D run is at the top level of `results/`. Set `BASELINE_ENGINES="rust rust-det sglang sglang-det vllm vllm-det vllm17 vllm17-det"` to include the SGLang and vLLM baselines.
+
+## Repository
 
 | Path | What |
 |---|---|
-| `llm_infer_rust/` (branch `pi-attn`) | Engine with `--deterministic`; kernels in `src/kernels/pi/`, docs in `docs/deterministic-mode.md` |
-| `kernels/` | PyTorch bindings, invariance tests (`test_invariance.py`, `test_matrix.py`, `test_directed.py`, `test_gemm.py`, `test_tp_model.py`), tensor-parallel degree invariance (`tp_invariance.md`, `bench_tp.py`), microbenchmarks for the kernels, and the GEMM as vLLM's batch-invariant dense ops (`pi_vllm.py`, used by `gdn/vllm/`) (sources, including the GEMM id table `gemm_dispatch.cuh`, symlinked from the engine) |
-| `gdn/` | Exact Gated DeltaNet decode for hybrid models: decode bitwise equal to fla's chunked training forward (`exact_decode.py`), its test, benchmark and experiments, and its vLLM 0.17.1 integration (`gdn/vllm/`: decode bitwise the engine's prefill, speculation on or off); findings in `gdn/README.md` |
-| `detcheck/detcheck.py` | Black-box determinism checker for any OpenAI-compatible server |
-| `eval/` | Serving benchmark (`loadgen.py`), cross-configuration check (`crossconfig.sh`), end-to-end matrices (`e2e_matrix.sh`, `e2e_extended.sh`, `e2e_highconc.sh`, `e2e_ablation.sh`), rollout log-probabilities vs a trainer forward (`rollout.sh`), same-GPU SGLang/vLLM baselines (`baselines.sh`), GSM8K reproducibility (`accuracy.sh`, `compare_accuracy.py`), fp32 agreement (`fp32_agreement.sh`), kernel benchmarks (`kernel_benches.sh`), and table generators (`summarize_*.py`) |
-| `results/` | `results/a800/`: the paper's evaluation run (A800); top level: the earlier RTX 4090 D run. `results/README.md` maps each paper table to its files and script |
-| `paper/` | The paper: `paper.pdf`, its source `paper.md`, figures in `figs/` (regenerated from `results/` by `figures.py`), and `build.sh` (pandoc + tectonic) |
-| `requirements/` | Exact package lists of the four Python environments and the model file hashes |
-| `archive/` | Earlier kernel iterations, ceiling probes (`archive/ceiling_probes/README.md`: every measured attempt, kept or rejected), superseded results |
-
-## Environment (self-contained, reproducible)
-
-Everything, caches included, is installed under `env/` by `setup_env.sh` (idempotent);
-nothing is written to the host system or `$HOME`. The checkout can live anywhere: `env.sh`
-finds it from its own path. Python packages come from the lock files in `requirements/`,
-the models from ModelScope (checked against `requirements/models.sha256`), and
-`VERSIONS.txt` is regenerated on every run.
-
-```bash
-git clone -b pi-attn https://github.com/HaochengLu/llm_infer_rust.git   # the engine (upstream main e7e2806 plus this work)
-bash setup_env.sh            # CUDA 12.6, gcc 13, Rust 1.95, Python 3.12, four venvs, Qwen3 models
-source env.sh                # activate
-cd llm_infer_rust && FLASHINFER_CUDA_ARCH=89 cargo build --release   # 80 for A100/A800
-```
-
-Download sources default to mirrors reachable from mainland China; `setup_env.sh` lists
-the variables that point them elsewhere.
-
-Notes recorded while setting up the RTX 4090 D dev box (driver 535 / CUDA 12.2):
-- torch cu126 wheels run on driver 535 via CUDA minor-version compatibility; the default
-  torch 2.13 wheel (CUDA 13) does not.
-- CUDA 12.6 nvcc needs gcc <= 13; the host has gcc 14, so `env.sh` points CC/CXX/NVCC_CCBIN
-  at a conda-forge gcc 13 in `env/gcc13`.
-- FlashInfer's JIT compresses fatbins (`--compress-mode=size`), which driver 535 rejects as
-  "device kernel image is invalid"; `env/bin/nvcc-nocompress` strips that flag.
-- The host exports `CXXFLAGS=-std=c++17`, which overrides the engine's C++20 build flags;
-  `env.sh` unsets it.
-- Python is fetched from a mirror (`UV_PYTHON_INSTALL_MIRROR`); the FlashInfer JIT cache
-  lives in `env/flashinfer-home`.
-- On the A800 box pypi.org is slow or unreachable directly: set `HTTP_PROXY=HTTPS_PROXY=100.68.165.249:3128`
-  with `NO_PROXY=mirrors.ivolces.com` (the proxy cannot tunnel to the internal mirror); astral.sh is unreachable, so
-  `setup_env.sh` takes uv from its PyPI wheel.
-
-## Running
-
-```bash
-scripts/serve.sh 8000 models/Qwen3-0.6B --deterministic          # deterministic engine
-scripts/serve.sh 8001 models/Qwen3-0.6B --attention-backend flashinfer   # original engine
-python detcheck/detcheck.py --url http://127.0.0.1:8000 --tokenizer models/Qwen3-0.6B
-eval/crossconfig.sh --deterministic      # bitwise identity across server configurations
-```
-
-## Reproducing every result
-
-`eval/run_all.sh` rebuilds the engine for the local GPU and regenerates every result the
-paper uses, stage by stage (logs in `results/run_all/`): kernel tests (including the
-mutation controls, `test_mutants.py`), cross-GPU kernel hashes, kernel benchmarks,
-cross-configuration and detcheck runs (tokens and log-probabilities), end-to-end matrices,
-same-GPU baselines, GSM8K, fp32 agreement, rollout log-probabilities against a PyTorch
-trainer forward on the engine's kernels (`eval/rollout.sh`) and batch-1 traces. It writes
-`results/<stage>/` and needs the whole GPU; the paper's A800 run took about 8 hours and is
-in `results/a800/`. Baselines default to our engine's two modes; set `BASELINE_ENGINES`
-(e.g. `"rust rust-det sglang sglang-det vllm vllm-det vllm17 vllm17-det"`) for the SGLang and
-vLLM rows.
+| [`paper/`](paper/) | The paper (`paper.pdf`, source `paper.md`), figures and the scripts that draw and typeset them |
+| `llm_infer_rust/` | The engine; clone branch `pi-attn` of [HaochengLu/llm_infer_rust](https://github.com/HaochengLu/llm_infer_rust). Kernels live in `src/kernels/pi/` |
+| [`kernels/`](kernels/) | PyTorch bindings, invariance tests, mutation controls, tensor-parallel invariance, kernel benchmarks, the trainer forward (`engine_forward.py`) |
+| [`detcheck/`](detcheck/) | Black-box determinism checker for OpenAI-compatible servers |
+| [`eval/`](eval/) | End-to-end benchmarks, baselines, GSM8K, fp32 agreement, rollout log-probabilities, `run_all.sh` |
+| [`gdn/`](gdn/) | Exact Gated DeltaNet decode and its vLLM 0.17.1 integration |
+| [`results/`](results/) | Every number in the paper |
+| [`requirements/`](requirements/) | Exact package lists of the four Python environments and model hashes |
+| [`archive/`](archive/) | Earlier kernel versions and every measured optimization attempt, kept or rejected |
 
 ## Tests
 
-The kernel tests JIT-build the torch extensions on first import. One engine CUDA test,
-`segmented_prefill_matches_eager_logits_and_kv...` (FlashInfer backend), also fails on
-the upstream `main` branch and is unrelated to this work.
-
 ```bash
-cd kernels && python test_invariance.py && python test_matrix.py && python test_directed.py && python test_gemm.py && python test_mutants.py
-python test_tp_model.py      # Qwen3-8B on t = 1..8 emulated tensor-parallel ranks (needs models/Qwen3-8B)
-cd llm_infer_rust && VENV_DIR=$VIRTUAL_ENV scripts/run-rust-tests.sh cuda
-SGLANG_E2E_BASE_URL=http://127.0.0.1:8000/v1 SGLANG_E2E_DETERMINISTIC=1 python -m unittest discover -s tests -p "test_*.py"
+cd kernels && python test_invariance.py && python test_matrix.py && python test_directed.py \
+           && python test_gemm.py && python test_mutants.py
+python test_tp_model.py                                   # tensor-parallel degree invariance on Qwen3-8B
+cd ../llm_infer_rust && VENV_DIR=$VIRTUAL_ENV scripts/run-rust-tests.sh cuda
+```
+
+`test_mutants.py` runs deliberately broken kernels through the suite and requires it to catch every one.
+
+<details>
+<summary>Environment notes</summary>
+
+Everything, caches included, is installed under `env/` by `setup_env.sh` (idempotent); nothing is written to the host system or `$HOME`. Python packages come from the lock files in `requirements/`, the models from ModelScope (checked against `requirements/models.sha256`), and `VERSIONS.txt` is regenerated on every run. Download sources default to mirrors reachable from mainland China; `setup_env.sh` lists the variables that point them elsewhere.
+
+- torch cu126 wheels run on driver 535 through CUDA minor-version compatibility; the CUDA 13 wheels do not.
+- CUDA 12.6 nvcc needs gcc ≤ 13, so `env.sh` points CC/CXX/NVCC_CCBIN at a conda-forge gcc 13 in `env/gcc13`.
+- Driver 535 rejects FlashInfer's compressed fatbins; `env/bin/nvcc-nocompress` strips `--compress-mode=size`.
+- `env.sh` unsets a host-wide `CXXFLAGS=-std=c++17`, which would override the engine's C++20 flags.
+- Behind a slow link to PyPI, set `HTTP_PROXY`/`HTTPS_PROXY`. Exclude internal mirrors with `NO_PROXY`. `setup_env.sh` takes uv from its PyPI wheel.
+- One upstream engine CUDA test, `segmented_prefill_matches_eager_logits_and_kv...` (FlashInfer backend), also fails on upstream `main`. It is unrelated to this work.
+
+</details>
+
+## Citation
+
+```bibtex
+@misc{lu2026piattn,
+  title  = {Fix the Program, Not the Schedule: Bitwise-Reproducible {LLM} Serving with Every Optimization On},
+  author = {Haocheng Lu},
+  year   = {2026},
+  url    = {https://github.com/HaochengLu/pi-attn}
+}
 ```

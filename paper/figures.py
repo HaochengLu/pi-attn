@@ -58,6 +58,57 @@ def box(ax, x, y, w, h, fc, ec=None, lw=0.0, r=0.012, z=2, alpha=1.0):
     return p
 
 
+
+# ------------------------------------------------------------------ Figure 0: teaser
+def fig_teaser():
+    fig, axes = plt.subplots(1, 3, figsize=(7.0, 2.15), gridspec_kw={"width_ratios": [1.5, 1, 0.8], "wspace": 0.5})
+    # a: throughput relative to the non-deterministic original engine (Qwen3-1.7B, A800)
+    ax = axes[0]
+    # each deterministic mode relative to its own engine without determinism
+    series = [("PI", "PI-Attn", [298, 1790, 4951, 1863, 542], [283, 1894, 5014, 1878, 539]),
+              ("vllm17bi", "vLLM batch-inv.", [80, 609, 2228, 921, 223], [270, 1842, 4890, 1885, 553]),
+              ("sglangdet", "SGLang determ.", [73, 554, 1993, 843, 192], [253, 1768, 4865, 1837, 530])]
+    x = np.arange(5)
+    w = 0.26
+    for k, (key, lab, vals, own) in enumerate(series):
+        ax.bar(x + (k - 1) * w, np.array(vals, float) / np.array(own, float), w * 0.88, color=C[key], label=lab, zorder=3)
+    ax.axhline(1, color=INK2, lw=0.7, zorder=2)
+    ax.set_xticks(x, ["c1", "c8", "c32", "c16\n2K in", "c4\n4K in"], fontsize=7)
+    ax.set_ylim(0, 1.42)
+    ax.set_yticks([0, 0.5, 1.0])
+    ax.set_ylabel("throughput vs. own\nnon-deterministic engine")
+    hgrid(ax)
+    ax.legend(loc="upper left", bbox_to_anchor=(-0.02, 1.03), ncol=3, fontsize=6.3, handlelength=0.8, columnspacing=0.6, handletextpad=0.4)
+    ax.set_title("a  Deterministic at full speed", fontsize=8.3)
+    # b: importance-ratio noise
+    ax = axes[1]
+    models = ["0.6B", "1.7B", "4B", "8B"]
+    hf = [json.loads((RES / f"a800/rollout/Qwen3-{m}.json").read_text())["hf alone"]["ratio_frac_outside_1pct"] * 100 for m in models]
+    xm = np.arange(4)
+    ax.bar(xm - 0.18, [0] * 4, 0.32, color=C["PI"], label="PI-Attn trainer", zorder=3)
+    ax.bar(xm + 0.18, hf, 0.32, color=C["original"], label="bf16 trainer", zorder=3)
+    for xi in xm:
+        ax.text(xi - 0.18, 0.6, "0", ha="center", fontsize=6.6, color=C["PI"], weight="bold")
+    ax.set_xticks(xm, models, fontsize=7)
+    ax.set_ylim(0, 27)
+    ax.set_ylabel("% tokens, |ratio − 1| > 1%")
+    hgrid(ax)
+    ax.legend(loc="upper right", fontsize=6.3, handlelength=0.8)
+    ax.set_title("b  Rollout = trainer", fontsize=8.3)
+    # c: GSM8K generations identical across GPUs
+    ax = axes[2]
+    vals = [100.0, (1319 - 910) / 1319 * 100]
+    ax.bar([0, 1], vals, 0.6, color=[C["PI"], C["original"]], zorder=3)
+    ax.text(0, 102, "100%", ha="center", fontsize=7, color=C["PI"], weight="bold")
+    ax.text(1, vals[1] + 2, f"{vals[1]:.0f}%", ha="center", fontsize=7, color=INK2)
+    ax.set_xticks([0, 1], ["PI-Attn", "original"], fontsize=7)
+    ax.set_ylim(0, 115)
+    ax.set_yticks([0, 50, 100])
+    ax.set_ylabel("% GSM8K generations identical\n(Qwen3-1.7B, A800 vs 4090 D)")
+    hgrid(ax)
+    ax.set_title("c  Same bits on two GPUs", fontsize=8.3)
+    save(fig, "fig0_teaser")
+
 # ------------------------------------------------------------------ Figure 1: attention program
 def fig_attention():
     fig, ax = plt.subplots(figsize=(7.0, 3.0))
@@ -426,7 +477,7 @@ def fig_gdn():
     save(fig, "fig9_gdn")
 
 
-for f in (fig_attention, fig_gemm, fig_determinism, fig_baselines, fig_e2e, fig_rollout, fig_breakdown, fig_xgpu,
+for f in (fig_teaser, fig_attention, fig_gemm, fig_determinism, fig_baselines, fig_e2e, fig_rollout, fig_breakdown, fig_xgpu,
           fig_gdn):
     f()
 print("ok")

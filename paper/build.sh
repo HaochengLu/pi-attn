@@ -4,4 +4,6 @@ pandoc paper.md -s -o paper.tex --number-sections --citeproc --bibliography=refs
   --include-in-header=header.tex
 # longtable cannot see floats placed on its page later; flush pending floats before each table
 sed -i '' 's/^\\begin{longtable}/\\FloatBarrier\n\\begin{longtable}/' paper.tex
+# the teaser stays right under the abstract
+perl -0pi -e 's/\\begin\{figure\}/\\begin{figure}[H]/' paper.tex
 tectonic -X compile paper.tex 2>&1 | grep -i "error\|Overfull \\\\vbox" || true
