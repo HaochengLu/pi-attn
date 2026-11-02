@@ -1,12 +1,14 @@
 # PI-Attn: bitwise-deterministic LLM serving with every optimization on
 
 This directory holds the research project built on
-[llm_infer_rust](https://github.com/MabinogiX/llm_infer_rust) (branch `pi-attn` in
-`llm_infer_rust/`). It makes the engine's outputs a bitwise function of the model and
+[llm_infer_rust](https://github.com/MabinogiX/llm_infer_rust) (this work: branch `pi-attn` of
+[HaochengLu/llm_infer_rust](https://github.com/HaochengLu/llm_infer_rust), checked out in `llm_infer_rust/`). It makes the engine's outputs a bitwise function of the model and
 the request alone — independent of batching, concurrency, prefix caching, chunked
 prefill, decode vs re-prefill, CUDA graphs, page size and restarts — without turning
 any of those optimizations off. `kernels/tp_invariance.md` extends this to the
 tensor-parallel degree (verified on one GPU with emulated ranks).
+
+**Paper:** [`paper/paper.pdf`](paper/paper.pdf), *Fix the Program, Not the Schedule: Bitwise-Reproducible LLM Serving with Every Optimization On* (Haocheng Lu).
 
 | Path | What |
 |---|---|
@@ -16,7 +18,7 @@ tensor-parallel degree (verified on one GPU with emulated ranks).
 | `detcheck/detcheck.py` | Black-box determinism checker for any OpenAI-compatible server |
 | `eval/` | Serving benchmark (`loadgen.py`), cross-configuration check (`crossconfig.sh`), end-to-end matrices (`e2e_matrix.sh`, `e2e_extended.sh`, `e2e_highconc.sh`, `e2e_ablation.sh`), rollout log-probabilities vs a trainer forward (`rollout.sh`), same-GPU SGLang/vLLM baselines (`baselines.sh`), GSM8K reproducibility (`accuracy.sh`, `compare_accuracy.py`), fp32 agreement (`fp32_agreement.sh`), kernel benchmarks (`kernel_benches.sh`), and table generators (`summarize_*.py`) |
 | `results/` | `results/a800/`: the paper's evaluation run (A800); top level: the earlier RTX 4090 D run. `results/README.md` maps each paper table to its files and script |
-| `paper/` | Paper draft |
+| `paper/` | The paper: `paper.pdf`, its source `paper.md`, figures in `figs/` (regenerated from `results/` by `figures.py`), and `build.sh` (pandoc + tectonic) |
 | `requirements/` | Exact package lists of the four Python environments and the model file hashes |
 | `archive/` | Earlier kernel iterations, ceiling probes (`archive/ceiling_probes/README.md`: every measured attempt, kept or rejected), superseded results |
 
@@ -29,8 +31,7 @@ the models from ModelScope (checked against `requirements/models.sha256`), and
 `VERSIONS.txt` is regenerated on every run.
 
 ```bash
-# llm_infer_rust/: the engine on branch pi-attn (upstream main e7e2806 plus this work; the
-# branch is not published yet, so copy the checkout along with this directory)
+git clone -b pi-attn https://github.com/HaochengLu/llm_infer_rust.git   # the engine (upstream main e7e2806 plus this work)
 bash setup_env.sh            # CUDA 12.6, gcc 13, Rust 1.95, Python 3.12, four venvs, Qwen3 models
 source env.sh                # activate
 cd llm_infer_rust && FLASHINFER_CUDA_ARCH=89 cargo build --release   # 80 for A100/A800

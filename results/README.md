@@ -39,6 +39,8 @@ SGLang and vLLM 0.11.2, token ids only), which Section 7.1 cites for token-level
 | §7.7 kernel tests and mutants | `run_all/kernel_tests.log` | `kernels/test_*.py` |
 | §9 tensor-parallel degree | `kernels/bench_tp.log` | `kernels/bench_tp.py`, `kernels/test_tp_model.py` |
 
+The paper's figures are drawn from these files by `paper/figures.py` (`cd paper && python figures.py ../results figs`).
+
 Server logs (`*.server.log`) are kept on disk but not committed (`.gitignore`).
 
 ## RTX 4090 D (paper Section 7.6)

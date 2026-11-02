@@ -1,0 +1,37 @@
+\usepackage{libertinus-otf}
+\usepackage{unicode-math}
+\setmathfont{LibertinusMath-Regular.otf}
+\setmonofont[Scale=0.88]{Inconsolatazi4-Regular.otf}[BoldFont=Inconsolatazi4-Bold.otf]
+\usepackage{microtype}
+\usepackage{xcolor}
+\definecolor{piblue}{HTML}{1C5CAB}
+\definecolor{inkgray}{HTML}{52514E}
+\usepackage[font=small,labelfont={bf,color=piblue},labelsep=period,skip=4pt]{caption}
+\usepackage{etoolbox}
+\AtBeginEnvironment{longtable}{\small}
+\setlength{\LTpre}{6pt}\setlength{\LTpost}{6pt}
+\usepackage{titlesec}
+\titleformat{\section}{\large\bfseries\sffamily\color{piblue}}{\thesection}{0.6em}{}
+\titleformat{\subsection}{\normalsize\bfseries\sffamily}{\thesubsection}{0.6em}{}
+\titlespacing*{\section}{0pt}{14pt}{6pt}
+\titlespacing*{\subsection}{0pt}{10pt}{4pt}
+\usepackage{float}
+\usepackage{needspace}
+\floatplacement{figure}{tbp}
+\setlength{\parskip}{3pt}
+\renewcommand{\arraystretch}{1.12}
+\makeatletter
+\renewcommand{\maketitle}{%
+  \begin{center}
+  {\sffamily\bfseries\LARGE\color{piblue}\@title\par}
+  \vspace{4pt}
+  {\sffamily\large\color{inkgray}Bitwise-Reproducible LLM Serving with Every Optimization On\par}
+  \vspace{10pt}
+  {\large\@author\par}
+  \vspace{2pt}
+  {\small\color{inkgray}\@date\par}
+  \end{center}\vspace{4pt}}
+\makeatother
+\raggedbottom
+\renewcommand{\topfraction}{0.85}\renewcommand{\textfraction}{0.12}\renewcommand{\floatpagefraction}{0.75}
+\usepackage{placeins}
