@@ -2,7 +2,6 @@ env/
 build/
 results/*.json
 __pycache__/
-llm_infer_rust/
 models/
 logs/
 results/detcheck/*.json
