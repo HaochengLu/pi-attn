@@ -4,7 +4,7 @@
 
 **Bitwise-reproducible LLM serving — with every optimization on, at full speed.**
 
-[Paper (PDF)](paper/paper.pdf) · [Engine (`llm_infer_rust`, branch `pi-attn`)](https://github.com/HaochengLu/llm_infer_rust/tree/pi-attn) · [Results](results/README.md)
+[Paper (PDF)](paper/paper.pdf) · [Engine](llm_infer_rust/) · [Kernels](llm_infer_rust/src/kernels/pi/) · [Results](results/README.md)
 
 </div>
 
@@ -39,7 +39,6 @@ The full numerical contract, which parameters define the bits and which are free
 
 ```bash
 git clone https://github.com/HaochengLu/pi-attn.git && cd pi-attn
-git clone -b pi-attn https://github.com/HaochengLu/llm_infer_rust.git
 bash setup_env.sh && source env.sh      # CUDA 12.6, gcc 13, Rust, Python 3.12, four venvs, Qwen3 models, all under env/
 (cd llm_infer_rust && FLASHINFER_CUDA_ARCH=80 cargo build --release)   # 80 = A100/A800, 89 = Ada
 
@@ -65,7 +64,7 @@ cd paper && python figures.py ../results figs && bash build.sh    # redraw the f
 | Path | What |
 |---|---|
 | [`paper/`](paper/) | The paper (`paper.pdf`, source `paper.md`), figures and the scripts that draw and typeset them |
-| `llm_infer_rust/` | The engine; clone branch `pi-attn` of [HaochengLu/llm_infer_rust](https://github.com/HaochengLu/llm_infer_rust). Kernels live in `src/kernels/pi/` |
+| [`llm_infer_rust/`](llm_infer_rust/) | The Rust/libtorch serving engine with `--deterministic`; PI-Attn and the row-invariant GEMM live in [`src/kernels/pi/`](llm_infer_rust/src/kernels/pi/), the mode is documented in [`docs/deterministic-mode.md`](llm_infer_rust/docs/deterministic-mode.md) |
 | [`kernels/`](kernels/) | PyTorch bindings, invariance tests, mutation controls, tensor-parallel invariance, kernel benchmarks, the trainer forward (`engine_forward.py`) |
 | [`detcheck/`](detcheck/) | Black-box determinism checker for OpenAI-compatible servers |
 | [`eval/`](eval/) | End-to-end benchmarks, baselines, GSM8K, fp32 agreement, rollout log-probabilities, `run_all.sh` |

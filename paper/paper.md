@@ -264,4 +264,4 @@ The 4090 D ran the full evaluation with an earlier engine. PI passed every detch
 
 # Appendix D: Artifact {-}
 
-The engine is branch `pi-attn` of `github.com/HaochengLu/llm_infer_rust` (kernels in `src/kernels/pi/`); the research repository `github.com/HaochengLu/pi-attn` holds the kernel bindings and tests, detcheck, the evaluation scripts, Gated DeltaNet and all results. `eval/run_all.sh` rebuilds the engine and regenerates every result in about 8 hours on one A800, `results/README.md` maps every table and figure to its files, and `paper/figures.py` redraws every figure from them.
+Everything is in one repository, `github.com/HaochengLu/pi-attn`: the engine (`llm_infer_rust/`, kernels in `llm_infer_rust/src/kernels/pi/`), the kernel bindings and tests, detcheck, the evaluation scripts, Gated DeltaNet and all results. `eval/run_all.sh` rebuilds the engine and regenerates every result in about 8 hours on one A800, `results/README.md` maps every table and figure to its files, and `paper/figures.py` redraws every figure from them.
