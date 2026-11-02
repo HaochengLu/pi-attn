@@ -15,3 +15,6 @@ results/*.out
 results/quick/
 results/a800/accuracy/*/*/
 results/a800/detcheck/*.json
+
+# nsys GPU-trace exports over 500 MB (kept on disk, too large for GitHub)
+archive/stale_results/engine_profile/*/tr_*_cuda_gpu_trace.csv
