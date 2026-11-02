@@ -1,0 +1,555 @@
+//! FFI to the partition-invariant (PI) CUDA kernels in `src/kernels/pi/`.
+//!
+//! In deterministic mode every projection goes through [`linear`] and attention
+//! through the `pi` backend. Their results are bitwise independent of batch
+//! composition, KV split counts, chunked-prefill cut points, prefix-cache state
+//! and CUDA-graph padding: each output row is computed by one fixed reduction
+//! tree that depends only on the row's own data and positions.
+
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use tch::{Device, Kind, Tensor};
+
+static DETERMINISTIC: AtomicBool = AtomicBool::new(false);
+
+/// Selects the row-invariant GEMM for every [`crate::layers::linear`] call.
+pub fn set_deterministic(enabled: bool) {
+    DETERMINISTIC.store(enabled, Ordering::Relaxed);
+}
+
+pub fn deterministic() -> bool {
+    DETERMINISTIC.load(Ordering::Relaxed)
+}
+
+pub fn available() -> bool {
+    cfg!(has_pi)
+}
+
+#[cfg(has_pi)]
+mod ffi {
+    use std::ffi::{c_char, c_void};
+    unsafe extern "C" {
+        pub fn pi_current_stream(device: i64) -> *mut c_void;
+        pub fn pi_set_device(device: i32);
+        pub fn pi_linear(
+            x: *const c_void,
+            ldx: i64,
+            w: *const c_void,
+            y: *mut c_void,
+            m: i32,
+            n: i32,
+            k: i32,
+            out_fp32: i32,
+            stream: *mut c_void,
+        ) -> *const c_char;
+        pub fn pi_linear_bucket(m: i32) -> i32;
+        pub fn pi_linear_tuned_kernel(n: i32, k: i32, bucket: i32) -> i32;
+        pub fn pi_stream_capturing(stream: *mut c_void) -> i32;
+        pub fn pi_l2_bytes() -> i64;
+        pub fn pi_token_logprob(
+            logits: *const c_void,
+            is_fp32: i32,
+            ld: i64,
+            rows: i32,
+            vocab: i32,
+            tokens: *const i64,
+            out: *mut f32,
+            stream: *mut c_void,
+        ) -> *const c_char;
+        pub fn pi_linear_tune(
+            w: *const c_void,
+            n: i32,
+            k: i32,
+            bucket: i32,
+            x: *mut c_void,
+            y: *mut c_void,
+            flush: *mut c_void,
+            flush_bytes: i64,
+            stream: *mut c_void,
+        ) -> *const c_char;
+        pub fn pi_attn_decode_groups(max_kv_len: i64) -> i32;
+        pub fn pi_attn_decode(
+            q: *const c_void,
+            k_cache: *const c_void,
+            v_cache: *const c_void,
+            page_table: *const i32,
+            table_stride: i64,
+            seqlens: *const i32,
+            ws_o: *mut f32,
+            ws_ml: *mut f32,
+            counters: *mut i32,
+            ws_rows: i64,
+            out: *mut c_void,
+            batch: i32,
+            num_qo_heads: i32,
+            num_kv_heads: i32,
+            page_size: i32,
+            sm_scale: f64,
+            stream: *mut c_void,
+        ) -> *const c_char;
+        pub fn pi_attn_prefill_plan(
+            batch: i32,
+            num_qo_heads: i32,
+            num_kv_heads: i32,
+            max_q_len: i32,
+            max_kv_len: i32,
+            splits: *mut i32,
+            max_groups: *mut i32,
+        );
+        pub fn pi_attn_prefill(
+            q: *const c_void,
+            k_cache: *const c_void,
+            v_cache: *const c_void,
+            qo_indptr: *const i32,
+            page_table: *const i32,
+            table_stride: i64,
+            prefix_lens: *const i32,
+            out: *mut c_void,
+            batch: i32,
+            total_q: i32,
+            num_qo_heads: i32,
+            num_kv_heads: i32,
+            page_size: i32,
+            max_q_len: i32,
+            sm_scale: f64,
+            splits: i32,
+            ws_o: *mut f32,
+            ws_ml: *mut f32,
+            max_groups: i32,
+            stream: *mut c_void,
+        ) -> *const c_char;
+    }
+}
+
+#[cfg(has_pi)]
+fn check(message: *const std::ffi::c_char) -> Result<(), String> {
+    if message.is_null() {
+        Ok(())
+    } else {
+        Err(unsafe { std::ffi::CStr::from_ptr(message) }
+            .to_string_lossy()
+            .into_owned())
+    }
+}
+
+#[cfg(has_pi)]
+fn stream_of(t: &Tensor) -> Result<*mut std::ffi::c_void, String> {
+    match t.device() {
+        Device::Cuda(index) => Ok(unsafe {
+            ffi::pi_set_device(index as i32);
+            ffi::pi_current_stream(index as i64)
+        }),
+        _ => Err("PI kernels require CUDA tensors".into()),
+    }
+}
+
+fn require(t: &Tensor, kind: Kind, what: &str) -> Result<(), String> {
+    if t.kind() != kind || !matches!(t.device(), Device::Cuda(_)) {
+        return Err(format!("{what}: expected CUDA {kind:?}, got {:?} on {:?}", t.kind(), t.device()));
+    }
+    Ok(())
+}
+
+/// `x[.., K] @ weight[N, K]^T` with the row-invariant GEMM. Panics on misuse:
+/// deterministic mode validates dtypes and shapes when the model is built.
+pub(crate) fn linear(x: &Tensor, weight: &Tensor) -> Tensor {
+    try_linear(x, weight).unwrap_or_else(|error| panic!("deterministic linear: {error}"))
+}
+
+pub(crate) fn try_linear(x: &Tensor, weight: &Tensor) -> Result<Tensor, String> {
+    require(x, Kind::BFloat16, "linear input")?;
+    require(weight, Kind::BFloat16, "linear weight")?;
+    let (n, k) = (weight.size()[0], weight.size()[1]);
+    let shape = x.size();
+    if shape.last() != Some(&k) || !weight.is_contiguous() {
+        return Err(format!("shape mismatch: x {shape:?}, weight {:?}", weight.size()));
+    }
+    let m: i64 = shape[..shape.len() - 1].iter().product();
+    let mut x2 = x.reshape([m, k]);
+    if m > 0 && x2.stride()[1] != 1 {
+        x2 = x2.contiguous();
+    }
+    let y = Tensor::empty([m, n], (Kind::BFloat16, weight.device()));
+    #[cfg(has_pi)]
+    if m > 0 {
+        tune(weight, n, k, m)?;
+    }
+    #[cfg(has_pi)]
+    check(unsafe {
+        ffi::pi_linear(
+            x2.data_ptr(),
+            if m > 0 { x2.stride()[0] } else { k },
+            weight.data_ptr(),
+            y.data_ptr(),
+            m as i32,
+            n as i32,
+            k as i32,
+            0,
+            stream_of(weight)?,
+        )
+    })?;
+    #[cfg(not(has_pi))]
+    return Err("PI kernels were not built".into());
+    let mut out_shape = shape;
+    *out_shape.last_mut().unwrap() = n;
+    Ok(y.reshape(out_shape))
+}
+
+/// Picks the fastest GEMM tile for this weight shape and M bucket the first time
+/// it is seen outside graph capture (graph warm-ups run before every capture).
+/// Scratch comes from the torch allocator; if it cannot be allocated the fixed
+/// heuristic is used. Tile choice never changes results, only speed.
+#[cfg(has_pi)]
+fn tune(weight: &Tensor, n: i64, k: i64, m: i64) -> Result<(), String> {
+    use std::{cell::RefCell, collections::HashSet};
+    thread_local! {
+        static ATTEMPTED: RefCell<HashSet<(i64, i64, i32)>> = RefCell::new(HashSet::new());
+    }
+    let bucket = unsafe { ffi::pi_linear_bucket(m as i32) };
+    SEEN_SHAPES.lock().unwrap().insert((n, k));
+    if unsafe { ffi::pi_linear_tuned_kernel(n as i32, k as i32, bucket) } != 0
+        || !ATTEMPTED.with(|seen| seen.borrow_mut().insert((n, k, bucket)))
+    {
+        return Ok(());
+    }
+    let stream = stream_of(weight)?;
+    if unsafe { ffi::pi_stream_capturing(stream) } != 0 {
+        ATTEMPTED.with(|seen| seen.borrow_mut().remove(&(n, k, bucket)));
+        return Ok(());
+    }
+    let device = weight.device();
+    let scratch = |shape: &[i64], kind: Kind| Tensor::f_empty(shape, (kind, device)).ok();
+    let (Some(x), Some(y)) = (
+        scratch(&[bucket as i64, k], Kind::BFloat16),
+        scratch(&[bucket as i64, n], Kind::BFloat16),
+    ) else {
+        tracing::warn!(n, k, bucket, "PI GEMM tuning skipped: no scratch memory; using heuristic tile");
+        return Ok(());
+    };
+    // Up to mid M a forward streams each layer's weights from DRAM: time bursts over
+    // weight copies with a cold L2 (pi_linear_tune).
+    let flush_bytes = if bucket <= 512 { 2 * unsafe { ffi::pi_l2_bytes() } } else { 0 };
+    let flush = (flush_bytes > 0)
+        .then(|| scratch(&[flush_bytes], Kind::Uint8))
+        .flatten();
+    let result = check(unsafe {
+        ffi::pi_linear_tune(
+            weight.data_ptr(),
+            n as i32,
+            k as i32,
+            bucket,
+            x.data_ptr(),
+            y.data_ptr(),
+            flush.as_ref().map_or(std::ptr::null_mut(), |f| f.data_ptr()),
+            if flush.is_some() { flush_bytes } else { 0 },
+            stream,
+        )
+    });
+    if let Err(error) = result {
+        tracing::warn!(n, k, bucket, %error, "PI GEMM tuning failed; using heuristic tile");
+    }
+    Ok(())
+}
+
+#[cfg(has_pi)]
+static SEEN_SHAPES: std::sync::Mutex<std::collections::BTreeSet<(i64, i64)>> =
+    std::sync::Mutex::new(std::collections::BTreeSet::new());
+
+/// Tunes every M bucket up to `max_m` for each weight shape the GEMM has run so
+/// far (graph capture runs every projection), so that no request stalls on
+/// tuning. Timing depends only on the shape, so random scratch weights stand in.
+pub(crate) fn pretune(max_m: i64, device: Device) -> Result<usize, String> {
+    #[cfg(has_pi)]
+    {
+        let shapes: Vec<(i64, i64)> = SEEN_SHAPES.lock().unwrap().iter().copied().collect();
+        for &(n, k) in &shapes {
+            // Random, not empty: zero operands time some tiles fast (pi_launch.cu fill_tune_input).
+            let w = Tensor::f_randn([n, k], (Kind::BFloat16, device)).map_err(|e| e.to_string())?;
+            let mut m = 1;
+            let mut choice = Vec::new();
+            loop {
+                tune(&w, n, k, m)?;
+                let bucket = unsafe { ffi::pi_linear_bucket(m as i32) };
+                choice.push(format!("{bucket}:{}", unsafe { ffi::pi_linear_tuned_kernel(n as i32, k as i32, bucket) }));
+                if bucket as i64 >= max_m {
+                    break;
+                }
+                m = bucket as i64 + 1;
+            }
+            // M bucket : kernel id (pi_launch.cu), 0 where tuning was skipped (heuristic tile).
+            tracing::info!(n, k, choice = choice.join(" "), "PI GEMM tile choice");
+        }
+        Ok(shapes.len())
+    }
+    #[cfg(not(has_pi))]
+    {
+        let _ = (max_m, device);
+        Ok(0)
+    }
+}
+
+/// Shape requirement of the row-invariant GEMM for a `[N, K]` weight.
+pub fn linear_shape_supported(n: i64, k: i64) -> bool {
+    k % 64 == 0 && n % 32 == 0
+}
+
+/// Fold groups (512 keys) covering a dense page table row of `table_columns` pages.
+pub(crate) fn decode_groups(table_columns: i64, page_size: i64) -> i64 {
+    #[cfg(has_pi)]
+    return unsafe { ffi::pi_attn_decode_groups(table_columns * page_size) } as i64;
+    #[cfg(not(has_pi))]
+    {
+        let _ = (table_columns, page_size);
+        1
+    }
+}
+
+/// Decode group partials: o `[rows, Hq, 128]` and ml `[rows, Hq, 8]` f32 (an (m, l)
+/// pair per decode warp), one row per (request, fold group), so `rows = batch *
+/// decode_groups(..)`; `counters` `[rows, Hq, 4]` i32 count finished groups per
+/// warp and are left zero by every call.
+pub(crate) struct DecodeWorkspace {
+    pub o: Tensor,
+    pub ml: Tensor,
+    pub counters: Tensor,
+}
+
+impl DecodeWorkspace {
+    pub fn new(rows: i64, num_heads: i64, device: Device) -> Self {
+        Self {
+            o: Tensor::empty([rows, num_heads, 128], (Kind::Float, device)),
+            ml: Tensor::empty([rows, num_heads, 8], (Kind::Float, device)),
+            counters: Tensor::zeros([rows, num_heads, 4], (Kind::Int, device)),
+        }
+    }
+    pub fn rows(&self) -> i64 {
+        self.o.size()[0]
+    }
+}
+
+/// Decode attention for `q [batch, Hq, 128]` against the paged caches; writes `out [batch, Hq*128]`.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn decode(
+    q: &Tensor,
+    k_cache: &Tensor,
+    v_cache: &Tensor,
+    page_table: &Tensor,
+    seqlens: &Tensor,
+    workspace: &DecodeWorkspace,
+    num_kv_heads: i64,
+    out: &Tensor,
+) -> Result<(), String> {
+    let (batch, num_heads) = (q.size()[0], q.size()[1]);
+    require(page_table, Kind::Int, "page table")?;
+    require(seqlens, Kind::Int, "sequence lengths")?;
+    if page_table.size()[0] < batch || page_table.stride()[1] != 1 {
+        return Err("decode page table smaller than the batch".into());
+    }
+    let page_size = k_cache.size()[1];
+    #[cfg(has_pi)]
+    return check(unsafe {
+        ffi::pi_attn_decode(
+            q.data_ptr(),
+            k_cache.data_ptr(),
+            v_cache.data_ptr(),
+            page_table.data_ptr().cast(),
+            page_table.stride()[0],
+            seqlens.data_ptr().cast(),
+            workspace.o.data_ptr().cast(),
+            workspace.ml.data_ptr().cast(),
+            workspace.counters.data_ptr().cast(),
+            workspace.rows(),
+            out.data_ptr(),
+            batch as i32,
+            num_heads as i32,
+            num_kv_heads as i32,
+            page_size as i32,
+            1.0 / (q.size()[2] as f64).sqrt(),
+            stream_of(q)?,
+        )
+    });
+    #[cfg(not(has_pi))]
+    {
+        let _ = (k_cache, v_cache, seqlens, workspace, num_kv_heads, out, num_heads);
+        Err("PI kernels were not built".into())
+    }
+}
+
+/// Host-side prefill plan; all fields come from host metadata (no GPU reads).
+pub(crate) struct PrefillPlan {
+    pub splits: i32,
+    pub max_groups: i32,
+    pub max_q_len: i32,
+    pub total_q: i32,
+    pub workspace: Option<(Tensor, Tensor)>,
+}
+
+pub(crate) fn plan_prefill(
+    q_lens: &[i64],
+    prefixes: &[i64],
+    num_heads: i64,
+    num_kv_heads: i64,
+    device: Device,
+) -> PrefillPlan {
+    let max_q_len = q_lens.iter().copied().max().unwrap_or(0).max(1) as i32;
+    let max_kv_len = q_lens
+        .iter()
+        .zip(prefixes)
+        .map(|(q, p)| q + p)
+        .max()
+        .unwrap_or(1)
+        .max(1) as i32;
+    let total_q: i64 = q_lens.iter().sum();
+    let (mut splits, mut max_groups) = (1, 1);
+    #[cfg(has_pi)]
+    unsafe {
+        ffi::pi_attn_prefill_plan(
+            q_lens.len() as i32,
+            num_heads as i32,
+            num_kv_heads as i32,
+            max_q_len,
+            max_kv_len,
+            &mut splits,
+            &mut max_groups,
+        )
+    };
+    let workspace = (splits > 1).then(|| {
+        (
+            Tensor::empty([total_q, num_heads, max_groups as i64, 128], (Kind::Float, device)),
+            Tensor::empty([total_q, num_heads, max_groups as i64, 2], (Kind::Float, device)),
+        )
+    });
+    PrefillPlan {
+        splits,
+        max_groups,
+        max_q_len,
+        total_q: total_q as i32,
+        workspace,
+    }
+}
+
+/// Prefill/extend attention for `q [total_q, Hq, 128]`; K/V of every token are
+/// already in the paged caches. Writes `out` (`[total_q, Hq*128]`, contiguous).
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn prefill(
+    q: &Tensor,
+    k_cache: &Tensor,
+    v_cache: &Tensor,
+    qo_indptr: &Tensor,
+    page_table: &Tensor,
+    prefix_lens: &Tensor,
+    plan: &PrefillPlan,
+    num_kv_heads: i64,
+    out: &Tensor,
+) -> Result<(), String> {
+    require(qo_indptr, Kind::Int, "cu_seqlens_q")?;
+    require(prefix_lens, Kind::Int, "prefix_lens")?;
+    require(page_table, Kind::Int, "page table")?;
+    if page_table.stride()[1] != 1 || q.size()[0] != plan.total_q as i64 {
+        return Err("prefill metadata does not match the query".into());
+    }
+    let (ws_o, ws_ml) = plan
+        .workspace
+        .as_ref()
+        .map_or((std::ptr::null_mut(), std::ptr::null_mut()), |(o, ml)| {
+            (o.data_ptr().cast::<f32>(), ml.data_ptr().cast::<f32>())
+        });
+    #[cfg(has_pi)]
+    return check(unsafe {
+        ffi::pi_attn_prefill(
+            q.data_ptr(),
+            k_cache.data_ptr(),
+            v_cache.data_ptr(),
+            qo_indptr.data_ptr().cast(),
+            page_table.data_ptr().cast(),
+            page_table.stride()[0],
+            prefix_lens.data_ptr().cast(),
+            out.data_ptr(),
+            prefix_lens.size()[0] as i32,
+            plan.total_q,
+            q.size()[1] as i32,
+            num_kv_heads as i32,
+            k_cache.size()[1] as i32,
+            plan.max_q_len,
+            1.0 / (q.size()[2] as f64).sqrt(),
+            plan.splits,
+            ws_o,
+            ws_ml,
+            plan.max_groups,
+            stream_of(q)?,
+        )
+    });
+    #[cfg(not(has_pi))]
+    {
+        let _ = (k_cache, v_cache, num_kv_heads, out, ws_o, ws_ml);
+        Err("PI kernels were not built".into())
+    }
+}
+
+/// `log softmax(logits[r])[tokens[r]]` in f32 for `logits [rows, vocab]` (bf16 or f32) and
+/// `tokens [rows]` i64, in one fixed reduction order per row (`pi_logprob.cuh`), so a row's
+/// value does not depend on its batch; a negative token gives NaN.
+pub(crate) fn token_logprobs(logits: &Tensor, tokens: &Tensor) -> Result<Tensor, String> {
+    if logits.dim() != 2 || logits.stride()[1] != 1 || !matches!(logits.kind(), Kind::BFloat16 | Kind::Float) {
+        return Err(format!("token logprobs: logits must be 2-D bf16/f32 rows, got {:?} {:?}", logits.kind(), logits.size()));
+    }
+    require(tokens, Kind::Int64, "token logprobs tokens")?;
+    let rows = logits.size()[0];
+    let tokens = tokens.contiguous();
+    if tokens.size() != [rows] {
+        return Err(format!("token logprobs: {rows} logits rows, tokens {:?}", tokens.size()));
+    }
+    let out = Tensor::empty([rows], (Kind::Float, logits.device()));
+    #[cfg(has_pi)]
+    check(unsafe {
+        ffi::pi_token_logprob(
+            logits.data_ptr(),
+            (logits.kind() == Kind::Float) as i32,
+            logits.stride()[0],
+            rows as i32,
+            logits.size()[1] as i32,
+            tokens.data_ptr().cast(),
+            out.data_ptr().cast(),
+            stream_of(logits)?,
+        )
+    })?;
+    #[cfg(not(has_pi))]
+    return Err("PI kernels were not built".into());
+    Ok(out)
+}
+
+#[cfg(all(test, has_pi))]
+mod tests {
+    use tch::{Device, Kind, Tensor};
+
+    #[test]
+    fn token_logprobs_match_log_softmax_and_do_not_depend_on_the_batch() {
+        if !tch::Cuda::is_available() {
+            return;
+        }
+        let device = Device::Cuda(0);
+        let logits = (Tensor::randn([5, 151936], (Kind::Float, device)) * 4.0).to_kind(Kind::BFloat16);
+        let tokens = Tensor::from_slice(&[0i64, 7, 151935, 42, 1000]).to_device(device);
+        let batch = super::token_logprobs(&logits, &tokens).unwrap();
+        let reference = logits
+            .to_kind(Kind::Float)
+            .log_softmax(-1, Kind::Float)
+            .gather(1, &tokens.unsqueeze(1), false)
+            .squeeze_dim(1);
+        assert!((&batch - &reference).abs().max().double_value(&[]) < 1e-4);
+        for row in 0..5 {
+            let alone = super::token_logprobs(&logits.narrow(0, row, 1), &tokens.narrow(0, row, 1)).unwrap();
+            assert!(alone.equal(&batch.narrow(0, row, 1)), "row {row}");
+        }
+    }
+
+    #[test]
+    fn graph_sizes_are_tuning_buckets() {
+        // Every captured graph size must be a bucket top, or the graph runs a tile tuned
+        // for a larger M.
+        let decode = [1, 2, 4, 8, 16, 32, 64, 128, 256];
+        for size in crate::engine::segmented_graph::capture_sizes(2048).into_iter().chain(decode) {
+            assert_eq!(unsafe { super::ffi::pi_linear_bucket(size as i32) }, size as i32, "graph size {size}");
+        }
+    }
+}

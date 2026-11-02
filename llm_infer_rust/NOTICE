@@ -1,0 +1,11 @@
+Third-party code in deterministic mode
+=======================================
+
+src/engine/sampling_flashinfer.cu: RowSeededTopKTopPSamplingKernel is derived from
+TopKTopPSamplingFromProbKernel in FlashInfer 0.6.18 (include/flashinfer/sampling.cuh),
+Copyright (c) 2023-2026 by FlashInfer team, licensed under the Apache License 2.0.
+Change: per-row Philox seed and offset with subsequence 0.
+
+src/kernels/pi/gemm_cutlass.cuh instantiates NVIDIA CUTLASS 2.x device GEMMs from the
+CUTLASS headers shipped in the FlashInfer wheel (BSD-3-Clause, Copyright NVIDIA
+CORPORATION & AFFILIATES).
