@@ -58,6 +58,13 @@ SMEM_OPTIN = torch.cuda.get_device_properties(0).shared_memory_per_block_optin
 
 
 SEGPAR_TILE = {48: (32, 64), 49: (64, 64)}  # segment-parallel ids: (TBM, TBN)
+CUTLASS_TILE = {  # CUTLASS ids (gemm_dispatch.cuh): (TBM, TBN, TBK, stages)
+    10: (128, 256, 32, 3), 11: (128, 128, 32, 4), 12: (64, 128, 32, 4), 13: (64, 64, 32, 5), 14: (32, 64, 64, 5),
+    15: (64, 64, 64, 4), 16: (128, 256, 32, 3), 17: (128, 256, 32, 3), 18: (128, 256, 32, 3), 19: (128, 128, 32, 4),
+    44: (32, 64, 64, 5), 45: (32, 64, 64, 4), 46: (64, 64, 64, 4), 47: (64, 128, 32, 4), 50: (128, 64, 64, 3),
+    48: (32, 64, 64, 5), 49: (64, 64, 64, 3), 64: (32, 32, 64, 5), 65: (128, 128, 32, 4), 66: (128, 256, 32, 3),
+    67: (128, 64, 64, 5), 68: (64, 128, 64, 4), 69: (128, 128, 64, 3), 70: (64, 64, 64, 5), 71: (128, 128, 64, 3),
+    72: (128, 64, 64, 5)}
 
 
 def segpar_fits(k, M, N, S):  # mirrors CutlassGemm::run_segpar: S > 1, tiles <= the 4096 arrival counters
@@ -85,6 +92,10 @@ def usable(k, M, N, K, S=None):
     """Whether kernel id k runs this shape with S segments (default: the weight's own);
     written independently of gemm_dispatch.cuh."""
     S = gemm_segments(N, K) if S is None else S
+    if k in CUTLASS_TILE:  # mainloop shared memory: stages x (TBM + TBN) x TBK bf16
+        tbm, tbn, tbk, st = CUTLASS_TILE[k]
+        if st * (tbm + tbn) * tbk * 2 > SMEM_OPTIN:
+            return False
     if k in SEGPAR_TILE:
         return segpar_fits(k, M, N, S)
     if k in SEGSPLIT:
@@ -153,6 +164,16 @@ def shards(N, t):
     return list(zip(cuts[:-1], cuts[1:]))
 
 
+def run_any(X, W, S, prefer):
+    """Y from the preferred kernel id, or the first id that runs the shape on this device (a GPU with less
+    shared memory than the A800 refuses some ids; usable() and the checks below cover every id)."""
+    for kern in (prefer,) + tuple(k for k in KERNELS if k != prefer):
+        y = ext.linear(X, W, kern, False, S)
+        if y is not None:
+            return y
+    raise RuntimeError(f"no kernel runs M={X.shape[0]} N={W.shape[0]} K={W.shape[1]} S={S}")
+
+
 def check_tp(fails, t_max=8):
     for name, (N, K) in TP_SHAPES.items():
         S = gemm_segments(N, K, t_max)
@@ -160,13 +181,13 @@ def check_tp(fails, t_max=8):
         X = torch.randn(4096, K, device=dev).bfloat16()
         if S > 1:
             check_segments(name + f" t_max={t_max}", X, W, S, fails)
-        row0 = ext.linear(X[:1].contiguous(), W, 1, False, S)[0]
+        row0 = run_any(X[:1].contiguous(), W, S, 1)[0]
         # M = 4096 (degrees 1, 3, 8): more tiles than resident CTAs, so the persistent slot ids
         # 17-19 wrap their tile loop.
         for M, degrees in [(1, range(1, t_max + 1)), (8, range(1, t_max + 1)), (12, range(1, t_max + 1)),
                            (33, range(1, t_max + 1)), (300, range(1, t_max + 1)), (4096, (1, 3, t_max))]:
             Xm = X[:M].contiguous()
-            full = ext.linear(Xm, W, 13, False, S)
+            full = run_any(Xm, W, S, 13)
             if not torch.equal(full[0].view(torch.int16), row0.view(torch.int16)):
                 fails.append((name, "tp rows", M))  # row invariance across M at S(t_max)
             runs = 0
@@ -193,10 +214,10 @@ def check_s8(fails):
         W = (torch.randn(N, K, device=dev) * 0.02).bfloat16()
         X = torch.randn(300, K, device=dev).bfloat16()
         check_segments(name + " S=8", X, W, 8, fails)
-        row0 = ext.linear(X[:1].contiguous(), W, 1, False, 8)[0]
+        row0 = run_any(X[:1].contiguous(), W, 8, 1)[0]
         for M in [1, 12, 33, 300]:
             Xm = X[:M].contiguous()
-            full = ext.linear(Xm, W, 13, False, 8)
+            full = run_any(Xm, W, 8, 13)
             if not torch.equal(full[0].view(torch.int16), row0.view(torch.int16)):
                 fails.append((name, "S=8 rows", M))
             for t in (range(1, 9) if M == 33 else (1,)):

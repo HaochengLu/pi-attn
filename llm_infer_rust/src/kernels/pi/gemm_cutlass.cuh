@@ -152,7 +152,10 @@ int resident_ctas(Kernel kernel, int threads, int smem) {
   int r = 0;
   const bool ok = smem < (48 << 10) ||
                   cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem) == cudaSuccess;
-  if (!ok || cudaOccupancyMaxActiveBlocksPerMultiprocessor(&r, kernel, threads, smem) != cudaSuccess) r = 0;
+  if (!ok || cudaOccupancyMaxActiveBlocksPerMultiprocessor(&r, kernel, threads, smem) != cudaSuccess) {
+    r = 0;
+    (void)cudaGetLastError();  // a refused shape (smem over the opt-in limit) must not leave a sticky error
+  }
   return cache[key] = r;
 }
 
@@ -391,6 +394,14 @@ struct CutlassGemm {
     if (segs > 1) return run_segmented(x, ldx, w, y, ldy, M, N, K, segs, stream);
     typename Gemm::Arguments args({M, N, K}, {(const Element*)x, ldx}, {(const Element*)w, K},
                                   {(OutElement*)y, ldy}, {(OutElement*)y, ldy}, {1.f, 0.f});
+    // Refuse tiles whose shared memory exceeds the device's opt-in limit (e.g. 128x64x64 with 5 stages,
+    // 120 KB, on sm_86/sm_89's 99 KB): CUTLASS's initialize() does not catch it, and the launch faults.
+    const int smem = (int)sizeof(typename Gemm::GemmKernel::SharedStorage);
+    if (smem >= (48 << 10) && cudaFuncSetAttribute(cutlass::Kernel<typename Gemm::GemmKernel>,
+                                                   cudaFuncAttributeMaxDynamicSharedMemorySize, smem) != cudaSuccess) {
+      (void)cudaGetLastError();  // a refusal must not leave a sticky error for the next launch check
+      return cudaErrorInvalidValue;
+    }
     Gemm op;
     auto st = op.can_implement(args);
     if (st != cutlass::Status::kSuccess) return cudaErrorInvalidValue;
@@ -454,8 +465,10 @@ struct CutlassGemm {
                                       segs, nullptr};
     const int smem = (int)sizeof(typename Kernel::SharedStorage);
     if (smem >= (48 << 10) &&
-        cudaFuncSetAttribute(cutlass::Kernel<Segmented>, cudaFuncAttributeMaxDynamicSharedMemorySize, smem) != cudaSuccess)
+        cudaFuncSetAttribute(cutlass::Kernel<Segmented>, cudaFuncAttributeMaxDynamicSharedMemorySize, smem) != cudaSuccess) {
+      (void)cudaGetLastError();
       return cudaErrorInvalidValue;
+    }
     cutlass::Kernel<Segmented><<<swizzle.get_grid_shape(grid_shape), Kernel::kThreadCount, smem, stream>>>(params);
     return cudaGetLastError();
   }
