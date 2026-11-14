@@ -1,0 +1,87 @@
+--- a/llm_infer_rust/src/kernels/pi/pi_attn_sm90.cuh
++++ b/llm_infer_rust/src/kernels/pi/pi_attn_sm90.cuh
+@@ -126,6 +126,7 @@
+ constexpr int prefill90_smem_bytes() { return (int)sizeof(pi_wg::Smem); }
+ 
+ // Arguments, grid and split semantics of prefill_kernel (64 rows, 128 threads = one warp group per CTA).
++template <int ABL>
+ __global__ void __launch_bounds__(128, 2)
+     prefill90_kernel(const __nv_bfloat16* __restrict__ q, __nv_bfloat16* __restrict__ out,
+                      const __nv_bfloat16* __restrict__ k_cache, const __nv_bfloat16* __restrict__ v_cache,
+@@ -252,23 +253,40 @@
+     const int slot = t & 1;
+     cp_async_wait<0>();  // V(t), K(t + 1)
+     __syncthreads();     // ... for all threads; every wgmma on V(t - 1) and K(t) has completed (wait0)
++    if (!(ABL & 1)) {
+     if (t + 1 <= t_last) issue_v(slot ^ 1, row1);
+     if (t + 2 <= t_last) issue_k(slot, row2);
+     cp_async_commit();
++    }
+     row1 = row2;
+     row2 = row_of(t + 3);
+-    pi_wg::qk_issue(sm, tid, sn, slot ^ 1);  // asynchronous; past t_last: stale slot data, never used
++    if (!(ABL & 2)) pi_wg::qk_issue(sm, tid, sn, slot ^ 1);  // asynchronous; past t_last: stale slot data, never used
+     const int key0 = t * kTile;
+ #pragma unroll
+     for (int n = 0; n < kTileNS; ++n)
+ #pragma unroll
+       for (int i = 0; i < 4; ++i) {
+         const int key = key0 + n * 8 + t4 * 2 + (i & 1);
+-        s[n][i] = key <= rpos[i >> 1] ? mul(s[n][i], scale_log2) : -INFINITY;
++        if (!(ABL & 8)) s[n][i] = key <= rpos[i >> 1] ? mul(s[n][i], scale_log2) : -INFINITY;
+       }
+     uint32_t pa[kTileKS][4];
+-    online_step(st, s, pa);
+-    pi_wg::pv_issue(sm, tid, pa, st.o, slot);
++    if (ABL & 8) {
++#pragma unroll
++      for (int n = 0; n < kTileNS; ++n) { pa[n >> 1][(n & 1) * 2] = __float_as_uint(s[n][0]) ^ __float_as_uint(s[n][1]); pa[n >> 1][(n & 1) * 2 + 1] = __float_as_uint(s[n][2]) ^ __float_as_uint(s[n][3]); }
++    } else if (ABL & 16) {
++      OnlineState tmp; tmp.m[0] = st.m[0]; tmp.m[1] = st.m[1]; tmp.d[0] = st.d[0]; tmp.d[1] = st.d[1];
++#pragma unroll
++      for (int n = 0; n < kNTilesO; ++n) tmp.o[n][0] = tmp.o[n][1] = tmp.o[n][2] = tmp.o[n][3] = 0.f;
++      online_step(tmp, s, pa);
++      st.m[0] = tmp.m[0]; st.m[1] = tmp.m[1]; st.d[0] = tmp.d[0]; st.d[1] = tmp.d[1];
++    } else {
++      online_step(st, s, pa);
++    }
++    if (!(ABL & 4)) pi_wg::pv_issue(sm, tid, pa, st.o, slot);
++    else {
++#pragma unroll
++      for (int n = 0; n < 4; ++n) st.o[n][0] += __uint_as_float(pa[n & 1][n]);
++    }
+     pi_wg::wait0(sn, st.o);
+     if (t % kGroupTiles == kGroupTiles - 1 || t == t_last) finish_group(t / kGroupTiles, t == t_last);
+   };
+--- a/kernels/pi_attn_torch.cu
++++ b/kernels/pi_attn_torch.cu
+@@ -48,7 +48,7 @@
+   TORCH_CHECK(qo_indptr.size(0) == batch + 1 && kv_page_indptr.size(0) == batch + 1);
+   TORCH_CHECK(max_q_len >= 1 && max_kv_len >= max_q_len);
+   const int page_size = k_cache.size(1), group = hq / hkv;
+-  TORCH_CHECK(variant >= 0 && variant <= 5, "variant: 0 to 5");
++  const int abl = variant >= 100 ? (int)variant - 100 : 0; if (variant >= 100) variant = 5;
+   int major = 0, minor = 0;
+   cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, q.get_device());
+   cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, q.get_device());
+@@ -83,7 +83,19 @@
+   };
+   if (wgmma) {
+ #ifdef PI_SM90A
+-    launch(prefill90_kernel, prefill90_smem_bytes());
++    switch (abl) {
++      case 0: launch(prefill90_kernel<0>, prefill90_smem_bytes()); break;
++      case 1: launch(prefill90_kernel<1>, prefill90_smem_bytes()); break;
++      case 6: launch(prefill90_kernel<6>, prefill90_smem_bytes()); break;
++      case 8: launch(prefill90_kernel<8>, prefill90_smem_bytes()); break;
++      case 16: launch(prefill90_kernel<16>, prefill90_smem_bytes()); break;
++      case 7: launch(prefill90_kernel<7>, prefill90_smem_bytes()); break;
++      case 9: launch(prefill90_kernel<9>, prefill90_smem_bytes()); break;
++      case 14: launch(prefill90_kernel<14>, prefill90_smem_bytes()); break;
++      case 2: launch(prefill90_kernel<2>, prefill90_smem_bytes()); break;
++      case 4: launch(prefill90_kernel<4>, prefill90_smem_bytes()); break;
++      default: TORCH_CHECK(false, "abl");
++    }
+ #endif
+   } else if (warps == 8) {
+     if (qreg) launch(prefill_kernel<true, 8>, prefill_smem_bytes<true, 8>());

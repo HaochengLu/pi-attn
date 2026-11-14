@@ -1,0 +1,17 @@
+n0x0 real2.cu -lineinfo -DPF=0 -DFX=0
+n0x8 real2.cu -lineinfo -DPF=0 -DFX=8
+n0x128 real2.cu -lineinfo -DPF=0 -DFX=128
+n0x136 real2.cu -lineinfo -DPF=0 -DFX=136
+n0x256 real2.cu -lineinfo -DPF=0 -DFX=256
+n0x384 real2.cu -lineinfo -DPF=0 -DFX=384
+n0x392 real2.cu -lineinfo -DPF=0 -DFX=392
+n2x0 real2.cu -lineinfo -DPF=2 -DFX=0
+n2x8 real2.cu -lineinfo -DPF=2 -DFX=8
+n2x128 real2.cu -lineinfo -DPF=2 -DFX=128
+n2x136 real2.cu -lineinfo -DPF=2 -DFX=136
+oldx0 real2.cu -lineinfo -DOLDK -DFX=0
+oldx1024 real2.cu -lineinfo -DOLDK -DFX=1024
+oldx3072 real2.cu -lineinfo -DOLDK -DFX=3072
+oldx5120 real2.cu -lineinfo -DOLDK -DFX=5120
+oldx11264 real2.cu -lineinfo -DOLDK -DFX=11264
+oldx13312 real2.cu -lineinfo -DOLDK -DFX=13312

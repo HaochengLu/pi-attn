@@ -1,0 +1,90 @@
+[run_gpu] workstream pre: $2.86 of $14.00
+[run_gpu] start L4 pre:c7511_2: ledger $8.11, gateway $9.59, budget $40.00
+8
+=== o0 :: real.cu -DNO_W -DWITH_OLD -DOK=0
+      1 (C7511) Potential Performance Loss: wgmma.mma_async instructions are serialized due to insufficient register resources for the wgmma pipeline 
+      1 rc=0
+      1     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads	Used 249 registers, used 1 barriers
+1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMM
+=== o1 :: real.cu -DNO_W -DWITH_OLD -DOK=1
+      1 (C7511) Potential Performance Loss: wgmma.mma_async instructions are serialized due to insufficient register resources for the wgmma pipeline 
+      1 rc=0
+      1     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads	Used 249 registers, used 1 barriers
+1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMM
+=== o2 :: real.cu -DNO_W -DWITH_OLD -DOK=2
+      1 (C7511) Potential Performance Loss: wgmma.mma_async instructions are serialized due to insufficient register resources for the wgmma pipeline 
+      1 rc=0
+      1     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads	Used 249 registers, used 1 barriers
+1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMM
+=== o4 :: real.cu -DNO_W -DWITH_OLD -DOK=4
+      1 (C7511) Potential Performance Loss: wgmma.mma_async instructions are serialized due to insufficient register resources for the wgmma pipeline 
+      1 rc=0
+      1     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads	Used 249 registers, used 1 barriers
+1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMM
+=== o8 :: real.cu -DNO_W -DWITH_OLD -DOK=8
+      1 (C7511) Potential Performance Loss: wgmma.mma_async instructions are serialized due to insufficient register resources for the wgmma pipeline 
+      1 rc=0
+      1     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads	Used 249 registers, used 1 barriers
+1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMM
+=== o16 :: real.cu -DNO_W -DWITH_OLD -DOK=16
+      1 (C7511) Potential Performance Loss: wgmma.mma_async instructions are serialized due to insufficient register resources for the wgmma pipeline 
+      1 rc=0
+      1     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads	Used 249 registers, used 1 barriers
+1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMM
+=== o32 :: real.cu -DNO_W -DWITH_OLD -DOK=32
+      1 (C7511) Potential Performance Loss: wgmma.mma_async instructions are serialized due to insufficient register resources for the wgmma pipeline 
+      1 rc=0
+      1     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads	Used 249 registers, used 1 barriers
+1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMM
+=== o63 :: real.cu -DNO_W -DWITH_OLD -DOK=63
+      1 (C7511) Potential Performance Loss: wgmma.mma_async instructions are serialized due to insufficient register resources for the wgmma pipeline 
+      1 rc=0
+      1     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads	Used 249 registers, used 1 barriers
+1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMM
+=== o17 :: real.cu -DNO_W -DWITH_OLD -DOK=17
+      1 (C7511) Potential Performance Loss: wgmma.mma_async instructions are serialized due to insufficient register resources for the wgmma pipeline 
+      1 rc=0
+      1     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads	Used 249 registers, used 1 barriers
+1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMM
+=== o6 :: real.cu -DNO_W -DWITH_OLD -DOK=6
+      1 (C7511) Potential Performance Loss: wgmma.mma_async instructions are serialized due to insufficient register resources for the wgmma pipeline 
+      1 rc=0
+      1     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads	Used 249 registers, used 1 barriers
+1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMM
+=== o40 :: real.cu -DNO_W -DWITH_OLD -DOK=40
+      1 (C7511) Potential Performance Loss: wgmma.mma_async instructions are serialized due to insufficient register resources for the wgmma pipeline 
+      1 rc=0
+      1     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads	Used 249 registers, used 1 barriers
+1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMM
+=== o57 :: real.cu -DNO_W -DWITH_OLD -DOK=57
+      1 (C7511) Potential Performance Loss: wgmma.mma_async instructions are serialized due to insufficient register resources for the wgmma pipeline 
+      1 rc=0
+      1     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads	Used 249 registers, used 1 barriers
+1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMM
+=== o23 :: real.cu -DNO_W -DWITH_OLD -DOK=23
+      1 (C7511) Potential Performance Loss: wgmma.mma_async instructions are serialized due to insufficient register resources for the wgmma pipeline 
+      1 rc=0
+      1     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads	Used 249 registers, used 1 barriers
+1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMM
+=== x64 :: mini.cu -DMODE=3 -DZS=1 -DXL=64
+      1 rc=0
+      1     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads	Used 204 registers, used 1 barriers
+1*WARPGROUP.ARRIVE 8*HGMMA.64x64x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 8*HGMMA.64x64x16.F32.BF16 1*WARPGROUP.ARRIVE 2*HGMMA.64x128x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 8*HGMMA.64x64x16.F32.BF16 1*WARPGROUP.ARRIVE 2*HGMMA.64x128x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 
+=== x80 :: mini.cu -DMODE=3 -DZS=1 -DXL=80
+      1 rc=0
+      1     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads	Used 236 registers, used 1 barriers
+1*WARPGROUP.ARRIVE 8*HGMMA.64x64x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 8*HGMMA.64x64x16.F32.BF16 1*WARPGROUP.ARRIVE 2*HGMMA.64x128x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 8*HGMMA.64x64x16.F32.BF16 1*WARPGROUP.ARRIVE 2*HGMMA.64x128x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 
+=== x96 :: mini.cu -DMODE=3 -DZS=1 -DXL=96
+      1 rc=0
+      1     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads	Used 236 registers, used 1 barriers
+1*WARPGROUP.ARRIVE 8*HGMMA.64x64x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 8*HGMMA.64x64x16.F32.BF16 1*WARPGROUP.ARRIVE 2*HGMMA.64x128x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 8*HGMMA.64x64x16.F32.BF16 1*WARPGROUP.ARRIVE 2*HGMMA.64x128x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 
+=== l384 :: mini.cu -DMODE=3 -DZS=1 -DLB=384
+      1 rc=0
+      1     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads	Used 162 registers, used 1 barriers
+1*WARPGROUP.ARRIVE 8*HGMMA.64x64x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 8*HGMMA.64x64x16.F32.BF16 1*WARPGROUP.ARRIVE 2*HGMMA.64x128x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 8*HGMMA.64x64x16.F32.BF16 1*WARPGROUP.ARRIVE 2*HGMMA.64x128x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 
+=== l384n :: mini.cu -DMODE=3 -DZS=1 -DLB=384 -DNREG=224 -DXL=32
+      1 rc=0
+      1     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads	Used 168 registers, used 1 barriers
+1*WARPGROUP.ARRIVE 8*HGMMA.64x64x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 8*HGMMA.64x64x16.F32.BF16 1*WARPGROUP.ARRIVE 2*HGMMA.64x128x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 8*HGMMA.64x64x16.F32.BF16 1*WARPGROUP.ARRIVE 2*HGMMA.64x128x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 
+
+[run_gpu] L4 pre:c7511_2: exit=0 wall=157s cost~$0.081 ledger=$8.60

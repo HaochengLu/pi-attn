@@ -40,7 +40,7 @@ struct DeviceInfo {
   int sms = 0, smem_optin = 0;
   bool prefill_qreg = false;  // prefill kernel variant (prefill_qreg in pi_attn_kernels.cu)
   bool prefill_tail_splits = false;  // prefill planner (prefill_tail_splits)
-  bool prefill_wgmma = false;  // sm_90a build on compute capability 9.0: prefill90_kernel
+  bool prefill_wgmma = false;  // sm_90a build on compute capability 9.0: prefill90w_kernel
 };
 
 DeviceInfo device_info() {
@@ -121,6 +121,14 @@ const char* pi_attn_decode(const void* q, const void* k_cache, const void* v_cac
 void pi_attn_prefill_plan(int batch, int num_qo_heads, int num_kv_heads, int max_q_len,
                           int max_kv_len, int* splits, int* max_groups) {
   const DeviceInfo info = device_info();
+#ifdef PI_SM90A
+  if (info.prefill_wgmma) {  // prefill90w_kernel: one CTA per SM
+    const int nwg = prefill90w_wg(batch, num_qo_heads, num_kv_heads, max_q_len, info.sms);
+    prefill_plan(batch, num_qo_heads, num_kv_heads, max_q_len, max_kv_len, info.sms, info.prefill_tail_splits, splits,
+                 max_groups, prefill90w_rows(nwg), 1);
+    return;
+  }
+#endif
   const int warps = prefill_warps(info.prefill_qreg, batch, num_qo_heads, num_kv_heads, max_q_len, info.sms);
   prefill_plan(batch, num_qo_heads, num_kv_heads, max_q_len, max_kv_len, info.sms, info.prefill_tail_splits, splits,
                max_groups, warps * 16, warps == 8 ? 1 : 2);
@@ -144,10 +152,20 @@ const char* pi_attn_prefill(const void* q, const void* k_cache, const void* v_ca
   const int group = num_qo_heads / num_kv_heads;
   const DeviceInfo info = device_info();
   const int warps = prefill_warps(info.prefill_qreg, batch, num_qo_heads, num_kv_heads, max_q_len, info.sms);
-  const int tiles = (int)(((int64_t)max_q_len * group + warps * 16 - 1) / (warps * 16));
+  int tiles = (int)(((int64_t)max_q_len * group + warps * 16 - 1) / (warps * 16)), threads = warps * 32;
+  dim3 grid(tiles, num_kv_heads, batch * splits);
+#ifdef PI_SM90A
+  int nwg = 0;  // consumer warp groups of prefill90w_kernel
+  if (info.prefill_wgmma) {
+    nwg = prefill90w_wg(batch, num_qo_heads, num_kv_heads, max_q_len, info.sms);
+    tiles = (int)(((int64_t)max_q_len * group + prefill90w_rows(nwg) - 1) / prefill90w_rows(nwg));
+    threads = prefill90w_threads(nwg);
+    grid = prefill90w_grid(tiles, num_kv_heads, batch * splits);
+  }
+#endif
   auto launch = [&](auto kernel, int smem) {
     set_smem(kernel, smem);
-    kernel<<<dim3(tiles, num_kv_heads, batch * splits), warps * 32, smem, st>>>(
+    kernel<<<grid, threads, smem, st>>>(
         (const __nv_bfloat16*)q, (__nv_bfloat16*)out, (const __nv_bfloat16*)k_cache,
         (const __nv_bfloat16*)v_cache, qo_indptr, nullptr, page_table, table_stride, nullptr, prefix_lens,
         num_qo_heads, num_kv_heads, page_size, page_shift_of(page_size),
@@ -159,7 +177,8 @@ const char* pi_attn_prefill(const void* q, const void* k_cache, const void* v_ca
     launch(prefill_kernel<true>, prefill_smem_bytes<true>());
   } else {
 #ifdef PI_SM90A
-    if (info.prefill_wgmma) launch(prefill90_kernel, prefill90_smem_bytes());
+    if (nwg == 3) launch(prefill90w_kernel<3>, prefill90w_smem_bytes<3>());
+    else if (nwg == 2) launch(prefill90w_kernel<2>, prefill90w_smem_bytes<2>());
     else
 #endif
     launch(prefill_kernel<false>, prefill_smem_bytes<false>());
