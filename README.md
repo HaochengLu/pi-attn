@@ -26,8 +26,8 @@ On one A800, Qwen3 0.6B–8B, with radix caching, chunked prefill, CUDA graphs a
   - On five Ampere/Ada GPUs (A800, A100, A10G, L4, RTX 4090 D), every kernel output is identical.
   - On an A10G the engine replays A800 rollouts token for token, with every log-probability bitwise equal.
   - The H100's tensor cores round differently, so it has its own bits but keeps every guarantee.
-  - Hopper kernels built on `wgmma` and TMA reproduce the H100 bits; the GEMM runs at 1.02–1.09× cuBLAS's time.
-  - Exact-lattice variants of the program give one set of bits on every GPU, at a measured cost (paper §7, [`xclass/`](xclass/)).
+  - Hopper kernels built on `wgmma` and TMA reproduce the H100 bits; the GEMM runs at 1.02–1.09× cuBLAS's time at M = 512–4096.
+  - Exact-lattice variants of the program give one set of bits on Ampere, Ada and Hopper alike, at a measured cost (paper §7, [`xclass/`](xclass/)).
 - **Beyond softmax attention.** Gated DeltaNet decodes with the trainer's own chunked program inside vLLM, bitwise and at stock throughput, with speculative decoding for free.
 
 ## How it works
