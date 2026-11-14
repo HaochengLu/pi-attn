@@ -50,6 +50,15 @@ constexpr int prefill_smem_bytes() {
 // (results/a800/kernels/prefill_configs.txt); elsewhere the 48 KB one, the only one
 // of which two CTAs fit in sm_89's 100 KB.
 inline bool prefill_qreg(int cc_major, int cc_minor) { return cc_major == 8 && cc_minor == 0; }
+// Whether a device runs prefill90_kernel (pi_attn_sm90.cuh: this kernel's 48 KB variant with wgmma): an
+// sm_90a build on compute capability 9.0. It is then the device's prefill kernel at every split count.
+inline bool prefill_wgmma(int cc_major, int cc_minor) {
+#ifdef PI_SM90A
+  return cc_major == 9 && cc_minor == 0;
+#else
+  return false;
+#endif
+}
 // Warps per prefill CTA: on sm_80 (QREG), 8 when the 128-row CTAs fill two waves of one CTA
 // per SM, where they measured 5-8% faster on long and batched prefills; otherwise 4, which
 // keeps short extends and small grids at two CTAs per SM
@@ -622,3 +631,7 @@ __global__ void __launch_bounds__(kDecodeWarps * 32)
 }
 
 }  // namespace pi_attn
+
+#ifdef PI_SM90A
+#include "pi_attn_sm90.cuh"
+#endif

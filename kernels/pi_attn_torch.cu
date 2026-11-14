@@ -34,8 +34,9 @@ static int sm_count(const at::Tensor& t) {
 // q: [total_q, Hq, 128]; k/v_cache: [pages, page_size, Hkv, 128]. kv_lens[b] >= q_len[b] >= 1.
 // kv_splits: 0 = the engine planner's choice (prefill_plan), n >= 1 forces n
 // splits over fold groups. variant: 0 = the engine's choice for this device and shape
-// (prefill_qreg, prefill_warps), 1 = Q in smem, 2 = Q in registers (QREG), 3 / 4 = the same
-// with 8 warps (128 rows) per CTA; all give the same bits.
+// (prefill_qreg, prefill_warps, prefill_wgmma), 1 = Q in smem, 2 = Q in registers (QREG), 3 / 4 = the same
+// with 8 warps (128 rows) per CTA, 5 = the wgmma kernel (sm_90a builds on compute capability 9.0 only);
+// all give the same bits.
 at::Tensor prefill(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Tensor qo_indptr,
                    at::Tensor kv_page_indptr, at::Tensor kv_page_indices, at::Tensor kv_lens,
                    int64_t max_q_len, int64_t max_kv_len, double sm_scale, int64_t kv_splits,
@@ -47,12 +48,14 @@ at::Tensor prefill(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Ten
   TORCH_CHECK(qo_indptr.size(0) == batch + 1 && kv_page_indptr.size(0) == batch + 1);
   TORCH_CHECK(max_q_len >= 1 && max_kv_len >= max_q_len);
   const int page_size = k_cache.size(1), group = hq / hkv;
-  TORCH_CHECK(variant >= 0 && variant <= 4, "variant: 0 to 4");
+  TORCH_CHECK(variant >= 0 && variant <= 5, "variant: 0 to 5");
   int major = 0, minor = 0;
   cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, q.get_device());
   cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, q.get_device());
-  const bool qreg = variant ? variant % 2 == 0 : prefill_qreg(major, minor);
-  const int warps = variant ? (variant >= 3 ? 8 : kPrefillWarps)
+  const bool wgmma = variant == 5 || (variant == 0 && prefill_wgmma(major, minor));
+  TORCH_CHECK(!wgmma || prefill_wgmma(major, minor), "variant 5 needs an sm_90a build on compute capability 9.0");
+  const bool qreg = wgmma ? false : variant ? variant % 2 == 0 : prefill_qreg(major, minor);
+  const int warps = wgmma ? kPrefillWarps : variant ? (variant >= 3 ? 8 : kPrefillWarps)
                             : prefill_warps(qreg, batch, hq, hkv, (int)max_q_len, sm_count(q)), rows = warps * 16;
   const int ctas_per_sm = warps == 8 && qreg ? 1 : 2;
   const int tiles = (int)((max_q_len * group + rows - 1) / rows);
@@ -78,7 +81,11 @@ at::Tensor prefill(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Ten
         (float)(sm_scale * 1.4426950408889634), splits, splits > 1 ? ws_o.data_ptr<float>() : nullptr,
         splits > 1 ? (float2*)ws_ml.data_ptr<float>() : nullptr, max_groups);
   };
-  if (warps == 8) {
+  if (wgmma) {
+#ifdef PI_SM90A
+    launch(prefill90_kernel, prefill90_smem_bytes());
+#endif
+  } else if (warps == 8) {
     if (qreg) launch(prefill_kernel<true, 8>, prefill_smem_bytes<true, 8>());
     else launch(prefill_kernel<false, 8>, prefill_smem_bytes<false, 8>());
   } else if (qreg) {
@@ -141,6 +148,12 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     return variant == 1 ? prefill_smem_bytes<false>() : variant == 2 ? prefill_smem_bytes<true>()
          : variant == 3 ? prefill_smem_bytes<false, 8>() : prefill_smem_bytes<true, 8>();
   });
+  // Whether this build has the wgmma prefill kernel (variant 5; the device's choice on compute capability 9.0).
+#ifdef PI_SM90A
+  m.attr("WGMMA") = true;
+#else
+  m.attr("WGMMA") = false;
+#endif
   m.attr("TILE") = kTile;
   m.attr("DECODE_WARPS") = kDecodeWarps;
   m.attr("GROUP_KEYS") = kGroupKeys;
