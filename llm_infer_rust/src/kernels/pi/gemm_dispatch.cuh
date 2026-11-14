@@ -16,7 +16,9 @@
 // CUTLASS tiles with 64-deep k stages (128x64, 64x128, 128x128, 64x64; at M = 128..512 they
 // halve the mainloop's barriers per k), 71 / 72 stream-K over 128x128 / 128x64 of them, 48/49
 // segment-parallel CUTLASS tiles (S > 1 shapes), 54/55 segment-split (M <= 16, S > 1
-// shapes: one CTA per n8 tile, one warp per segment). All realise the same k order; an id that
+// shapes: one CTA per n8 tile, one warp per segment), 90..97 wgmma + TMA tiles (gemm_sm90.cuh; only in
+// sm_90a builds, PI_SM90A, and only on a compute-capability 9.0 device; 90..94 S = 1, 95..97 S > 1; they
+// refuse operands that are not 16-byte aligned). All realise the same k order; an id that
 // cannot run a shape returns an error before launching and is then not tuned. S (segs) is
 // the weight's canonical segment count, gemm_segments(N, K, t_max) of the whole weight:
 // a launch over a column shard of it passes the whole weight's S.
@@ -33,6 +35,19 @@
 
 namespace pi_gemm {
 
+// Whether the current device runs the sm_90a ids (a build for sm_90a, on compute capability 9.0).
+inline bool sm90_device() {
+#ifdef PI_SM90A
+  int device = 0, major = 0, minor = 0;
+  if (cudaGetDevice(&device) != cudaSuccess) return false;
+  cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, device);
+  cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, device);
+  return major == 9 && minor == 0;
+#else
+  return false;
+#endif
+}
+
 // Candidates for M buckets <= 64 (tried in addition to large_kernels()).
 inline const std::vector<int>& small_kernels() {
   static const std::vector<int> v{1,  2,  4,  7,  20, 21, 22, 24, 25, 30, 31, 32, 33, 40, 41, 42, 43, 51,
@@ -43,7 +58,12 @@ inline const std::vector<int>& small_kernels() {
 inline const std::vector<int>& large_kernels() {
   static const std::vector<int> v{10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 44, 45, 46, 47,
                                   48, 49, 50, 64, 65, 66, 67, 68, 69, 70, 71, 72};
-  return v;
+  static const std::vector<int> hopper = [] {
+    std::vector<int> h = v;
+    for (int k = 90; k <= 97; ++k) h.push_back(k);
+    return h;
+  }();
+  return sm90_device() ? hopper : v;
 }
 inline bool is_small_kernel(int k) { return k < 10 || (k >= 20 && k <= 43) || k == 51 || (k >= 53 && k <= 55) || (k >= 60 && k <= 63); }
 
@@ -95,6 +115,12 @@ cudaError_t run_segsplit(const void* x, int64_t ldx, const void* w, OutT* y, int
   return cudaGetLastError();
 }
 
+}  // namespace pi_gemm
+#ifdef PI_SM90A
+#include "gemm_sm90.cuh"
+#endif
+namespace pi_gemm {
+
 struct GemmDevice {
   int sms = 0, smem_optin = 0;
 };
@@ -107,6 +133,13 @@ cudaError_t run_gemm(int k, const void* x, int64_t ldx, const void* w, OutT* y, 
   if (segs < 1 || segs > kSegMax || K % segs || K / segs < kernel_bk(k) || (K / segs) % kernel_bk(k) ||
       M > kernel_max_m(k))
     return cudaErrorInvalidValue;
+#ifdef PI_SM90A
+  if (pi_gemm90::is_sm90_kernel(k)) {
+    if (!sm90_device()) return cudaErrorInvalidValue;
+    return pi_gemm90::run_gemm_sm90(k, x, ldx, w, y, ldy, M, N, K, segs, dev.sms,
+                                    [](auto kern, size_t smem) { set_smem(kern, smem); }, st);
+  }
+#endif
   auto small = [&](auto kern, int G, int W, int BK = kSmallBK, int ST = kSmallStages) {
     const size_t smem = (size_t)ST * (16 * G + 8 * W) * (BK + 8) * sizeof(__nv_bfloat16);
     set_smem(kern, smem);

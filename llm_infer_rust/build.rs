@@ -164,7 +164,14 @@ fn main() {
 
     // Partition-invariant kernels for deterministic mode; CUTLASS ships with the FlashInfer wheel.
     println!("cargo:rerun-if-changed=src/kernels/pi");
+    // Hopper (arch 90 or 90a): the PI kernels are built for sm_90a with PI_SM90A, which adds the wgmma
+    // kernels (gemm_sm90.cuh, pi_attn_sm90.cuh); their TMA descriptors come from libcuda
+    // (cuTensorMapEncodeTiled; the toolkit's link-time stub carries the driver library's soname).
+    let pi_arch = if arch == "90" { "90a".to_owned() } else { arch.clone() };
     let mut pi = cc::Build::new();
+    if pi_arch == "90a" {
+        pi.define("PI_SM90A", "1");
+    }
     pi.cuda(true)
         .debug(false)
         .opt_level(3)
@@ -173,9 +180,15 @@ fn main() {
         .include(flashinfer_data.join("cutlass/include"))
         .flag("-std=c++17")
         .flag("--expt-relaxed-constexpr")
-        .flag(&format!("-gencode=arch=compute_{arch},code=sm_{arch}"))
+        .flag(&format!("-gencode=arch=compute_{pi_arch},code=sm_{pi_arch}"))
         .warnings(false);
     pi.compile("pi_kernels");
+    if pi_arch == "90a" {
+        // After pi_kernels in the link line: it is the archive that references libcuda.
+        let cuda_home = env::var("CUDA_HOME").unwrap_or_else(|_| "/usr/local/cuda".to_owned());
+        println!("cargo:rustc-link-search=native={cuda_home}/lib64/stubs");
+        println!("cargo:rustc-link-lib=dylib=cuda");
+    }
     let mut pi_stream = cc::Build::new();
     pi_stream
         .cpp(true)

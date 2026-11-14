@@ -18,8 +18,12 @@ from torch.utils.cpp_extension import load
 
 import test_invariance as T
 
+from build import cuda_build_flags
+
 HERE = os.path.dirname(os.path.abspath(__file__))
-SOURCES = ("pi_attn_torch.cu", "pi_attn_kernels.cu", "pi_attn.cuh")
+SOURCES = ("pi_attn_torch.cu", "pi_attn_kernels.cu", "pi_attn.cuh", "pi_attn_sm90.cuh")
+# The kernel the planner's prefill runs: on an sm_90a build (Hopper) the wgmma kernel, which has the same line.
+PREFILL_FILE = "pi_attn_sm90.cuh" if T.ext.WGMMA else "pi_attn_kernels.cu"
 
 # name: (file, shipped text, mutated text, checks that must fail)
 MUTANTS = {
@@ -49,7 +53,7 @@ MUTANTS = {
                             "        Of[3] = unfused(Of[3], oc[i].w);",
                             {"path"}),
     # Prefill (groups folded in registers) closes a fold group every 256 keys instead of 512.
-    "prefill_group_256": ("pi_attn_kernels.cu",
+    "prefill_group_256": (PREFILL_FILE,
                           "if (t % kGroupTiles == kGroupTiles - 1 || t == t_last)",
                           "if (t % (kGroupTiles / 2) == kGroupTiles / 2 - 1 || t == t_last)",
                           {"path"}),
@@ -65,11 +69,9 @@ def build_mutant(name, file, old, new):
     src = open(path).read()
     assert src.count(old) == 1, f"{name}: the shipped text to mutate must occur exactly once in {file}"
     open(path, "w").write(src.replace(old, new))
-    major, minor = torch.cuda.get_device_capability()
+    _, cflags, includes, ldflags = cuda_build_flags()
     return load(name=f"pi_attn_mutant_{name}", sources=[os.path.join(d, "pi_attn_torch.cu")],
-                extra_include_paths=[d], build_directory=d,
-                extra_cuda_cflags=["-O3", "-std=c++17", f"-gencode=arch=compute_{major}{minor},code=sm_{major}{minor}",
-                                   "--expt-relaxed-constexpr"])
+                extra_include_paths=[d] + includes, build_directory=d, extra_cuda_cflags=cflags, extra_ldflags=ldflags)
 
 
 def attention_mutants():

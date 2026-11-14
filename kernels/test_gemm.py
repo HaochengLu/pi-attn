@@ -18,11 +18,13 @@ import sys
 import torch
 from torch.utils.cpp_extension import load
 
+from build import cuda_build_flags
+
 HERE = os.path.dirname(os.path.abspath(__file__))
-major, minor = torch.cuda.get_device_capability()
-ext = load(name=f"pi_gemm_sm{major}{minor}", sources=[os.path.join(HERE, "gemm_torch.cu")],
-           extra_include_paths=[HERE, os.path.join(os.path.dirname(__import__('flashinfer').__file__), 'data', 'cutlass', 'include')],
-           extra_cuda_cflags=["-O3", "-std=c++17", "--expt-relaxed-constexpr", f"-gencode=arch=compute_{major}{minor},code=sm_{major}{minor}"],
+arch, cflags, includes, ldflags = cuda_build_flags()  # sm_90a with the wgmma ids on compute capability 9.0
+ext = load(name=f"pi_gemm_sm{arch}", sources=[os.path.join(HERE, "gemm_torch.cu")],
+           extra_include_paths=[HERE, os.path.join(os.path.dirname(__import__('flashinfer').__file__), 'data', 'cutlass', 'include')] + includes,
+           extra_cuda_cflags=cflags, extra_ldflags=ldflags,
            build_directory=os.environ.get("PI_ATTN_BUILD_DIR"))
 dev = "cuda"
 torch.manual_seed(0)
@@ -86,12 +88,16 @@ STREAMK = {44: (32, 64), 45: (32, 64), 46: (64, 64), 47: (64, 128), 50: (128, 64
 SLOT = {17, 18, 19}  # SegmentedKernel with L2 slots: S > 1 only
 SEGSPLIT = {54: (128, 3), 55: (64, 6)}  # S > 1 shapes only: (BK, stages), one cp.async ring per segment
 SEG_WS = {30, 31, 32, 33, *WARP_SK}  # S > 1: S * M * N partials in g_seg_ws
+SM90 = {90: False, 91: False, 92: False, 93: False, 94: False, 95: True, 96: True, 97: True}  # wgmma ids: runs S > 1
+assert (arch == "90a") == all(k in KERNELS for k in SM90) and (arch == "90a" or not any(k in KERNELS for k in SM90))
 
 
 def usable(k, M, N, K, S=None):
     """Whether kernel id k runs this shape with S segments (default: the weight's own);
     written independently of gemm_dispatch.cuh."""
     S = gemm_segments(N, K) if S is None else S
+    if k in SM90:  # 64-column K stages; the S = 1 ids and the S > 1 ids each refuse the other's shapes
+        return SM90[k] == (S > 1) and (K // S) % 64 == 0
     if k in CUTLASS_TILE:  # mainloop shared memory: stages x (TBM + TBN) x TBK bf16
         tbm, tbn, tbk, st = CUTLASS_TILE[k]
         if st * (tbm + tbn) * tbk * 2 > SMEM_OPTIN:
@@ -145,8 +151,8 @@ def check_segments(name, X, W, segs, fails):
     tot = torch.zeros(64, N, device=dev)
     for sg in range(segs):
         tot = tot + ext.linear(Xs[:, sg * ks:(sg + 1) * ks], W[:, sg * ks:(sg + 1) * ks].contiguous(), 1, True, 1)
-    for kern in (1, 20, 33, 11, 13, 14, 15, 17, 18, 19, 44, 48, 49, 64, 65, 66, 67, 68, 69, 70, 71, 72):
-        if not usable(kern, 64, N, K, segs):
+    for kern in (1, 20, 33, 11, 13, 14, 15, 17, 18, 19, 44, 48, 49, 64, 65, 66, 67, 68, 69, 70, 71, 72, 95, 96, 97):
+        if kern not in KERNELS or not usable(kern, 64, N, K, segs):
             continue
         y = ext.linear(Xs, W, kern, False, segs)
         if y is None or not torch.equal(y.view(torch.int16), tot.bfloat16().view(torch.int16)):

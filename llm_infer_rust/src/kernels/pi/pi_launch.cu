@@ -40,6 +40,7 @@ struct DeviceInfo {
   int sms = 0, smem_optin = 0;
   bool prefill_qreg = false;  // prefill kernel variant (prefill_qreg in pi_attn_kernels.cu)
   bool prefill_tail_splits = false;  // prefill planner (prefill_tail_splits)
+  bool prefill_wgmma = false;  // sm_90a build on compute capability 9.0: prefill90_kernel
 };
 
 DeviceInfo device_info() {
@@ -58,6 +59,7 @@ DeviceInfo device_info() {
   cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, device);
   info.prefill_qreg = prefill_qreg(major, minor);
   info.prefill_tail_splits = prefill_tail_splits(major, minor);
+  info.prefill_wgmma = prefill_wgmma(major, minor);
   cache[device] = info;
   return info;
 }
@@ -151,9 +153,17 @@ const char* pi_attn_prefill(const void* q, const void* k_cache, const void* v_ca
         num_qo_heads, num_kv_heads, page_size, page_shift_of(page_size),
         (float)(sm_scale * 1.4426950408889634), splits, ws_o, (float2*)ws_ml, max_groups);
   };
-  if (warps == 8) launch(prefill_kernel<true, 8>, prefill_smem_bytes<true, 8>());
-  else if (info.prefill_qreg) launch(prefill_kernel<true>, prefill_smem_bytes<true>());
-  else launch(prefill_kernel<false>, prefill_smem_bytes<false>());
+  if (warps == 8) {
+    launch(prefill_kernel<true, 8>, prefill_smem_bytes<true, 8>());
+  } else if (info.prefill_qreg) {
+    launch(prefill_kernel<true>, prefill_smem_bytes<true>());
+  } else {
+#ifdef PI_SM90A
+    if (info.prefill_wgmma) launch(prefill90_kernel, prefill90_smem_bytes());
+    else
+#endif
+    launch(prefill_kernel<false>, prefill_smem_bytes<false>());
+  }
   if (auto e = check_launch("pi prefill")) return e;
   if (splits > 1) {
     prefill_merge_kernel<<<dim3(num_qo_heads, total_q), kHeadDim, 0, st>>>(

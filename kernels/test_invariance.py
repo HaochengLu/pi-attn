@@ -31,10 +31,12 @@ HQ, HKV, D = 16, 8, 128
 SCALE = 1 / math.sqrt(D)
 KVSPLITS = int(__import__('os').environ.get('PI_KVSPLITS', '1'))
 # Prefill kernel variant: 0 = the device's choice, 1 = Q in smem, 2 = Q in registers, 3 / 4 = the same
-# with 8 warps per CTA. VARIANTS: those whose shared memory this GPU allows (4 does not fit sm_89).
+# with 8 warps per CTA, 5 = the wgmma kernel (sm_90a builds: Hopper, where it is also the device's choice).
+# VARIANTS: those this GPU runs (4 does not fit sm_89's shared memory).
 VARIANT = 0
 VARIANTS = [v for v in (1, 2, 3, 4)
             if ext.prefill_smem_bytes(v) <= torch.cuda.get_device_properties(0).shared_memory_per_block_optin]
+VARIANTS += [5] if ext.WGMMA else []
 # PI error vs float64 may exceed FlashInfer's by at most this factor (mean, max).
 ACC_SLACK = (1.05, 1.25)
 # Decode arrival counters, shared by every call as in the engine: each call must
