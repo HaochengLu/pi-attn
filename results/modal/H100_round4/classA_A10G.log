@@ -1,0 +1,24 @@
+[run_gpu] workstream int2: $0.00 of $5.50
+[run_gpu] start A10G int2:classA_A10G: ledger $33.17, gateway $30.44, budget $40.00
+NVIDIA A10, 610.57.04
+patch applied (HEAD 61ff596 + merged.diff)
+torch 2.13.0+cu126 flashinfer 0.6.18 cc (8, 6)
+attn ext WGMMA False VARIANTS [1, 2, 3] DECODE_VARIANTS []
+attn ext build exit=0 (65s)
+test_invariance exit=0 (334s)
+L=517 hq=16 hkv=8: PI err mean 5.721e-04 max 1.521e-02 | FlashInfer err mean 6.470e-04 max 1.521e-02 | bf16(exact) err mean 5.090e-04
+L=2049 hq=16 hkv=8: PI err mean 4.433e-04 max 1.266e-02 | FlashInfer err mean 4.559e-04 max 1.266e-02 | bf16(exact) err mean 4.006e-04
+checks failed: 0 []
+test_directed exit=0 (338s)
+group 32 rejected: GQA group size must be <= 16 (one 16-row MMA group per kv head)
+DIRECTED FAILURES: 0
+xgpu_hashes exit=0 (314s)
+device NVIDIA A10 vs reference NVIDIA A800-SXM4-80GB /pi/results/a800/xgpu/NVIDIA_A800-SXM4-80GB.json
+HASHES gemm: PI identical 108/108; PI and vendor both identical 48/108; cases in new 108
+HASHES attention: PI identical 5/5; PI and vendor both identical 0/5; cases in new 5
+=== HASHES_JSON_BEGIN
+=== HASHES_JSON_END
+class A FAIL=0
+total 338s
+
+[run_gpu] A10G int2:classA_A10G: exit=0 wall=368s cost~$0.230 ledger=$33.41

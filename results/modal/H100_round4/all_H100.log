@@ -1,0 +1,212 @@
+[run_gpu] workstream int2: $0.00 of $5.50
+[run_gpu] start H100 int2:all_H100: ledger $33.17, gateway $30.44, budget $40.00
+NVIDIA H100 80GB HBM3, 610.57.04
+patch applied (HEAD 61ff596 + merged.diff)
+torch 2.13.0+cu126 flashinfer 0.6.18 cc (9, 0)
+apt exit=0
+model sha256 OK
+attn ext WGMMA True VARIANTS [1, 2, 3, 4, 5, 6, 7] DECODE_VARIANTS [1, 2]
+attn ext build exit=0 (98s)
+test_invariance exit=0 (158s)
+L=517 hq=16 hkv=8: PI err mean 5.772e-04 max 8.920e-03 | FlashInfer err mean 5.904e-04 max 8.674e-03 | bf16(exact) err mean 5.142e-04
+L=2049 hq=16 hkv=8: PI err mean 4.427e-04 max 8.383e-03 | FlashInfer err mean 4.617e-04 max 9.142e-03 | bf16(exact) err mean 4.002e-04
+checks failed: 0 []
+test_directed exit=0 (164s)
+group 32 rejected: GQA group size must be <= 16 (one 16-row MMA group per kv head)
+DIRECTED FAILURES: 0
+test_matrix exit=0 (252s)
+long ctx 32768/20001: failures 0 []
+TOTAL FAILURES: 0
+cargo build exit=0 (401s)
+test_mutants exit=0 (567s)
+mutant merge_reversed: 42 failed checks, kinds ['split']
+mutant decode_fold_unfused: 105 failed checks, kinds ['path']
+mutant prefill_group_256: 12654 failed checks, kinds ['chunk+prefix', 'heads', 'path', 'split']
+mutant decode90_d_unfused: 7 failed checks, kinds ['path']
+cuBLAS M-invariance control: 8/27 projections vary with M
+wrong segment count control: S=1 result equals the S=2 fold: False
+UNCAUGHT MUTANTS: 0 []
+xgpu_hashes exit=0 (458s)
+device NVIDIA H100 80GB HBM3 vs reference NVIDIA H100 80GB HBM3 /pi/results/modal/H100_sm90/hashes_H100.json
+HASHES gemm: PI identical 108/108; PI and vendor both identical 108/108; cases in new 108
+HASHES attention: PI identical 5/5; PI and vendor both identical 5/5; cases in new 5
+test_gemm exit=0 (493s)
+INVARIANCE FAILURES: 0 []
+=== HASHES_JSON_BEGIN
+=== HASHES_JSON_END
+EQ decode variant 2 vs decode_kernel: 432 comparisons, 0 mismatches
+EQ decode variant 0 vs decode_kernel: 432 comparisons, 0 mismatches
+PREFILL-VARIANTS HASH prefill b1 q512: reference f0edc5bce36ef0f1 | v0=f0edc5bce36ef0f1 v1=f0edc5bce36ef0f1 v2=f0edc5bce36ef0f1 v5=f0edc5bce36ef0f1 v6=f0edc5bce36ef0f1 v7=f0edc5bce36ef0f1 v6/splits1=f0edc5bce36ef0f1 v6/splits3=f0edc5bce36ef0f1 v7/splits1=f0edc5bce36ef0f1 v7/splits3=f0edc5bce36ef0f1 | EQUAL
+PREFILL-VARIANTS HASH prefill b4 q2048: reference f60713f799b36d27 | v0=f60713f799b36d27 v1=f60713f799b36d27 v2=f60713f799b36d27 v5=f60713f799b36d27 v6=f60713f799b36d27 v7=f60713f799b36d27 v6/splits1=f60713f799b36d27 v6/splits3=f60713f799b36d27 v7/splits1=f60713f799b36d27 v7/splits3=f60713f799b36d27 | EQUAL
+PREFILL-VARIANTS HASH extend b1 q128 prefix 4096: reference 876ab4d2eac19ca6 | v0=876ab4d2eac19ca6 v1=876ab4d2eac19ca6 v2=876ab4d2eac19ca6 v5=876ab4d2eac19ca6 v6=876ab4d2eac19ca6 v7=876ab4d2eac19ca6 v6/splits1=876ab4d2eac19ca6 v6/splits3=876ab4d2eac19ca6 v7/splits1=876ab4d2eac19ca6 v7/splits3=876ab4d2eac19ca6 | EQUAL
+PREFILL-VARIANTS HASH decode b8 kv 2048: reference c46fe141743f0c65 | decode=c46fe141743f0c65 | EQUAL
+PREFILL-VARIANTS HASH decode b1 kv 32768: reference 16a1ede29cc1ab6c | decode=16a1ede29cc1ab6c | EQUAL
+PREFILL-VARIANTS attention hashes equal to results/modal/H100_sm90/hashes_H100.json: True
+DECODE-VARIANTS HASH prefill b1 q512: reference f0edc5bce36ef0f1 | prefill v0=f0edc5bce36ef0f1 | EQUAL
+DECODE-VARIANTS HASH prefill b4 q2048: reference f60713f799b36d27 | prefill v0=f60713f799b36d27 | EQUAL
+DECODE-VARIANTS HASH extend b1 q128 prefix 4096: reference 876ab4d2eac19ca6 | prefill v0=876ab4d2eac19ca6 | EQUAL
+DECODE-VARIANTS HASH decode b8 kv 2048: reference c46fe141743f0c65 | decode v0=c46fe141743f0c65 decode v1=c46fe141743f0c65 decode v2=c46fe141743f0c65 | EQUAL
+DECODE-VARIANTS HASH decode b1 kv 32768: reference 16a1ede29cc1ab6c | decode v0=16a1ede29cc1ab6c decode v1=16a1ede29cc1ab6c decode v2=16a1ede29cc1ab6c | EQUAL
+DECODE-VARIANTS attention hashes equal to results/modal/H100_sm90/hashes_H100.json: True
+kernel suites done (583s)
+cargo build exit=0 (401s)
+cold_table exit=0 (710s)
+HASHX launches per id: {1: 108, 13: 108, 90: 96, 91: 96, 92: 96, 93: 96, 94: 96, 95: 12, 96: 12, 97: 12, 98: 96, 99: 96, 100: 96, 101: 96, 102: 96, 103: 96, 104: 96, 105: 96, 106: 96, 107: 96, 108: 96, 109: 96, 110: 96, 111: 96, 112: 96, 113: 48, 114: 48, 115: 24, 116: 24, 117: 24, 118: 24, 119: 24, 120: 24}
+HASHX 2412 launches (ids 1, 13 and every wgmma id) over 108 cases; hashes differing from hashes_H100.json: 0 []
+TABLE M=    1 us/launch: qkv cublas 8.6 before k104:8.5 (1.00) after k104:8.5 (1.00) | o cublas 6.3 before k103:6.2 (0.99) after k103:6.2 (0.99) | gate_up cublas 19.4 before k104:19.4 (1.00) after k104:19.4 (1.00) | down cublas 12.7 before k103:12.6 (0.99) after k103:12.6 (0.99)
+TABLE M=    1 x28 layers: cuBLAS 1315 us, before 1309 (0.996x), after 1309 (0.996x)
+TABLE M=    8 us/launch: qkv cublas 8.4 before k104:8.5 (1.01) after k104:8.5 (1.01) | o cublas 6.3 before k103:6.3 (1.00) after k103:6.3 (1.00) | gate_up cublas 19.9 before k104:19.8 (1.00) after k104:19.8 (1.00) | down cublas 12.8 before k103:12.5 (0.98) after k103:12.5 (0.98)
+TABLE M=    8 x28 layers: cuBLAS 1327 us, before 1321 (0.995x), after 1321 (0.995x)
+TABLE M=   16 us/launch: qkv cublas 8.5 before k104:8.5 (1.01) after k104:8.5 (1.01) | o cublas 6.3 before k103:6.2 (0.99) after k103:6.2 (0.99) | gate_up cublas 20.1 before k104:20.0 (1.00) after k104:20.0 (1.00) | down cublas 12.9 before k103:12.6 (0.98) after k103:12.6 (0.98)
+TABLE M=   16 x28 layers: cuBLAS 1335 us, before 1326 (0.993x), after 1326 (0.993x)
+TABLE M=   32 us/launch: qkv cublas 8.5 before k104:8.6 (1.01) after k104:8.6 (1.01) | o cublas 6.3 before k103:6.2 (0.98) after k103:6.2 (0.98) | gate_up cublas 21.4 before k104:20.4 (0.95) after k104:20.4 (0.95) | down cublas 13.2 before k103:12.6 (0.95) after k103:12.6 (0.95)
+TABLE M=   32 x28 layers: cuBLAS 1383 us, before 1337 (0.967x), after 1337 (0.967x)
+TABLE M=   64 us/launch: qkv cublas 8.6 before k104:8.6 (1.01) after k104:8.6 (1.01) | o cublas 6.4 before k103:6.2 (0.98) after k103:6.2 (0.98) | gate_up cublas 20.7 before k104:20.6 (1.00) after k104:20.6 (1.00) | down cublas 14.8 before k103:12.9 (0.88) after k103:12.9 (0.88)
+TABLE M=   64 x28 layers: cuBLAS 1411 us, before 1355 (0.961x), after 1355 (0.961x)
+TABLE M=  128 us/launch: qkv cublas 8.8 before k105:9.6 (1.10) after k114:9.3 (1.06) | o cublas 6.5 before k104:6.8 (1.04) after k113:6.6 (1.01) | gate_up cublas 21.9 before k107:22.8 (1.04) after k114:22.6 (1.03) | down cublas 14.7 before k104:15.2 (1.04) after k113:13.7 (0.93)
+TABLE M=  128 x28 layers: cuBLAS 1451 us, before 1522 (1.049x), after 1460 (1.006x)
+TABLE M=  192 us/launch: qkv cublas 9.3 before k109:11.1 (1.19) after k109:11.1 (1.19) | o cublas 8.1 before k105:8.7 (1.07) after k114:7.6 (0.93) | gate_up cublas 23.2 before k110:25.7 (1.11) after k110:25.7 (1.11) | down cublas 14.7 before k105:20.5 (1.39) after k114:16.8 (1.15)
+TABLE M=  192 x28 layers: cuBLAS 1548 us, before 1844 (1.191x), after 1713 (1.106x)
+TABLE M=  256 us/launch: qkv cublas 10.6 before k106:11.9 (1.12) after k115:11.1 (1.05) | o cublas 6.7 before k105:8.7 (1.30) after k114:7.8 (1.16) | gate_up cublas 24.3 before k108:27.4 (1.13) after k116:27.0 (1.11) | down cublas 17.4 before k106:20.9 (1.20) after k114:17.4 (1.00)
+TABLE M=  256 x28 layers: cuBLAS 1654 us, before 1931 (1.168x), after 1772 (1.071x)
+TABLE M=  512 us/launch: qkv cublas 13.3 before k91:16.4 (1.23) after k117:15.6 (1.17) | o cublas 10.3 before k106:11.3 (1.10) after k115:10.2 (1.00) | gate_up cublas 37.4 before k108:43.6 (1.17) after k118:42.7 (1.14) | down cublas 26.4 before k106:28.4 (1.08) after k115:24.0 (0.91)
+TABLE M=  512 x28 layers: cuBLAS 2446 us, before 2792 (1.142x), after 2592 (1.060x)
+TABLE M= 1024 us/launch: qkv cublas 24.3 before k90:27.5 (1.13) after k119:27.2 (1.12) | o cublas 13.3 before k91:15.0 (1.13) after k91:15.0 (1.13) | gate_up cublas 71.6 before k108:78.4 (1.09) after k118:76.3 (1.06) | down cublas 34.8 before k91:36.9 (1.06) after k91:36.9 (1.06)
+TABLE M= 1024 x28 layers: cuBLAS 4032 us, before 4416 (1.095x), after 4349 (1.079x)
+TABLE M= 2048 us/launch: qkv cublas 46.3 before k90:51.9 (1.12) after k90:51.9 (1.12) | o cublas 25.4 before k91:27.3 (1.07) after k91:27.3 (1.07) | gate_up cublas 137.2 before k90:148.1 (1.08) after k90:148.1 (1.08) | down cublas 73.2 before k90:71.5 (0.98) after k119:68.6 (0.94)
+TABLE M= 2048 x28 layers: cuBLAS 7897 us, before 8365 (1.059x), after 8287 (1.049x)
+TABLE M= 2304 us/launch: qkv cublas 51.9 before k112:59.6 (1.15) after k112:59.6 (1.15) | o cublas 28.2 before k111:30.3 (1.08) after k111:30.3 (1.08) | gate_up cublas 154.5 before k108:168.7 (1.09) after k108:168.7 (1.09) | down cublas 79.3 before k111:83.3 (1.05) after k120:79.0 (1.00)
+TABLE M= 2304 x28 layers: cuBLAS 8790 us, before 9575 (1.089x), after 9453 (1.075x)
+TABLE M= 4096 us/launch: qkv cublas 94.1 before k90:101.4 (1.08) after k119:98.7 (1.05) | o cublas 46.0 before k91:51.6 (1.12) after k91:51.6 (1.12) | gate_up cublas 278.9 before k90:290.6 (1.04) after k90:290.6 (1.04) | down cublas 133.4 before k90:134.1 (1.01) after k90:134.1 (1.01)
+TABLE M= 4096 x28 layers: cuBLAS 15472 us, before 16175 (1.045x), after 16100 (1.041x)
+TABLE M= 8192 us/launch: qkv cublas 179.1 before k90:201.8 (1.13) after k90:201.8 (1.13) | o cublas 99.8 before k90:103.8 (1.04) after k90:103.8 (1.04) | gate_up cublas 597.6 before k111:602.4 (1.01) after k111:602.4 (1.01) | down cublas 265.0 before k90:287.3 (1.08) after k90:287.3 (1.08)
+TABLE M= 8192 x28 layers: cuBLAS 31962 us, before 33469 (1.047x), after 33469 (1.047x)
+FAIL=0 after the kernel suites
+DEC b= 1 kv=  96 us/layer: fi    4.5 fi_tc    5.5 v1    5.3 v2    6.2 v0    5.3 | plan v1 best v1 | r3 6.2 (1.38 fi) -> v0 5.3 (1.18 fi)
+DEC b= 1 kv= 640 us/layer: fi    9.2 fi_tc    8.7 v1   21.7 v2   14.6 v0   14.6 | plan v2 best v2 | r3 14.6 (1.68 fi) -> v0 14.6 (1.68 fi)
+DEC b= 1 kv=2176 us/layer: fi   10.3 fi_tc   12.7 v1   22.0 v2   15.3 v0   15.3 | plan v2 best v2 | r3 15.3 (1.49 fi) -> v0 15.3 (1.49 fi)
+DEC b= 1 kv=4200 us/layer: fi   12.3 fi_tc   15.9 v1   23.0 v2   17.8 v0   17.8 | plan v2 best v2 | r3 17.8 (1.45 fi) -> v0 17.8 (1.45 fi)
+DEC b= 2 kv=  96 us/layer: fi    4.5 fi_tc    5.6 v1    5.4 v2    6.2 v0    5.4 | plan v1 best v1 | r3 5.4 (1.20 fi) -> v0 5.4 (1.20 fi)
+DEC b= 2 kv= 640 us/layer: fi    9.5 fi_tc    9.7 v1   21.9 v2   14.8 v0   14.8 | plan v2 best v2 | r3 21.9 (2.31 fi) -> v0 14.8 (1.56 fi)
+DEC b= 2 kv=2176 us/layer: fi   12.5 fi_tc   16.8 v1   22.7 v2   17.8 v0   17.8 | plan v2 best v2 | r3 22.7 (1.82 fi) -> v0 17.8 (1.42 fi)
+DEC b= 2 kv=4200 us/layer: fi   17.8 fi_tc   22.7 v1   25.0 v2   27.4 v0   25.0 | plan v1 best v1 | r3 25.0 (1.40 fi) -> v0 25.0 (1.40 fi)
+DEC b= 4 kv=  96 us/layer: fi    5.7 fi_tc    6.2 v1    6.2 v2    6.8 v0    6.2 | plan v1 best v1 | r3 6.2 (1.09 fi) -> v0 6.2 (1.09 fi)
+DEC b= 4 kv= 640 us/layer: fi   10.6 fi_tc   13.2 v1   22.0 v2   16.0 v0   16.0 | plan v2 best v2 | r3 22.0 (2.08 fi) -> v0 16.0 (1.51 fi)
+DEC b= 4 kv=2176 us/layer: fi   18.4 fi_tc   23.2 v1   25.5 v2   27.4 v0   25.5 | plan v1 best v1 | r3 25.5 (1.39 fi) -> v0 25.5 (1.39 fi)
+DEC b= 4 kv=4200 us/layer: fi   30.4 fi_tc   34.4 v1   33.0 v2   44.9 v0   33.0 | plan v1 best v1 | r3 33.0 (1.09 fi) -> v0 33.0 (1.09 fi)
+DEC b= 8 kv=  96 us/layer: fi    6.0 fi_tc    6.7 v1    6.4 v2    7.2 v0    6.4 | plan v1 best v1 | r3 6.4 (1.07 fi) -> v0 6.4 (1.07 fi)
+DEC b= 8 kv= 640 us/layer: fi   12.8 fi_tc   16.9 v1   23.1 v2   18.3 v0   18.3 | plan v2 best v2 | r3 23.1 (1.80 fi) -> v0 18.3 (1.43 fi)
+DEC b= 8 kv=2176 us/layer: fi   31.5 fi_tc   34.9 v1   33.7 v2   45.1 v0   33.7 | plan v1 best v1 | r3 33.7 (1.07 fi) -> v0 33.7 (1.07 fi)
+DEC b= 8 kv=4200 us/layer: fi   53.3 fi_tc   56.4 v1   55.2 v2   77.9 v0   55.1 | plan v1 best v1 | r3 55.2 (1.04 fi) -> v0 55.1 (1.03 fi)
+DEC b=16 kv=  96 us/layer: fi    6.4 fi_tc    7.6 v1    6.9 v2    7.9 v0    6.9 | plan v1 best v1 | r3 6.9 (1.08 fi) -> v0 6.9 (1.08 fi)
+DEC b=16 kv= 640 us/layer: fi   20.4 fi_tc   24.7 v1   27.3 v2   28.1 v0   27.3 | plan v1 best v1 | r3 27.3 (1.34 fi) -> v0 27.3 (1.34 fi)
+DEC b=16 kv=2176 us/layer: fi   55.2 fi_tc   57.9 v1   55.6 v2   76.9 v0   55.6 | plan v1 best v1 | r3 55.6 (1.01 fi) -> v0 55.6 (1.01 fi)
+DEC b=16 kv=4200 us/layer: fi   98.4 fi_tc  101.7 v1  103.4 v2  133.2 v0  103.3 | plan v1 best v1 | r3 103.4 (1.05 fi) -> v0 103.3 (1.05 fi)
+DEC b=32 kv=  96 us/layer: fi    7.8 fi_tc   11.4 v1    8.5 v2    8.5 v0    8.5 | plan v1 best v1 | r3 8.5 (1.09 fi) -> v0 8.5 (1.09 fi)
+DEC b=32 kv= 640 us/layer: fi   35.1 fi_tc   35.7 v1   37.6 v2   37.6 v0   37.6 | plan v1 best v1 | r3 37.6 (1.07 fi) -> v0 37.6 (1.07 fi)
+DEC b=32 kv=2176 us/layer: fi  101.1 fi_tc  101.3 v1  106.6 v2  107.1 v0  107.2 | plan v1 best v1 | r3 106.6 (1.05 fi) -> v0 107.2 (1.06 fi)
+DEC b=32 kv=4200 us/layer: fi  188.9 fi_tc  189.3 v1  200.8 v2  200.6 v0  200.2 | plan v1 best v2 | r3 200.8 (1.06 fi) -> v0 200.2 (1.06 fi)
+DEC b=64 kv=  96 us/layer: fi   11.6 fi_tc   20.5 v1   13.0 v2   13.0 v0   13.0 | plan v1 best v1 | r3 13.0 (1.12 fi) -> v0 13.0 (1.12 fi)
+DEC b=64 kv= 640 us/layer: fi   63.3 fi_tc   65.0 v1   66.2 v2   66.3 v0   66.4 | plan v1 best v1 | r3 66.2 (1.05 fi) -> v0 66.4 (1.05 fi)
+DEC b=64 kv=2176 us/layer: fi  196.1 fi_tc  196.6 v1  204.3 v2  204.0 v0  203.7 | plan v1 best v2 | r3 204.3 (1.04 fi) -> v0 203.7 (1.04 fi)
+DEC b=64 kv=4200 us/layer: fi  369.7 fi_tc  369.7 v1  392.0 v2  392.0 v0  392.0 | plan v1 best v1 | r3 392.0 (1.06 fi) -> v0 392.0 (1.06 fi)
+dec bench done (738s)
+PRE hq=16 b=1 q=512 prefix=0: fa2 36.2 fa3 15.3 | v5 19.8 (1.29) | v6 22.6 (1.48) | v7 19.3 (1.26) | v0 19.3 (1.26)
+PRE hq=16 b=1 q=1024 prefix=0: fa2 75.9 fa3 22.8 | v5 39.4 (1.73) | v6 40.6 (1.78) | v7 33.4 (1.46) | v0 32.9 (1.44)
+PRE hq=16 b=1 q=2048 prefix=0: fa2 108.5 fa3 61.4 | v5 119.3 (1.94) | v6 77.3 (1.26) | v7 70.3 (1.14) | v0 70.0 (1.14)
+PRE hq=16 b=1 q=4096 prefix=0: fa2 336.3 fa3 175.3 | v5 362.5 (2.07) | v6 223.6 (1.28) | v7 246.6 (1.41) | v0 220.1 (1.26)
+PRE hq=16 b=8 q=1024 prefix=0: fa2 163.7 fa3 117.3 | v5 202.2 (1.72) | v6 155.1 (1.32) | v7 171.3 (1.46) | v0 155.5 (1.33)
+PRE hq=16 b=8 q=2048 prefix=0: fa2 504.4 fa3 356.4 | v5 660.5 (1.85) | v6 492.8 (1.38) | v7 566.4 (1.59) | v0 516.8 (1.45)
+PRE hq=16 b=1 q=2048 prefix=2048: fa2 210.7 fa3 123.6 | v5 278.0 (2.25) | v6 191.0 (1.55) | v7 184.2 (1.49) | v0 184.3 (1.49)
+PRE hq=16 b=1 q=128 prefix=4096: fa2 32.3 fa3 65.1 | v5 33.7 (1.04) | v6 34.5 (1.07) | v7 31.5 (0.98) | v0 31.5 (0.98)
+PRE hq=32 b=1 q=512 prefix=0: fa2 62.6 fa3 16.3 | v5 23.0 (1.41) | v6 22.9 (1.40) | v7 19.7 (1.21) | v0 19.7 (1.21)
+PRE hq=32 b=1 q=1024 prefix=0: fa2 59.5 fa3 37.5 | v5 66.1 (1.76) | v6 40.0 (1.07) | v7 40.9 (1.09) | v0 41.1 (1.10)
+PRE hq=32 b=1 q=2048 prefix=0: fa2 176.7 fa3 99.9 | v5 194.2 (1.94) | v6 123.4 (1.24) | v7 138.3 (1.38) | v0 123.5 (1.24)
+PRE hq=32 b=1 q=4096 prefix=0: fa2 526.3 fa3 303.9 | v5 642.5 (2.11) | v6 412.5 (1.36) | v7 478.1 (1.57) | v0 398.5 (1.31)
+PRE hq=32 b=8 q=1024 prefix=0: fa2 283.9 fa3 224.8 | v5 380.3 (1.69) | v6 290.4 (1.29) | v7 333.2 (1.48) | v0 293.7 (1.31)
+PRE hq=32 b=8 q=2048 prefix=0: fa2 949.9 fa3 704.6 | v5 1261.8 (1.79) | v6 992.1 (1.41) | v7 1120.3 (1.59) | v0 943.4 (1.34)
+PRE hq=32 b=1 q=2048 prefix=2048: fa2 399.8 fa3 226.8 | v5 485.4 (2.14) | v6 324.6 (1.43) | v7 360.6 (1.59) | v0 325.4 (1.43)
+PRE hq=32 b=1 q=128 prefix=4096: fa2 49.7 fa3 66.0 | v5 58.7 (1.18) | v6 53.2 (1.07) | v7 52.8 (1.06) | v0 52.7 (1.06)
+pre bench done (752s)
+ENGSHAPE PRE hq=16 b=1 q=64 prefix=0: fa2 7.4 fa3 7.4 | v5 7.4 (1.00) | v6 9.8 (1.32) | v7 8.9 (1.20) | v0 7.3 (0.99)
+ENGSHAPE PRE hq=16 b=8 q=64 prefix=0: fa2 9.2 fa3 8.8 | v5 8.7 (0.99) | v6 10.0 (1.14) | v7 9.2 (1.05) | v0 8.7 (0.99)
+ENGSHAPE PRE hq=16 b=32 q=64 prefix=0: fa2 15.4 fa3 20.9 | v5 18.6 (1.21) | v6 21.7 (1.41) | v7 20.4 (1.32) | v0 18.6 (1.21)
+ENGSHAPE PRE hq=16 b=2 q=1024 prefix=0: fa2 59.2 fa3 38.0 | v5 66.9 (1.76) | v6 41.3 (1.09) | v7 43.1 (1.13) | v0 43.1 (1.13)
+ENGSHAPE PRE hq=16 b=4 q=512 prefix=0: fa2 35.2 fa3 28.4 | v5 42.0 (1.48) | v6 32.4 (1.14) | v7 29.1 (1.02) | v0 29.1 (1.02)
+ENGSHAPE PRE hq=16 b=8 q=256 prefix=0: fa2 22.7 fa3 20.0 | v5 30.3 (1.52) | v6 28.2 (1.41) | v7 24.2 (1.21) | v0 24.2 (1.21)
+ENGSHAPE PRE hq=16 b=16 q=128 prefix=0: fa2 17.3 fa3 17.6 | v5 20.6 (1.19) | v6 27.7 (1.60) | v7 22.8 (1.32) | v0 20.1 (1.16)
+ENGSHAPE PRE hq=16 b=8 q=64 prefix=1024: fa2 49.8 fa3 26.0 | v5 40.1 (1.54) | v6 46.1 (1.77) | v7 38.3 (1.47) | v0 38.3 (1.47)
+ENGSHAPE PRE hq=16 b=32 q=32 prefix=96: fa2 15.7 fa3 25.6 | v5 14.8 (0.94) | v6 25.5 (1.62) | v7 23.5 (1.50) | v0 15.1 (0.96)
+ENGSHAPE PRE hq=16 b=2 q=1000 prefix=24: fa2 61.0 fa3 40.2 | v5 69.1 (1.72) | v6 41.5 (1.03) | v7 45.8 (1.14) | v0 45.8 (1.14)
+pre bench (engine shapes) done (759s)
+C7511 lines in build: 0
+64 rollouts: 64 with identical token ids; 14442/14442 log-probabilities bitwise equal
+ROLLOUTS IDENTICAL TO REFERENCE: True
+xgpu_rollout exit=0 (790s)
+detcheck exit=0 (1033s)
+batch  [{"concurrency": 4, "requests": 16, "mismatched": 0, "first_divergence_tokens": []}, {"concurrency": 16, "requests": 16, "mismatched": 0, "first_divergence_tokens": []}]
+prefix {"full_hit": 0, "partial_hit": 0, "requests": 8}
+shared {"requests": 32, "prefix_tokens": 2616, "mismatched": 0, "first_divergence_tokens": []}
+path   {"requests": 24, "mismatched": 0, "first_divergence_tokens": []}
+spath  {"requests": 24, "mismatched": 0, "first_divergence_tokens": []}
+repeat {"samples": 200, "unique_completions": 1}
+sample {"rows": [{"concurrency": 4, "requests": 16, "mismatched": 0, "first_divergence_tokens": []}, {"concurrency": 16, "requests": 16, "mismatched": 0, "first_divergence_tokens": []}], "distinct_reference_samples": 16}
+DETERMINISTIC
+PI GEMM tile choice n=2048 k=2048 choice="1:103 2:103 4:103 8:103 16:103 32:103 64:103 128:113 192:114 256:114 320:107 384:115 448:116 512:115 640:107 768:116 896:91 1024:91 1280:112 1536:108 1792:91 2048:91 2304:111"
+PI GEMM tile choice n=2048 k=6144 choice="1:103 2:103 4:103 8:103 16:103 32:103 64:103 128:113 192:114 256:114 320:107 384:115 448:116 512:115 640:116 768:116 896:91 1024:117 1280:108 1536:108 1792:90 2048:90 2304:111"
+PI GEMM tile choice n=4096 k=2048 choice="1:104 2:104 4:104 8:104 16:104 32:104 64:104 128:114 192:109 256:115 320:93 384:107 448:117 512:117 640:116 768:116 896:90 1024:90 1280:118 1536:91 1792:119 2048:90 2304:112"
+PI GEMM tile choice n=12288 k=2048 choice="1:104 2:104 4:104 8:104 16:104 32:104 64:104 128:114 192:110 256:116 320:111 384:111 448:118 512:118 640:90 768:118 896:118 1024:118 1280:118 1536:118 1792:108 2048:90 2304:111"
+PI GEMM tile choice n=151936 k=2048 choice="1:105 2:105 4:105 8:105 16:105 32:105 64:105 128:91 192:112 256:108 320:111 384:108 448:90 512:90 640:108 768:111 896:90 1024:118 1280:111 1536:111 1792:118 2048:108 2304:111"
+2026-11-14T10:32:15.250253Z | llm-infer-rust | INFO | capturing CUDA decode graph size=32
+2026-11-14T10:32:16.215497Z | llm-infer-rust | INFO | capturing CUDA decode graph size=16
+2026-11-14T10:32:17.171463Z | llm-infer-rust | INFO | capturing CUDA decode graph of another launch plan size=16 bound=512 plan=2
+2026-11-14T10:32:17.182083Z | llm-infer-rust | INFO | capturing CUDA decode graph size=8
+2026-11-14T10:32:18.230873Z | llm-infer-rust | INFO | capturing CUDA decode graph of another launch plan size=8 bound=1024 plan=2
+2026-11-14T10:32:18.240993Z | llm-infer-rust | INFO | capturing CUDA decode graph size=4
+flashinfer cfg B round 1: up after 8s, loadgen exit=0/0 (1182s)
+deterministic cfg B round 1: up after 29s, loadgen exit=0/0 (1349s)
+flashinfer cfg A round 1: up after 10s, loadgen exit=0/0 (1409s)
+deterministic cfg A round 1: up after 29s, loadgen exit=0/0 (1488s)
+--- summary after round 1
+ENG T3 64/32/c1: out tok/s FI 439 PI 458 (+4.3%) | TTFT ms FI 4.0 PI 4.4 (+8.7%) | tpot ms FI 2.219 PI 2.111 | all tok/s FI [438.6, 439.4] PI [457.1, 458.6] | TTFT per server FI [4.0] PI [4.4]
+ENG T3 64/32/c8: out tok/s FI 2895 PI 2996 (+3.5%) | TTFT ms FI 12.4 PI 11.7 (-5.4%) | tpot ms FI 2.430 PI 2.354 | all tok/s FI [2868.7, 2921.6] PI [2997.8, 2994.1] | TTFT per server FI [12.4] PI [11.7]
+ENG T3 64/32/c32: out tok/s FI 8665 PI 8730 (+0.7%) | TTFT ms FI 18.7 PI 21.1 (+12.7%) | tpot ms FI 2.835 PI 2.712 | all tok/s FI [8539.1, 8791.1] PI [8526.1, 8933.4] | TTFT per server FI [18.7] PI [21.1]
+ENG T3 512/256/c8: out tok/s FI 3002 PI 2943 (-2.0%) | TTFT ms FI 27.5 PI 29.6 (+7.5%) | tpot ms FI 2.565 PI 2.610 | all tok/s FI [3007.1, 2997.2] PI [2941.9, 2945.0] | TTFT per server FI [27.5] PI [29.6]
+ENG T3 2048/128/c8: out tok/s FI 2017 PI 1992 (-1.2%) | TTFT ms FI 60.0 PI 65.0 (+8.4%) | tpot ms FI 3.514 PI 3.524 | all tok/s FI [2017.8, 2016.1] PI [1993.0, 1991.0] | TTFT per server FI [60.0] PI [65.0]
+ENG T3 1024/512/c32: out tok/s FI 7022 PI 6986 (-0.5%) | TTFT ms FI 99.1 PI 107.0 (+7.9%) | tpot ms FI 4.333 PI 4.341 | all tok/s FI [7021.9, 7022.4] PI [6984.2, 6987.2] | TTFT per server FI [99.1] PI [107.0]
+ENG T4 64/256/c1: out tok/s FI 436 PI 455 (+4.3%) | TTFT ms FI 4.6 PI 4.9 (+6.6%) | tpot ms FI 2.282 PI 2.187 | all tok/s FI [436.4, 436.5, 436.4] PI [455.0, 454.9, 455.0] | TTFT per server FI [4.6] PI [4.9]
+ENG T4 512/256/c8: out tok/s FI 2992 PI 2943 (-1.7%) | TTFT ms FI 26.6 PI 28.1 (+5.8%) | tpot ms FI 2.577 PI 2.614 | all tok/s FI [2992.4, 3002.7, 2960.7] PI [2948.9, 2942.7, 2922.3] | TTFT per server FI [26.6] PI [28.1]
+ENG T4 512/256/c32: out tok/s FI 8542 PI 8623 (+0.9%) | TTFT ms FI 60.4 PI 66.3 (+9.8%) | tpot ms FI 3.477 PI 3.415 | all tok/s FI [8530.6, 8542.3, 8545.3] PI [8615.5, 8623.4, 8623.2] | TTFT per server FI [60.4] PI [66.3]
+ENG T4 2048/256/c16: out tok/s FI 3375 PI 3400 (+0.7%) | TTFT ms FI 99.9 PI 105.2 (+5.4%) | tpot ms FI 4.312 PI 4.259 | all tok/s FI [3375.0, 3369.1, 3377.1] PI [3400.4, 3397.9, 3399.8] | TTFT per server FI [99.9] PI [105.2]
+ENG T4 4096/128/c4: out tok/s FI 975 PI 966 (-1.0%) | TTFT ms FI 71.3 PI 76.2 (+6.9%) | tpot ms FI 3.565 PI 3.567 | all tok/s FI [974.4, 975.9, 975.3] PI [965.9, 965.5, 965.2] | TTFT per server FI [71.3] PI [76.2]
+ENG HC 512/256/c64: out tok/s FI 12678 PI 12758 (+0.6%) | TTFT ms FI 87.5 PI 91.1 (+4.2%) | tpot ms FI 4.612 PI 4.566 | all tok/s FI [12582.7, 12772.3] PI [12729.6, 12787.1] | TTFT per server FI [87.5] PI [91.1]
+ENG HC 512/256/c128: out tok/s FI 16031 PI 15128 (-5.6%) | TTFT ms FI 157.2 PI 179.4 (+14.1%) | tpot ms FI 7.123 PI 7.531 | all tok/s FI [16207.6, 15854.1] PI [15350.5, 14906.0] | TTFT per server FI [157.2] PI [179.4]
+ENG HC 512/256/c256: out tok/s FI 15693 PI 15556 (-0.9%) | TTFT ms FI 576.4 PI 423.9 (-26.5%) | tpot ms FI 13.607 PI 14.213 | all tok/s FI [14226.0, 17159.9] PI [15688.5, 15424.3] | TTFT per server FI [576.4] PI [423.9]
+ENG HC 2048/128/c64: out tok/s FI 3763 PI 3526 (-6.3%) | TTFT ms FI 372.3 PI 395.0 (+6.1%) | tpot ms FI 13.533 PI 14.506 | all tok/s FI [3769.9, 3755.3] PI [3534.5, 3518.0] | TTFT per server FI [372.3] PI [395.0]
+flashinfer cfg B round 2: up after 8s, loadgen exit=0/0 (1638s)
+deterministic cfg B round 2: up after 28s, loadgen exit=0/0 (1805s)
+flashinfer cfg A round 2: up after 8s, loadgen exit=0/0 (1861s)
+deterministic cfg A round 2: up after 28s, loadgen exit=0/0 (1939s)
+--- summary after round 2
+ENG T3 64/32/c1: out tok/s FI 438 PI 459 (+4.7%) | TTFT ms FI 4.1 PI 4.3 (+5.7%) | tpot ms FI 2.221 PI 2.110 | all tok/s FI [438.6, 439.4, 437.8, 438.3] PI [457.1, 458.6, 459.2, 459.6] | TTFT per server FI [4.0, 4.1] PI [4.4, 4.2]
+ENG T3 64/32/c8: out tok/s FI 2889 PI 2996 (+3.7%) | TTFT ms FI 13.2 PI 12.1 (-8.8%) | tpot ms FI 2.438 PI 2.344 | all tok/s FI [2868.7, 2921.6, 2734.5, 2909.4] PI [2997.8, 2994.1, 3002.9, 2974.4] | TTFT per server FI [12.4, 14.1] PI [11.7, 12.4]
+ENG T3 64/32/c32: out tok/s FI 8656 PI 8697 (+0.5%) | TTFT ms FI 19.6 PI 22.1 (+13.1%) | tpot ms FI 2.824 PI 2.697 | all tok/s FI [8539.1, 8791.1, 8585.6, 8726.3] PI [8526.1, 8933.4, 8521.8, 8868.3] | TTFT per server FI [18.7, 20.4] PI [21.1, 23.1]
+ENG T3 512/256/c8: out tok/s FI 2999 PI 2944 (-1.8%) | TTFT ms FI 27.5 PI 29.5 (+7.2%) | tpot ms FI 2.567 PI 2.609 | all tok/s FI [3007.1, 2997.2, 2992.1, 3000.6] PI [2941.9, 2945.0, 2949.2, 2942.3] | TTFT per server FI [27.5, 27.6] PI [29.6, 29.5]
+ENG T3 2048/128/c8: out tok/s FI 2016 PI 1994 (-1.1%) | TTFT ms FI 60.1 PI 64.9 (+7.9%) | tpot ms FI 3.515 PI 3.522 | all tok/s FI [2017.8, 2016.1, 2013.9, 2016.1] PI [1993.0, 1991.0, 1994.7, 1995.9] | TTFT per server FI [60.0, 60.3] PI [65.0, 64.7]
+ENG T3 1024/512/c32: out tok/s FI 7021 PI 6986 (-0.5%) | TTFT ms FI 99.6 PI 106.8 (+7.3%) | tpot ms FI 4.335 PI 4.342 | all tok/s FI [7021.9, 7022.4, 7008.8, 7019.5] PI [6984.2, 6987.2, 6989.4, 6984.5] | TTFT per server FI [99.1, 100.1] PI [107.0, 106.7]
+ENG T4 64/256/c1: out tok/s FI 436 PI 455 (+4.4%) | TTFT ms FI 4.7 PI 4.9 (+4.6%) | tpot ms FI 2.283 PI 2.185 | all tok/s FI [436.4, 436.5, 436.4, 436.1, 436.1, 436.1] PI [455.0, 454.9, 455.0, 455.8, 455.9, 455.8] | TTFT per server FI [4.6, 4.7] PI [4.9, 4.8]
+ENG T4 512/256/c8: out tok/s FI 2998 PI 2946 (-1.7%) | TTFT ms FI 26.5 PI 27.9 (+5.1%) | tpot ms FI 2.572 PI 2.610 | all tok/s FI [2992.4, 3002.7, 2960.7, 3002.8, 3002.6, 2971.0] PI [2948.9, 2942.7, 2922.3, 2953.0, 2954.3, 2931.1] | TTFT per server FI [26.6, 26.5] PI [28.1, 27.7]
+ENG T4 512/256/c32: out tok/s FI 8537 PI 8624 (+1.0%) | TTFT ms FI 60.2 PI 66.3 (+10.2%) | tpot ms FI 3.478 PI 3.414 | all tok/s FI [8530.6, 8542.3, 8545.3, 8536.3, 8538.1, 8535.9] PI [8615.5, 8623.4, 8623.2, 8625.2, 8643.8, 8629.2] | TTFT per server FI [60.4, 60.0] PI [66.3, 66.3]
+ENG T4 2048/256/c16: out tok/s FI 3375 PI 3400 (+0.7%) | TTFT ms FI 99.8 PI 105.5 (+5.7%) | tpot ms FI 4.313 PI 4.257 | all tok/s FI [3375.0, 3369.1, 3377.1, 3366.8, 3377.2, 3375.4] PI [3400.4, 3397.9, 3399.8, 3402.7, 3401.5, 3400.4] | TTFT per server FI [99.9, 99.8] PI [105.2, 105.7]
+ENG T4 4096/128/c4: out tok/s FI 974 PI 966 (-0.8%) | TTFT ms FI 71.6 PI 76.0 (+6.1%) | tpot ms FI 3.567 PI 3.563 | all tok/s FI [974.4, 975.9, 975.3, 971.1, 973.8, 973.2] PI [965.9, 965.5, 965.2, 968.4, 966.0, 967.2] | TTFT per server FI [71.3, 71.9] PI [76.2, 75.8]
+ENG HC 512/256/c64: out tok/s FI 12691 PI 12754 (+0.5%) | TTFT ms FI 86.4 PI 91.1 (+5.4%) | tpot ms FI 4.614 PI 4.567 | all tok/s FI [12582.7, 12772.3, 12638.8, 12744.1] PI [12729.6, 12787.1, 12730.7, 12776.9] | TTFT per server FI [87.5, 85.4] PI [91.1, 91.0]
+ENG HC 512/256/c128: out tok/s FI 16041 PI 15359 (-4.3%) | TTFT ms FI 158.5 PI 173.0 (+9.2%) | tpot ms FI 7.121 PI 7.453 | all tok/s FI [16207.6, 15854.1, 16225.6, 15874.5] PI [15350.5, 14906.0, 15614.1, 15367.6] | TTFT per server FI [157.2, 159.7] PI [179.4, 166.6]
+ENG HC 512/256/c256: out tok/s FI 17144 PI 15765 (-8.0%) | TTFT ms FI 471.8 PI 403.0 (-14.6%) | tpot ms FI 13.206 PI 14.049 | all tok/s FI [14226.0, 17159.9, 17415.0, 17127.4] PI [15688.5, 15424.3, 16198.2, 15841.4] | TTFT per server FI [576.4, 367.1] PI [423.9, 382.1]
+ENG HC 2048/128/c64: out tok/s FI 3770 PI 3599 (-4.5%) | TTFT ms FI 370.6 PI 387.0 (+4.4%) | tpot ms FI 13.513 PI 14.196 | all tok/s FI [3769.9, 3755.3, 3785.2, 3769.3] PI [3534.5, 3518.0, 3675.7, 3662.8] | TTFT per server FI [372.3, 368.9] PI [395.0, 379.0]
+deterministic.A.1.server.log: error|panic lines 0
+deterministic.A.2.server.log: error|panic lines 0
+deterministic.B.1.server.log: error|panic lines 0
+deterministic.B.2.server.log: error|panic lines 0
+total 1949s
+
+[run_gpu] H100 int2:all_H100: exit=0 wall=2022s cost~$3.345 ledger=$36.75
