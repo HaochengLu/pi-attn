@@ -8,16 +8,17 @@ set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../env.sh"
 launches=${1:-3}
 port=18096
-out=$ROOT/results/e2e_ablation
+out=${PI_RESULTS:-$ROOT/results}/e2e_ablation  # PI_RESULTS: another results directory (e.g. results/a800_r5)
 mkdir -p $out
 declare -A margs=( [flashinfer]="--attention-backend flashinfer" [pi_attn]="--attention-backend pi"
                    [pi_gemm]="--row-invariant-gemm --attention-backend flashinfer" [deterministic]="--deterministic" )
 # name: model, max running requests, KV pool tokens, requests, workloads
 configs=(
-  "0.6B Qwen3-0.6B 32 131072 32 64:256:1 512:256:32"
+  "0.6B Qwen3-0.6B 32 131072 32 64:256:1 512:256:8 512:256:32"
   "0.6B-c128 Qwen3-0.6B 128 131072 256 512:256:128"
-  "1.7B Qwen3-1.7B 32 131072 32 64:256:1 512:256:32"
-  "8B Qwen3-8B 32 32768 32 64:256:1 512:256:32" )
+  "1.7B Qwen3-1.7B 32 131072 32 64:256:1 512:256:8 512:256:32 2048:256:16 4096:128:4 2048:128:8"
+  "1.7B-c64 Qwen3-1.7B 64 131072 128 512:256:64"
+  "8B Qwen3-8B 32 32768 32 64:256:1 512:256:8 512:256:32" )
 for c in "${configs[@]}"; do
   read -r name model maxreq pool num work <<< "$c"
   for l in $(seq 1 $launches); do

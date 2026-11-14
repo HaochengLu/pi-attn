@@ -7,7 +7,7 @@ set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../env.sh"
 launches=${1:-3}
 port=18096
-out=$ROOT/results/e2e_highconc
+out=${PI_RESULTS:-$ROOT/results}/e2e_highconc  # PI_RESULTS: another results directory (e.g. results/a800_r5)
 mkdir -p $out
 declare -A pool=( [Qwen3-0.6B]=131072 [Qwen3-1.7B]=131072 [Qwen3-4B]=65536 )
 declare -A work=(

@@ -70,6 +70,7 @@ mod ffi {
         pub fn pi_attn_decode_groups(max_kv_len: i64) -> i32;
         pub fn pi_attn_decode_plan(
             batch: i32,
+            num_qo_heads: i32,
             num_kv_heads: i32,
             capacity: i64,
             max_kv_len: i64,
@@ -317,7 +318,7 @@ pub(crate) fn decode_groups(table_columns: i64, page_size: i64) -> i64 {
 /// has at most `bound` keys (and more than the previous bound) launches the same kernel,
 /// named by `plan`. The last bound is the capacity. Every plan gives the same bits; a
 /// decode graph is captured per distinct plan and chosen by the step's longest request.
-pub(crate) fn decode_plans(batch: i64, num_kv_heads: i64, capacity: i64) -> Vec<(usize, u32)> {
+pub(crate) fn decode_plans(batch: i64, num_heads: i64, num_kv_heads: i64, capacity: i64) -> Vec<(usize, u32)> {
     #[cfg(has_pi)]
     {
         let mut plans = Vec::new();
@@ -325,7 +326,14 @@ pub(crate) fn decode_plans(batch: i64, num_kv_heads: i64, capacity: i64) -> Vec<
         while length <= capacity {
             let mut bound = length;
             let plan = unsafe {
-                ffi::pi_attn_decode_plan(batch as i32, num_kv_heads as i32, capacity, length, &mut bound)
+                ffi::pi_attn_decode_plan(
+                    batch as i32,
+                    num_heads as i32,
+                    num_kv_heads as i32,
+                    capacity,
+                    length,
+                    &mut bound,
+                )
             };
             plans.push((bound.max(length) as usize, plan as u32));
             length = bound.max(length) + 1;
@@ -334,7 +342,7 @@ pub(crate) fn decode_plans(batch: i64, num_kv_heads: i64, capacity: i64) -> Vec<
     }
     #[cfg(not(has_pi))]
     {
-        let _ = (batch, num_kv_heads);
+        let _ = (batch, num_heads, num_kv_heads);
         vec![(capacity.max(1) as usize, 0)]
     }
 }

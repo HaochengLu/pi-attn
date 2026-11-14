@@ -39,8 +39,12 @@ VARIANTS = [v for v in (1, 2, 3, 4)
             if ext.prefill_smem_bytes(v) <= torch.cuda.get_device_properties(0).shared_memory_per_block_optin]
 VARIANTS += [5, 6, 7] if ext.WGMMA else []
 # Decode kernels forced one by one after the device's choice: 1 = decode_kernel, 2 = decode90_kernel wherever
-# it can run (sm_90a builds: Hopper; batch * kv heads <= SMs), else decode_kernel.
-DECODE_VARIANTS = [1, 2] if ext.WGMMA else []
+# it can run (sm_90a builds: Hopper; batch * kv heads <= SMs), else decode_kernel; on other builds whose GPU has
+# the 138 KB of shared memory decode16_kernel takes (sm_80), 3 = decode16_kernel wherever it can run (batch * kv
+# heads <= SMs, GQA group <= 8), else decode_kernel, 4 = the same without helper CTAs.
+DECODE_VARIANTS = [1, 2] if ext.WGMMA else [1, 3, 4] if ext.decode16_fits() else []
+# Prefill grid orders of prefill_kernel forced one by one in the split check: 1 = ascending, 2 = longest first.
+PREFILL_ORDERS = (1, 2)
 # PI error vs float64 may exceed FlashInfer's by at most this factor (mean, max).
 ACC_SLACK = (1.05, 1.25)
 # Decode arrival counters, shared by every call as in the engine: each call must
@@ -188,10 +192,10 @@ def run_checks():
     alone = {L: prefill(pool, [(seqs[L][0], pages[L], L)])[0] for L in lens}
 
     # batch: all requests in one prefill batch, shuffled order.
-    order = lens[:]
-    random.shuffle(order)
-    batched = prefill(pool, [(seqs[L][0], pages[L], L) for L in order])
-    for L, out in zip(order, batched):
+    order_list = lens[:]
+    random.shuffle(order_list)
+    batched = prefill(pool, [(seqs[L][0], pages[L], L) for L in order_list])
+    for L, out in zip(order_list, batched):
         if not same(out, alone[L]):
             fails.append(("batch", L))
 
@@ -211,13 +215,22 @@ def run_checks():
             fails.append(("chunk+prefix", L))
 
     # split / variant: prefill forced over 1..7 split CTAs per row tile, with every
-    # prefill kernel variant (Q in smem / registers, 4 / 8 warps), vs the planner's run.
+    # prefill kernel variant (Q in smem / registers, 4 / 8 warps) in either grid order, vs the planner's run;
+    # and the shuffled batch again in either order.
     for VARIANT in VARIANTS:
         for KVSPLITS in (1, 2, 3, 7):
-            for L in lens:
-                if not same(prefill(pool, [(seqs[L][0], pages[L], L)])[0], alone[L]):
-                    fails.append(("split", VARIANT, L, KVSPLITS))
+            for order in PREFILL_ORDERS if VARIANT <= 4 else (0,):
+                ext.set_prefill_order(order)
+                for L in lens:
+                    if not same(prefill(pool, [(seqs[L][0], pages[L], L)])[0], alone[L]):
+                        fails.append(("split", VARIANT, L, KVSPLITS, order))
     KVSPLITS, VARIANT = 0, 0
+    for order in PREFILL_ORDERS:
+        ext.set_prefill_order(order)
+        for L, out in zip(order_list, prefill(pool, [(seqs[L][0], pages[L], L) for L in order_list])):
+            if not same(out, alone[L]):
+                fails.append(("batch", "order", order, L))
+    ext.set_prefill_order(0)
 
     # path + batch: decode token p (cache holds 0..p) vs prefill row p, for every position of
     # every request (a one-ulp fp32 difference reaches the bf16 output only rarely, so the check
@@ -237,7 +250,8 @@ def run_checks():
             if not same(decode(pool, [(seqs[L][0][p:p + 1].contiguous(), pages[L], p + 1)])[0][0], alone[L][p]):
                 fails.append(("path alone", L, p))
     # The same check with each decode kernel forced, in batches of at most 16 requests: one fold group per CTA
-    # for a few requests, several groups in turn per CTA of decode90_kernel for many.
+    # for a few requests, several groups in turn per CTA of decode90_kernel / decode16_kernel for many (and, for
+    # decode16_kernel, last groups on helper CTAs).
     for variant in DECODE_VARIANTS:
         ext.set_decode_variant(variant)
         probes = [(L, p) for L in lens for p in range(L)]

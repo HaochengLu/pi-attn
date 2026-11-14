@@ -19,7 +19,7 @@ __device__ __forceinline__ const int32_t* request_pages(const int32_t* kv_page_i
   return kv_page_indices + (kv_page_indptr ? (int64_t)kv_page_indptr[b] : (int64_t)b * table_stride);
 }
 
-// Prefill / extend. grid = (row tiles of WARPS * 16, num_kv_heads, batch * kv_splits),
+// Prefill / extend. grid = prefill_grid(row tiles of WARPS * 16, num_kv_heads, batch * kv_splits, ..),
 // WARPS (4 or 8) warps of 16 rows; the first 128 threads copy the K/V tiles. The rows of a CTA are the (token, query head) pairs of one kv
 // head's GQA group, token-major (row r: token r / group, head kv_head * group +
 // r % group), so each K/V tile is loaded once per kv head. Token i of request b
@@ -78,6 +78,24 @@ inline bool prefill_tail_splits(int cc_major, int cc_minor) {
   return !(cc_major == 8 && cc_minor == 0) && !(cc_major == 9 && cc_minor == 0);
 }
 
+// Grid order of a prefill launch (scheduling only). A causal row tile runs as many key tiles as its position, and
+// CTAs are dispatched in grid order (x fastest). Ascending (row tile fastest), the last CTAs of a launch are the
+// longest and run with idle SMs beside them. Longest first (row tiles descending in the slowest index, the kv
+// heads of a row tile together), the long CTAs start first and the short ones fill the SMs behind them: on an
+// A800 4-24% less time for one to eight requests prefilled from an empty or short prefix. But it takes the row
+// tiles of a (request, kv head), which read the same K/V, apart: when the launch's K/V exceed L2 every row-tile
+// level streams them from DRAM again (4-9% more time), and split launches (short extends over long prefixes,
+// whose CTAs all run about as long) measured 1-27% slower. So: compute capability 8.0, one split, and K/V within
+// L2 (archive/ceiling_probes/a800_r5/prefill_order). max_groups: prefill_plan's.
+inline bool prefill_longest_first(int cc_major, int cc_minor, int batch, int num_kv_heads, int max_groups, int splits,
+                                  int64_t l2_bytes) {
+  const int64_t kv_bytes = (int64_t)batch * max_groups * kGroupKeys * num_kv_heads * kHeadDim * 2 * 2;
+  return cc_major == 8 && cc_minor == 0 && splits == 1 && kv_bytes <= l2_bytes;
+}
+inline dim3 prefill_grid(int row_tiles, int num_kv_heads, int batch_splits, bool longest_first) {
+  return longest_first ? dim3(num_kv_heads, batch_splits, row_tiles) : dim3(row_tiles, num_kv_heads, batch_splits);
+}
+
 template <bool QREG, int WARPS = kPrefillWarps>
 __global__ void __launch_bounds__(WARPS * 32, WARPS == 4 ? 2 : 1)
     prefill_kernel(const __nv_bfloat16* __restrict__ q, __nv_bfloat16* __restrict__ out,
@@ -86,15 +104,17 @@ __global__ void __launch_bounds__(WARPS * 32, WARPS == 4 ? 2 : 1)
                     const int32_t* __restrict__ kv_page_indices, int64_t table_stride,
                     const int32_t* __restrict__ kv_lens, const int32_t* __restrict__ prefix_lens,
                     int num_qo_heads, int num_kv_heads, int page_size, int page_shift, float scale_log2,
-                    int kv_splits, float* __restrict__ ws_o, float2* __restrict__ ws_ml, int max_groups) {
+                    int kv_splits, float* __restrict__ ws_o, float2* __restrict__ ws_ml, int max_groups,
+                    bool longest_first) {
   constexpr int kRows = WARPS * 16, kThreads = WARPS * 32;
   extern __shared__ __align__(16) __nv_bfloat16 smem[];
   __nv_bfloat16* sQ = smem;
   __nv_bfloat16* sK = sQ + kRows * kHeadDim;  // slots 0, 1 (kTile x 128 each)
   __nv_bfloat16* sV = sK + 2 * kTile * kHeadDim;  // slots 0, 1
   float* sTot = reinterpret_cast<float*>(sV + 2 * kTile * kHeadDim);  // QREG: [warp][n][i][lane]
-  const int b = blockIdx.z / kv_splits, split = blockIdx.z % kv_splits;
-  const int kvh = blockIdx.y, tile = blockIdx.x;
+  const int bs = longest_first ? blockIdx.y : blockIdx.z;  // prefill_grid
+  const int b = bs / kv_splits, split = bs % kv_splits;
+  const int kvh = longest_first ? blockIdx.x : blockIdx.y, tile = longest_first ? gridDim.z - 1 - blockIdx.z : blockIdx.x;
   const int group = num_qo_heads / num_kv_heads;
   const int q0 = qo_indptr[b], q_len = qo_indptr[b + 1] - q0;
   const int rows_total = q_len * group;
@@ -414,7 +434,7 @@ inline dim3 decode_grid(int max_groups, int num_kv_heads, int batch) {
 }
 constexpr int kDecodeWarps = 4;
 // The kernel of a decode launch: 1 = decode_kernel, 2 = decode90_kernel (pi_attn_sm90.cuh: decode_kernel's
-// program for a fold group on 16 warps, the same bits). Scheduling only. decode90_kernel takes one SM per CTA
+// program for a fold group on 16 warps, the same bits), 3 = decode16_kernel (below). Scheduling only. decode90_kernel takes one SM per CTA
 // and is faster only while every fold group of the launch runs at once on an SM of its own, and not for the
 // shortest requests. What decides is the launch's longest request, which the host knows: max_kv_len is an
 // upper bound of the launch's kv lengths (the engine passes the longest running request of the step and
@@ -424,13 +444,48 @@ constexpr int kDecodeWarps = 4;
 // from 192 keys on (from 320 keys when the launch takes more than half the SMs: 16 requests of 8 kv heads),
 // below that 2-15% slower; with more groups than SMs it is up to 40% slower.
 constexpr int kD90MinKeys = 192, kD90MinKeysFull = 320;
-inline int decode_plan(int cc_major, int cc_minor, int batch, int max_groups, int num_kv_heads, int sms,
-                       int64_t max_kv_len) {
-#ifdef PI_SM90A
-  if (cc_major != 9 || cc_minor != 0) return 1;
+// 3 = decode16_kernel (pi_attn_decode16.cuh: the same program for a fold group on 16 warps, the keys in the mma's
+// 16-row operand; the same bits), on compute capability 8.0 for GQA groups of at most 8. Its CTAs take an SM each: `slots` column CTAs per (request,
+// kv head) - as many as fit one wave, at most a CTA per fold group - and, when that is one and the SMs the columns
+// leave free hold a helper CTA for every two columns, `helper_rows` rows of num_kv_heads helper CTAs. Column CTA j
+// runs its request's fold groups j, j + slots, ... one after the other; with helpers, a request with more than
+// one group hands its last group, the short one, to a helper row: row r runs the last groups of the requests r
+// and r + helper_rows. Which CTA runs a group changes no value. slots == 0: the launch does not fit
+// (decode_kernel runs it).
+struct Decode16Layout {
+  int slots, helper_rows;
+};
+inline Decode16Layout decode16_layout(int batch, int num_kv_heads, int max_groups, int sms, bool with_helpers = true) {
+  const int cols = std::max(batch * num_kv_heads, 1);
+  const int slots = std::min(max_groups, sms / cols);
+  const int rows = with_helpers && slots == 1 && max_groups > 1 && batch > 1
+                       ? std::min(batch, (sms - cols) / std::max(num_kv_heads, 1)) : 0;
+  return {slots, 2 * rows >= batch ? rows : 0};
+}
+inline dim3 decode16_grid(Decode16Layout l, int num_kv_heads, int batch) {
+  return decode_group_fastest(batch) ? dim3(l.slots, num_kv_heads, 1) : dim3(num_kv_heads, batch + l.helper_rows, l.slots);
+}
+// Measured on an A800 (108 SMs) with the engine's capacity of 16 groups (archive/ceiling_probes/a800_r5/decode16):
+// with a CTA per fold group in one wave decode16_kernel takes 0.48-0.97x decode_kernel's time (1 to 13 requests of
+// 8 kv heads, 96 to 6656 keys). With one group more than CTAs per column: one CTA per column (7 to 13 requests),
+// 0.67-0.93x while that group has at most 256 keys; several CTAs per column, 0.89-0.96x at 128 keys and
+// 0.95-1.02x at 256; 0.97-1.11x when the group is full. With more groups it is slower.
+constexpr int kD16LastKeys = 256, kD16LastKeysSlots = 128;
+constexpr int kD16MaxGroup = 8;  // GQA rows per kv head decode16_kernel takes (the mma's 8 columns)
+inline int decode_plan(int cc_major, int cc_minor, int batch, int max_groups, int num_qo_heads, int num_kv_heads,
+                       int sms, int64_t max_kv_len) {
   const int64_t capacity = (int64_t)max_groups * kGroupKeys;
   if (max_kv_len <= 0 || max_kv_len > capacity) max_kv_len = capacity;
   const int64_t groups = (max_kv_len + kGroupKeys - 1) / kGroupKeys, ctas = (int64_t)batch * num_kv_heads;
+  if (cc_major == 8 && cc_minor == 0) {
+    if (num_qo_heads > kD16MaxGroup * num_kv_heads) return 1;
+    const Decode16Layout l = decode16_layout(batch, num_kv_heads, max_groups, sms);
+    if (l.slots < 1) return 1;
+    const int last = l.slots == 1 ? kD16LastKeys : kD16LastKeysSlots;
+    return groups <= l.slots || (groups == l.slots + 1 && max_kv_len <= l.slots * kGroupKeys + last) ? 3 : 1;
+  }
+#ifdef PI_SM90A
+  if (cc_major != 9 || cc_minor != 0) return 1;
   if (ctas * groups <= sms && max_kv_len >= (2 * ctas <= sms ? kD90MinKeys : kD90MinKeysFull)) return 2;
 #endif
   return 1;
@@ -657,6 +712,8 @@ __global__ void __launch_bounds__(kDecodeWarps * 32)
 }
 
 }  // namespace pi_attn
+
+#include "pi_attn_decode16.cuh"
 
 #ifdef PI_SM90A
 #include "pi_attn_sm90.cuh"

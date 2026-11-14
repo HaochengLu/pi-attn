@@ -21,7 +21,7 @@ import test_invariance as T
 from build import cuda_build_flags
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SOURCES = ("pi_attn_torch.cu", "pi_attn_kernels.cu", "pi_attn.cuh", "pi_attn_sm90.cuh")
+SOURCES = ("pi_attn_torch.cu", "pi_attn_kernels.cu", "pi_attn.cuh", "pi_attn_decode16.cuh", "pi_attn_sm90.cuh")
 # The kernel the planner's prefill runs: on an sm_90a build (Hopper) the wgmma kernel, which has the same line.
 PREFILL_FILE = "pi_attn_sm90.cuh" if T.ext.WGMMA else "pi_attn_kernels.cu"
 
@@ -65,6 +65,18 @@ if T.ext.WGMMA:
                                      "      D0 = __fmaf_rn(D0, sScale[lt * 16 + g], sLS[lt * 16 + g]);",
                                      "      D0 = __fadd_rn(__fmul_rn(D0, sScale[lt * 16 + g]), sLS[lt * 16 + g]);",
                                      {"path"})
+if 3 in T.DECODE_VARIANTS:
+    # decode16_kernel (sm_80, small batches) forms d with two roundings, as the decode90_kernel mutant does.
+    MUTANTS["decode16_d_unfused"] = ("pi_attn_decode16.cuh",
+                                     "Dd = __fmaf_rn(Dd, sScale[lt * 8 + lane], sLS[lt * 8 + lane]);",
+                                     "Dd = __fadd_rn(__fmul_rn(Dd, sScale[lt * 8 + lane]), sLS[lt * 8 + lane]);",
+                                     {"path"})
+    # decode16_kernel runs the two key k-steps of a tile's P V in descending order: the operands may swap, the
+    # k order may not.
+    MUTANTS["decode16_pv_k_reversed"] = ("pi_attn_decode16.cuh",
+                                         "      for (int j = 0; j < kTileKS; ++j) {\n        uint32_t av[4];",
+                                         "      for (int j = kTileKS - 1; j >= 0; --j) {\n        uint32_t av[4];",
+                                         {"path"})
 # PI_MUTANTS=name,name runs a subset.
 if os.environ.get("PI_MUTANTS"):
     MUTANTS = {k: MUTANTS[k] for k in os.environ["PI_MUTANTS"].split(",")}

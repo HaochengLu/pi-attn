@@ -450,6 +450,7 @@ impl AttentionBackend for PiAttentionBackend {
             .ok_or_else(|| model_error("PI decode requires block_table"))?;
         Ok(crate::kernels::pi::decode_plans(
             table.size()[0],
+            spec.num_heads,
             spec.num_kv_heads,
             table.stride()[0].max(table.size()[1]) * page_size,
         ))

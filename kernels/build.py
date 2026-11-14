@@ -2,7 +2,8 @@
 
 A compute-capability 9.0 GPU (Hopper) builds for sm_90a with PI_SM90A defined, which adds the wgmma kernels
 (gemm_sm90.cuh, pi_attn_sm90.cuh; the mma.sync kernels are compiled as before). They need CUTLASS's sm90
-headers (shipped with the FlashInfer wheel) and, for the TMA descriptors, libcuda (cuTensorMapEncodeTiled)."""
+headers (shipped with the FlashInfer wheel) and, for the TMA descriptors, libcuda (cuTensorMapEncodeTiled).
+Probe builds next to the shipped one: PI_ATTN_SUFFIX names another extension, PI_ATTN_CFLAGS adds nvcc flags."""
 import os
 
 import torch
@@ -29,10 +30,10 @@ def cuda_build_flags(arch=None):
 def build(verbose=False):
     arch, cflags, includes, ldflags = cuda_build_flags(os.environ.get("PI_ATTN_ARCH"))
     return load(
-        name=f"pi_attn_ext_sm{arch}",
+        name=f"pi_attn_ext_sm{arch}" + os.environ.get("PI_ATTN_SUFFIX", ""),
         sources=[os.path.join(HERE, "pi_attn_torch.cu")],
         extra_include_paths=[HERE] + includes,
-        extra_cuda_cflags=cflags + ["-lineinfo"],
+        extra_cuda_cflags=cflags + ["-lineinfo"] + os.environ.get("PI_ATTN_CFLAGS", "").split(),
         extra_ldflags=ldflags,
         build_directory=os.environ.get("PI_ATTN_BUILD_DIR") or None,
         verbose=verbose,

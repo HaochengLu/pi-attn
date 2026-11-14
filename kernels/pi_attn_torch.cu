@@ -25,6 +25,12 @@ static int page_shift_of(int page_size) {
   return page_size > 0 && (page_size & (page_size - 1)) == 0 ? __builtin_ctz(page_size) : -1;
 }
 
+static int smem_optin(const at::Tensor& t) {
+  int bytes = 0;
+  cudaDeviceGetAttribute(&bytes, cudaDevAttrMaxSharedMemoryPerBlockOptin, t.get_device());
+  return bytes;
+}
+
 static int sm_count(const at::Tensor& t) {
   int sms = 0;
   cudaDeviceGetAttribute(&sms, cudaDevAttrMultiProcessorCount, t.get_device());
@@ -38,6 +44,10 @@ static int sm_count(const at::Tensor& t) {
 // the same with 8 warps (128 rows) per CTA; sm_90a builds on compute capability 9.0 only: 5 = the wgmma kernel
 // of 64 rows per CTA, 6 / 7 = the warp-specialised wgmma kernel with 3 / 2 consumer warp groups (192 / 128 rows
 // per CTA; the device's choice is one of the three, prefill90w_wg); all give the same bits.
+// Prefill grid order of prefill_kernel: 0 = the engine's choice for this device and launch (prefill_longest_first),
+// 1 = ascending, 2 = longest first; the same bits.
+static int prefill_order = 0;
+
 at::Tensor prefill(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Tensor qo_indptr,
                    at::Tensor kv_page_indptr, at::Tensor kv_page_indices, at::Tensor kv_lens,
                    int64_t max_q_len, int64_t max_kv_len, double sm_scale, int64_t kv_splits,
@@ -78,11 +88,16 @@ at::Tensor prefill(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Ten
     ws_ml = at::empty({q.size(0), hq, max_groups, 2}, q.options().dtype(at::kFloat));
   }
   auto stream = at::cuda::getCurrentCUDAStream();
-  dim3 grid(tiles, hkv, batch * splits);
+  int l2_bytes = 0;
+  cudaDeviceGetAttribute(&l2_bytes, cudaDevAttrL2CacheSize, q.get_device());
+  const bool lf = prefill_order ? prefill_order == 2
+                                : prefill_longest_first(major, minor, batch, hkv, max_groups, splits, l2_bytes);
+  dim3 grid = prefill_grid(tiles, hkv, batch * splits, lf);
 #ifdef PI_SM90A
   if (ws) grid = prefill90w_grid(tiles, hkv, batch * splits);
+  else if (wgmma) grid = dim3(tiles, hkv, batch * splits);
 #endif
-  auto launch = [&](auto kernel, int smem) {
+  auto launch = [&](auto kernel, int smem, auto... order) {
     TORCH_CHECK(cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem) == cudaSuccess,
                 "prefill variant ", variant, " needs ", smem, " bytes of shared memory, more than this GPU allows");
     kernel<<<grid, warps * 32, smem, stream>>>(
@@ -91,7 +106,7 @@ at::Tensor prefill(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Ten
         qo_indptr.data_ptr<int32_t>(), kv_page_indptr.data_ptr<int32_t>(), kv_page_indices.data_ptr<int32_t>(),
         (int64_t)0, kv_lens.data_ptr<int32_t>(), nullptr, hq, hkv, page_size, page_shift_of(page_size),
         (float)(sm_scale * 1.4426950408889634), splits, splits > 1 ? ws_o.data_ptr<float>() : nullptr,
-        splits > 1 ? (float2*)ws_ml.data_ptr<float>() : nullptr, max_groups);
+        splits > 1 ? (float2*)ws_ml.data_ptr<float>() : nullptr, max_groups, order...);
   };
   if (wgmma) {
 #ifdef PI_SM90A
@@ -100,12 +115,12 @@ at::Tensor prefill(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Ten
     else launch(prefill90_kernel, prefill90_smem_bytes());
 #endif
   } else if (warps == 8) {
-    if (qreg) launch(prefill_kernel<true, 8>, prefill_smem_bytes<true, 8>());
-    else launch(prefill_kernel<false, 8>, prefill_smem_bytes<false, 8>());
+    if (qreg) launch(prefill_kernel<true, 8>, prefill_smem_bytes<true, 8>(), lf);
+    else launch(prefill_kernel<false, 8>, prefill_smem_bytes<false, 8>(), lf);
   } else if (qreg) {
-    launch(prefill_kernel<true>, prefill_smem_bytes<true>());
+    launch(prefill_kernel<true>, prefill_smem_bytes<true>(), lf);
   } else {
-    launch(prefill_kernel<false>, prefill_smem_bytes<false>());
+    launch(prefill_kernel<false>, prefill_smem_bytes<false>(), lf);
   }
   C10_CUDA_KERNEL_LAUNCH_CHECK();
   if (splits > 1) {
@@ -119,7 +134,9 @@ at::Tensor prefill(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Ten
 
 // Decode kernel: 0 = the engine's choice for this device, batch and bound of the kv lengths (decode_plan),
 // 1 = decode_kernel, 2 = decode90_kernel wherever it can run (sm_90a builds on compute capability 9.0,
-// batch * kv heads <= SMs), else decode_kernel; both give the same bits.
+// batch * kv heads <= SMs), else decode_kernel, 3 = decode16_kernel wherever it can run (138 KB of shared memory,
+// batch * kv heads <= SMs, GQA group <= 8), else decode_kernel, 4 = the same without helper CTAs; all give the
+// same bits.
 static int decode_variant = 0;
 
 // q: [batch, Hq, 128]. Workspace ws_o [rows, Hq, 128] f32, ws_ml [rows, Hq,
@@ -149,8 +166,22 @@ at::Tensor decode(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Tens
   cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, q.get_device());
   cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, q.get_device());
   const float scale_log2 = (float)(sm_scale * 1.4426950408889634);
-  int kernel = decode_variant == 0 ? decode_plan(major, minor, batch, max_groups, hkv, sm_count(q), kv_len_bound) : 1;
-  (void)kernel;
+  int kernel = decode_variant == 0 ? decode_plan(major, minor, batch, max_groups, hq, hkv, sm_count(q), kv_len_bound) : 1;
+  if (kernel == 3 || (decode_variant >= 3 && decode16_layout(batch, hkv, max_groups, sm_count(q)).slots >= 1 &&
+                      hq <= kD16MaxGroup * hkv && decode16_smem_bytes() <= smem_optin(q))) {
+    const Decode16Layout lay = decode16_layout(batch, hkv, max_groups, sm_count(q), decode_variant != 4);
+    TORCH_CHECK(cudaFuncSetAttribute(decode16_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, decode16_smem_bytes()) == cudaSuccess,
+                "decode16_kernel needs ", decode16_smem_bytes(), " bytes of shared memory, more than this GPU allows");
+    decode16_kernel<<<decode16_grid(lay, hkv, batch), kD16Warps * 32, decode16_smem_bytes(), stream>>>(
+        (const __nv_bfloat16*)q.data_ptr(), (const __nv_bfloat16*)k_cache.data_ptr(),
+        (const __nv_bfloat16*)v_cache.data_ptr(), kv_page_indptr.data_ptr<int32_t>(),
+        kv_page_indices.data_ptr<int32_t>(), (int64_t)0, kv_lens.data_ptr<int32_t>(), ws_o.data_ptr<float>(),
+        (float2*)ws_ml.data_ptr<float>(), counters.data_ptr<int32_t>(), (__nv_bfloat16*)out.data_ptr(),
+        max_groups, hq, hkv, page_size, page_shift_of(page_size), scale_log2, decode_group_fastest(batch), batch,
+        lay.slots, lay.helper_rows);
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+    return out;
+  }
 #ifdef PI_SM90A
   if (decode_variant == 2 && major == 9 && minor == 0 && decode90_slots(batch, hkv, max_groups, sm_count(q)) >= 1)
     kernel = 2;
@@ -186,19 +217,24 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         py::arg("kv_page_indices"), py::arg("kv_lens"), py::arg("ws_o"), py::arg("ws_ml"), py::arg("counters"),
         py::arg("max_kv_len"), py::arg("sm_scale"), py::arg("kv_len_bound") = 0);
   m.def("set_decode_variant", [](int64_t v) {
-    TORCH_CHECK(v == 0 || v == 1 || v == 2, "decode variant: 0, 1 or 2");
+    TORCH_CHECK(v >= 0 && v <= 4, "decode variant: 0 to 4");
     decode_variant = (int)v;
   });
-  // The kernel decode_plan gives a launch on this device (1 or 2).
-  m.def("decode_plan", [](int64_t batch, int64_t hkv, int64_t max_kv_len, int64_t kv_len_bound) {
+  m.def("set_prefill_order", [](int64_t v) {
+    TORCH_CHECK(v >= 0 && v <= 2, "prefill order: 0, 1 or 2");
+    prefill_order = (int)v;
+  });
+  // The kernel decode_plan gives a launch on this device (1, 2 or 3).
+  m.def("decode_plan", [](int64_t batch, int64_t hkv, int64_t max_kv_len, int64_t kv_len_bound, int64_t hq) {
+    if (hq <= 0) hq = hkv;
     int dev = 0, major = 0, minor = 0, sms = 0;
     cudaGetDevice(&dev);
     cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, dev);
     cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, dev);
     cudaDeviceGetAttribute(&sms, cudaDevAttrMultiProcessorCount, dev);
-    return decode_plan(major, minor, (int)batch, (int)((max_kv_len + kGroupKeys - 1) / kGroupKeys), (int)hkv, sms,
-                       kv_len_bound);
-  });
+    return decode_plan(major, minor, (int)batch, (int)((max_kv_len + kGroupKeys - 1) / kGroupKeys), (int)hq, (int)hkv,
+                       sms, kv_len_bound);
+  }, py::arg("batch"), py::arg("hkv"), py::arg("max_kv_len"), py::arg("kv_len_bound"), py::arg("hq") = 0);
   // Shared memory a prefill variant (1-4) needs per CTA; tests skip variants the GPU cannot run.
   m.def("prefill_smem_bytes", [](int64_t variant) {
     TORCH_CHECK(variant >= 1 && variant <= 4, "variant: 1 to 4");
@@ -212,6 +248,13 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
 #else
   m.attr("WGMMA") = false;
 #endif
+  // Whether this GPU can run decode16_kernel (decode variants 3 and 4).
+  m.def("decode16_fits", []() {
+    int dev = 0, bytes = 0;
+    cudaGetDevice(&dev);
+    cudaDeviceGetAttribute(&bytes, cudaDevAttrMaxSharedMemoryPerBlockOptin, dev);
+    return decode16_smem_bytes() <= bytes;
+  });
   m.attr("TILE") = kTile;
   m.attr("DECODE_WARPS") = kDecodeWarps;
   m.attr("GROUP_KEYS") = kGroupKeys;

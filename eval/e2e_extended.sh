@@ -7,7 +7,7 @@ set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../env.sh"
 launches=${1:-3}
 port=18096
-out=$ROOT/results/e2e_extended
+out=${PI_RESULTS:-$ROOT/results}/e2e_extended  # PI_RESULTS: another results directory (e.g. results/a800_r5)
 mkdir -p $out
 declare -A pool=( [Qwen3-1.7B]=131072 [Qwen3-8B]=32768 )
 declare -A seqlen=( [Qwen3-1.7B]=32768 [Qwen3-8B]=16384 )

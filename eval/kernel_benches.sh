@@ -2,7 +2,7 @@
 # Kernel-level benchmarks with stored outputs (results/kernels/).
 set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../env.sh"
-out=$ROOT/results/kernels
+out=${PI_RESULTS:-$ROOT/results}/kernels  # PI_RESULTS: another results directory (e.g. results/a800_r5)
 mkdir -p $out
 cd $ROOT/kernels
 python bench_attention.py --out $out/attention.json > $out/attention.txt 2>&1; echo "attention exit=$?"
