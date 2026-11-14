@@ -1,0 +1,6 @@
+[run_gpu] workstream gemm2: $0.06 of $2.50
+[run_gpu] start L4 gemm2:compile_L4b: ledger $30.42, gateway $29.42, budget $40.00
+build exit=0
+probe ext build 215s
+
+[run_gpu] L4 gemm2:compile_L4b: exit=0 wall=265s cost~$0.137 ledger=$30.56

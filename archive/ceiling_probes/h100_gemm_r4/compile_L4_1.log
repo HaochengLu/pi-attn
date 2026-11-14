@@ -1,0 +1,11 @@
+[run_gpu] workstream gemm2: $0.00 of $2.50
+[run_gpu] start L4 gemm2:compile_L4: ledger $30.37, gateway $29.30, budget $40.00
+build exit=1
+/venv/lib/python3.12/site-packages/flashinfer/data/cutlass/include/cute/int_tuple.hpp(408): error: static assertion failed with "Divisibility Condition"
+1 error detected in the compilation of "/work/probe_r4.cu".
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['ninja', '-v', '-j', '16']' returned non-zero exit status 2.
+    raise RuntimeError(message) from e
+RuntimeError: Error building extension 'probe_r4'
+
+[run_gpu] L4 gemm2:compile_L4: exit=0 wall=108s cost~$0.056 ledger=$30.42

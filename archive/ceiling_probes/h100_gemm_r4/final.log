@@ -1,0 +1,32 @@
+[run_gpu] workstream gemm2: $0.90 of $2.50
+[run_gpu] start H100 gemm2:final: ledger $31.87, gateway $29.38, budget $40.00
+NVIDIA H100 80GB HBM3, 610.57.04
+patch applied
+gemm ext build + import exit=0 (234s)
+HASHX launches per id: {1: 108, 13: 108, 90: 96, 91: 96, 92: 96, 93: 96, 94: 96, 95: 12, 96: 12, 97: 12, 98: 96, 99: 96, 100: 96, 101: 96, 102: 96, 103: 96, 104: 96, 105: 96, 106: 96, 107: 96, 108: 96, 109: 96, 110: 96, 111: 96, 112: 96, 113: 48, 114: 48, 115: 24, 116: 24, 117: 24, 118: 24, 119: 24, 120: 24}
+HASHX 2412 launches (ids 1, 13 and every wgmma id) over 108 cases; hashes differing from hashes_H100.json: 0 []
+TABLE M=  128 us/launch: qkv cublas 8.8 before k105:9.6 (1.09) after k114:9.3 (1.06) | o cublas 6.5 before k104:6.8 (1.05) after k113:6.6 (1.01) | gate_up cublas 21.8 before k107:22.8 (1.04) after k114:22.5 (1.03) | down cublas 14.5 before k104:15.3 (1.05) after k113:13.6 (0.94)
+TABLE M=  128 x28 layers: cuBLAS 1447 us, before 1527 (1.055x), after 1454 (1.005x)
+TABLE M=  192 us/launch: qkv cublas 9.3 before k109:11.1 (1.20) after k109:11.1 (1.20) | o cublas 8.0 before k105:8.4 (1.05) after k114:7.6 (0.94) | gate_up cublas 23.1 before k110:25.6 (1.11) after k110:25.6 (1.11) | down cublas 14.6 before k105:20.2 (1.38) after k114:16.7 (1.14)
+TABLE M=  192 x28 layers: cuBLAS 1540 us, before 1828 (1.187x), after 1707 (1.109x)
+TABLE M=  256 us/launch: qkv cublas 10.5 before k106:11.9 (1.13) after k115:11.1 (1.06) | o cublas 6.7 before k105:8.9 (1.32) after k114:7.8 (1.16) | gate_up cublas 24.3 before k108:27.5 (1.13) after k116:27.2 (1.12) | down cublas 17.5 before k105:21.1 (1.21) after k114:17.4 (1.00)
+TABLE M=  256 x28 layers: cuBLAS 1653 us, before 1945 (1.177x), after 1777 (1.075x)
+TABLE M=  512 us/launch: qkv cublas 13.3 before k91:16.2 (1.21) after k117:15.6 (1.17) | o cublas 10.3 before k106:11.3 (1.10) after k115:10.5 (1.02) | gate_up cublas 37.2 before k108:43.8 (1.18) after k118:42.9 (1.15) | down cublas 25.0 before k106:28.9 (1.16) after k115:23.9 (0.95)
+TABLE M=  512 x28 layers: cuBLAS 2405 us, before 2807 (1.167x), after 2599 (1.081x)
+TABLE M= 1024 us/launch: qkv cublas 24.1 before k90:27.2 (1.13) after k119:27.1 (1.13) | o cublas 13.3 before k91:15.0 (1.13) after k91:15.0 (1.13) | gate_up cublas 71.2 before k90:78.6 (1.10) after k118:76.0 (1.07) | down cublas 34.7 before k91:36.8 (1.06) after k117:36.6 (1.06)
+TABLE M= 1024 x28 layers: cuBLAS 4011 us, before 4414 (1.100x), after 4332 (1.080x)
+TABLE M= 2048 us/launch: qkv cublas 46.1 before k90:50.9 (1.11) after k90:50.9 (1.11) | o cublas 24.8 before k91:26.8 (1.08) after k91:26.8 (1.08) | gate_up cublas 136.0 before k90:144.6 (1.06) after k90:144.6 (1.06) | down cublas 70.4 before k90:69.1 (0.98) after k119:68.6 (0.97)
+TABLE M= 2048 x28 layers: cuBLAS 7764 us, before 8161 (1.051x), after 8147 (1.049x)
+TABLE M= 2304 us/launch: qkv cublas 51.8 before k108:58.0 (1.12) after k108:58.0 (1.12) | o cublas 27.2 before k111:30.1 (1.10) after k111:30.1 (1.10) | gate_up cublas 153.8 before k108:172.8 (1.12) after k120:165.0 (1.07) | down cublas 72.5 before k111:76.7 (1.06) after k111:76.7 (1.06)
+TABLE M= 2304 x28 layers: cuBLAS 8549 us, before 9453 (1.106x), after 9233 (1.080x)
+TABLE M= 4096 us/launch: qkv cublas 93.8 before k90:102.1 (1.09) after k119:98.7 (1.05) | o cublas 45.9 before k90:50.8 (1.11) after k90:50.8 (1.11) | gate_up cublas 278.5 before k90:291.4 (1.05) after k90:291.4 (1.05) | down cublas 137.9 before k90:135.7 (0.98) after k90:135.7 (0.98)
+TABLE M= 4096 x28 layers: cuBLAS 15572 us, before 16240 (1.043x), after 16145 (1.037x)
+cold_table exit=0 (333s)
+test_gemm exit=0 (363s)
+72
+INVARIANCE FAILURES: 0 []
+3.5-4B down   N=  2560 K= 9216: max|err| pi(fp32 out) 9.59e-05 pi(bf16) 3.00e-02 cublas(bf16) 3.00e-02
+3.5-4B lm_head N=248320 K= 2560: max|err| pi(fp32 out) 1.95e-05 pi(bf16) 1.56e-02 cublas(bf16) 1.56e-02
+INVARIANCE FAILURES: 0 []
+
+[run_gpu] H100 gemm2:final: exit=0 wall=395s cost~$0.654 ledger=$33.17
