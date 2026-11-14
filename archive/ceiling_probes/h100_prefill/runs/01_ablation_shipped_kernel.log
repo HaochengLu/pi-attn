@@ -1,0 +1,10 @@
+[run_gpu] workstream pre: $0.00 of $14.00
+[run_gpu] start H100 pre:abl1: ledger $0.08, gateway $0.23, budget $40.00
+NVIDIA H100 80GB HBM3
+PRE hq=32 b=1 q=4096 prefix=0: FI {'auto': 306.2, 'auto_is': 'fa3', 'fa2': 527.8, 'fa3': 311.7} | mma4w 799.5 | mma8w 748.3 | mma8wQ 709.7 | v5 706.1 | nocopy 531.2 | noS 641.8 | noPV 652.1 | noMMA 588.7 | noSoft 450.7 | noResc 633.2 | softOnly 441.4 | mmaOnly 233.1 | copyOnly 346.1
+PRE hq=32 b=1 q=1024 prefix=0: FI {'auto': 37.6, 'auto_is': 'fa3', 'fa2': 59.6, 'fa3': 37.6} | mma4w 79.5 | mma8w 79.8 | mma8wQ 77.8 | v5 73.8 | nocopy 56.2 | noS 66.7 | noPV 78.8 | noMMA 69.8 | noSoft 47.6 | noResc 65.4 | softOnly 55.6 | mmaOnly 28.5 | copyOnly 35.7
+PRE hq=32 b=8 q=1024 prefix=0: FI {'auto': 209.4, 'auto_is': 'fa3', 'fa2': 290.9, 'fa3': 215.2} | mma4w 449.3 | mma8w 432.6 | mma8wQ 417.8 | v5 411.2 | nocopy 325.0 | noS 373.3 | noPV 463.0 | noMMA 444.2 | noSoft 274.2 | noResc 365.9 | softOnly 384.2 | mmaOnly 148.7 | copyOnly 213.4
+PRE hq=16 b=1 q=2048 prefix=0: FI {'auto': 63.0, 'auto_is': 'fa3', 'fa2': 111.0, 'fa3': 63.0} | mma4w 144.3 | mma8w 144.9 | mma8wQ 140.2 | v5 131.3 | nocopy 100.9 | noS 121.7 | noPV 130.2 | noMMA 115.8 | noSoft 85.5 | noResc 117.5 | softOnly 89.4 | mmaOnly 44.9 | copyOnly 63.6
+PRE hq=32 b=1 q=128 prefix=4096: FI {'auto': 65.9, 'auto_is': 'fa3', 'fa2': 49.3, 'fa3': 65.8} | mma4w 65.7 | mma8w 68.3 | mma8wQ 65.2 | v5 140.3 | nocopy 95.3 | noS 135.9 | noPV 126.3 | noMMA 114.8 | noSoft 108.4 | noResc 127.0 | softOnly 64.2 | mmaOnly 39.4 | copyOnly 93.4
+
+[run_gpu] H100 pre:abl1: exit=0 wall=246s cost~$0.407 ledger=$0.72

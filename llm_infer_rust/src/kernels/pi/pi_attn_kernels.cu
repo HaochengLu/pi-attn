@@ -50,8 +50,9 @@ constexpr int prefill_smem_bytes() {
 // (results/a800/kernels/prefill_configs.txt); elsewhere the 48 KB one, the only one
 // of which two CTAs fit in sm_89's 100 KB.
 inline bool prefill_qreg(int cc_major, int cc_minor) { return cc_major == 8 && cc_minor == 0; }
-// Whether a device runs prefill90_kernel (pi_attn_sm90.cuh: this kernel's 48 KB variant with wgmma): an
-// sm_90a build on compute capability 9.0. It is then the device's prefill kernel at every split count.
+// Whether a device runs the wgmma prefill kernels of pi_attn_sm90.cuh (prefill90w_kernel: warp-specialised, one
+// CTA per SM; prefill90_kernel: this kernel's 48 KB variant with wgmma, for the shortest sequences): an sm_90a
+// build on compute capability 9.0. prefill90w_wg picks between them by shape, at every split count.
 inline bool prefill_wgmma(int cc_major, int cc_minor) {
 #ifdef PI_SM90A
   return cc_major == 9 && cc_minor == 0;

@@ -1,0 +1,74 @@
+[run_gpu] workstream pre: $1.77 of $14.00
+[run_gpu] start L4 pre:build2: ledger $5.58, gateway $3.26, budget $40.00
+          detected during instantiation of "void pi_attn::prefill90w_kernel<F>(const __nv_bfloat16 *, __nv_bfloat16 *, const __nv_bfloat16 *, const __nv_bfloat16 *, const int32_t *, const int32_t *, const int32_t *, int64_t, const int32_t *, const int32_t *, i
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+ptxas info    : (C7511) Potential Performance Loss: wgmma.mma_async instructions are serialized due to insufficient register resources for the wgmma pipeline in the function '_ZN7pi_attn17prefill90w_kernelILi128EEEvPK13__nv_bfloat16PS1_S3_S3_PKiS6_S6_lS6_S6_ii
+ptxas info    : (C7511) Potential Performance Loss: wgmma.mma_async instructions are serialized due to insufficient register resources for the wgmma pipeline in the function '_ZN7pi_attn17prefill90w_kernelILi32EEEvPK13__nv_bfloat16PS1_S3_S3_PKiS6_S6_lS6_S6_iii
+ptxas info    : (C7511) Potential Performance Loss: wgmma.mma_async instructions are serialized due to insufficient register resources for the wgmma pipeline in the function '_ZN7pi_attn17prefill90w_kernelILi16EEEvPK13__nv_bfloat16PS1_S3_S3_PKiS6_S6_lS6_S6_iii
+ptxas info    : (C7511) Potential Performance Loss: wgmma.mma_async instructions are serialized due to insufficient register resources for the wgmma pipeline in the function '_ZN7pi_attn17prefill90w_kernelILi7EEEvPK13__nv_bfloat16PS1_S3_S3_PKiS6_S6_lS6_S6_iiii
+ptxas info    : (C7511) Potential Performance Loss: wgmma.mma_async instructions are serialized due to insufficient register resources for the wgmma pipeline in the function '_ZN7pi_attn17prefill90w_kernelILi4EEEvPK13__nv_bfloat16PS1_S3_S3_PKiS6_S6_lS6_S6_iiii
+ptxas info    : (C7511) Potential Performance Loss: wgmma.mma_async instructions are serialized due to insufficient register resources for the wgmma pipeline in the function '_ZN7pi_attn17prefill90w_kernelILi3EEEvPK13__nv_bfloat16PS1_S3_S3_PKiS6_S6_lS6_S6_iiii
+ptxas info    : (C7511) Potential Performance Loss: wgmma.mma_async instructions are serialized due to insufficient register resources for the wgmma pipeline in the function '_ZN7pi_attn17prefill90w_kernelILi2EEEvPK13__nv_bfloat16PS1_S3_S3_PKiS6_S6_lS6_S6_iiii
+ptxas info    : (C7511) Potential Performance Loss: wgmma.mma_async instructions are serialized due to insufficient register resources for the wgmma pipeline in the function '_ZN7pi_attn17prefill90w_kernelILi1EEEvPK13__nv_bfloat16PS1_S3_S3_PKiS6_S6_lS6_S6_iiii
+ptxas info    : (C7511) Potential Performance Loss: wgmma.mma_async instructions are serialized due to insufficient register resources for the wgmma pipeline in the function '_ZN7pi_attn17prefill90w_kernelILi0EEEvPK13__nv_bfloat16PS1_S3_S3_PKiS6_S6_lS6_S6_iiii
+ptxas info    : (C7511) Potential Performance Loss: wgmma.mma_async instructions are serialized due to insufficient register resources for the wgmma pipeline in the function '_ZN7pi_attn16prefill90_kernel'
+ptxas info    : 12 bytes gmem
+ptxas info    : Compiling entry function '_ZN7pi_attn14prefill_kernelILb0ELi4EEEvPK13__nv_bfloat16PS1_S3_S3_PKiS6_S6_lS6_S6_iiiifiPfP6float2i' for 'sm_90a'
+ptxas info    : Function properties for _ZN7pi_attn14prefill_kernelILb0ELi4EEEvPK13__nv_bfloat16PS1_S3_S3_PKiS6_S6_lS6_S6_iiiifiPfP6float2i
+ptxas info    : Compiling entry function '_ZN7pi_attn17prefill90w_kernelILi208EEEvPK13__nv_bfloat16PS1_S3_S3_PKiS6_S6_lS6_S6_iiiifiPfP6float2i' for 'sm_90a'
+ptxas info    : Function properties for _ZN7pi_attn17prefill90w_kernelILi208EEEvPK13__nv_bfloat16PS1_S3_S3_PKiS6_S6_lS6_S6_iiiifiPfP6float2i
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 168 registers, used 16 barriers
+ptxas info    : Compiling entry function '_ZN7pi_attn17prefill90w_kernelILi80EEEvPK13__nv_bfloat16PS1_S3_S3_PKiS6_S6_lS6_S6_iiiifiPfP6float2i' for 'sm_90a'
+ptxas info    : Function properties for _ZN7pi_attn17prefill90w_kernelILi80EEEvPK13__nv_bfloat16PS1_S3_S3_PKiS6_S6_lS6_S6_iiiifiPfP6float2i
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 168 registers, used 16 barriers
+ptxas info    : Compiling entry function '_ZN7pi_attn17prefill90w_kernelILi128EEEvPK13__nv_bfloat16PS1_S3_S3_PKiS6_S6_lS6_S6_iiiifiPfP6float2i' for 'sm_90a'
+ptxas info    : Function properties for _ZN7pi_attn17prefill90w_kernelILi128EEEvPK13__nv_bfloat16PS1_S3_S3_PKiS6_S6_lS6_S6_iiiifiPfP6float2i
+    8 bytes stack frame, 12 bytes spill stores, 52 bytes spill loads
+ptxas info    : Used 168 registers, used 16 barriers, 8 bytes cumulative stack size
+ptxas info    : Compiling entry function '_ZN7pi_attn17prefill90w_kernelILi64EEEvPK13__nv_bfloat16PS1_S3_S3_PKiS6_S6_lS6_S6_iiiifiPfP6float2i' for 'sm_90a'
+ptxas info    : Function properties for _ZN7pi_attn17prefill90w_kernelILi64EEEvPK13__nv_bfloat16PS1_S3_S3_PKiS6_S6_lS6_S6_iiiifiPfP6float2i
+    80 bytes stack frame, 80 bytes spill stores, 80 bytes spill loads
+ptxas info    : Used 168 registers, used 16 barriers, 80 bytes cumulative stack size
+ptxas info    : Compiling entry function '_ZN7pi_attn17prefill90w_kernelILi32EEEvPK13__nv_bfloat16PS1_S3_S3_PKiS6_S6_lS6_S6_iiiifiPfP6float2i' for 'sm_90a'
+ptxas info    : Function properties for _ZN7pi_attn17prefill90w_kernelILi32EEEvPK13__nv_bfloat16PS1_S3_S3_PKiS6_S6_lS6_S6_iiiifiPfP6float2i
+    8 bytes stack frame, 12 bytes spill stores, 52 bytes spill loads
+ptxas info    : Used 168 registers, used 16 barriers, 8 bytes cumulative stack size
+ptxas info    : Compiling entry function '_ZN7pi_attn17prefill90w_kernelILi16EEEvPK13__nv_bfloat16PS1_S3_S3_PKiS6_S6_lS6_S6_iiiifiPfP6float2i' for 'sm_90a'
+ptxas info    : Function properties for _ZN7pi_attn17prefill90w_kernelILi16EEEvPK13__nv_bfloat16PS1_S3_S3_PKiS6_S6_lS6_S6_iiiifiPfP6float2i
+    8 bytes stack frame, 12 bytes spill stores, 32 bytes spill loads
+ptxas info    : Used 168 registers, used 16 barriers, 8 bytes cumulative stack size
+ptxas info    : Compiling entry function '_ZN7pi_attn17prefill90w_kernelILi7EEEvPK13__nv_bfloat16PS1_S3_S3_PKiS6_S6_lS6_S6_iiiifiPfP6float2i' for 'sm_90a'
+ptxas info    : Function properties for _ZN7pi_attn17prefill90w_kernelILi7EEEvPK13__nv_bfloat16PS1_S3_S3_PKiS6_S6_lS6_S6_iiiifiPfP6float2i
+    8 bytes stack frame, 12 bytes spill stores, 52 bytes spill loads
+ptxas info    : Used 168 registers, used 16 barriers, 8 bytes cumulative stack size
+ptxas info    : Compiling entry function '_ZN7pi_attn17prefill90w_kernelILi4EEEvPK13__nv_bfloat16PS1_S3_S3_PKiS6_S6_lS6_S6_iiiifiPfP6float2i' for 'sm_90a'
+ptxas info    : Function properties for _ZN7pi_attn17prefill90w_kernelILi4EEEvPK13__nv_bfloat16PS1_S3_S3_PKiS6_S6_lS6_S6_iiiifiPfP6float2i
+    8 bytes stack frame, 12 bytes spill stores, 52 bytes spill loads
+ptxas info    : Used 168 registers, used 16 barriers, 8 bytes cumulative stack size
+ptxas info    : Compiling entry function '_ZN7pi_attn17prefill90w_kernelILi3EEEvPK13__nv_bfloat16PS1_S3_S3_PKiS6_S6_lS6_S6_iiiifiPfP6float2i' for 'sm_90a'
+ptxas info    : Function properties for _ZN7pi_attn17prefill90w_kernelILi3EEEvPK13__nv_bfloat16PS1_S3_S3_PKiS6_S6_lS6_S6_iiiifiPfP6float2i
+    8 bytes stack frame, 12 bytes spill stores, 52 bytes spill loads
+ptxas info    : Used 168 registers, used 16 barriers, 8 bytes cumulative stack size
+ptxas info    : Compiling entry function '_ZN7pi_attn17prefill90w_kernelILi2EEEvPK13__nv_bfloat16PS1_S3_S3_PKiS6_S6_lS6_S6_iiiifiPfP6float2i' for 'sm_90a'
+ptxas info    : Function properties for _ZN7pi_attn17prefill90w_kernelILi2EEEvPK13__nv_bfloat16PS1_S3_S3_PKiS6_S6_lS6_S6_iiiifiPfP6float2i
+    8 bytes stack frame, 12 bytes spill stores, 52 bytes spill loads
+ptxas info    : Used 168 registers, used 16 barriers, 8 bytes cumulative stack size
+ptxas info    : Compiling entry function '_ZN7pi_attn17prefill90w_kernelILi1EEEvPK13__nv_bfloat16PS1_S3_S3_PKiS6_S6_lS6_S6_iiiifiPfP6float2i' for 'sm_90a'
+ptxas info    : Function properties for _ZN7pi_attn17prefill90w_kernelILi1EEEvPK13__nv_bfloat16PS1_S3_S3_PKiS6_S6_lS6_S6_iiiifiPfP6float2i
+    8 bytes stack frame, 12 bytes spill stores, 52 bytes spill loads
+ptxas info    : Used 168 registers, used 16 barriers, 8 bytes cumulative stack size
+ptxas info    : Compiling entry function '_ZN7pi_attn17prefill90w_kernelILi0EEEvPK13__nv_bfloat16PS1_S3_S3_PKiS6_S6_lS6_S6_iiiifiPfP6float2i' for 'sm_90a'
+ptxas info    : Function properties for _ZN7pi_attn17prefill90w_kernelILi0EEEvPK13__nv_bfloat16PS1_S3_S3_PKiS6_S6_lS6_S6_iiiifiPfP6float2i
+    8 bytes stack frame, 12 bytes spill stores, 52 bytes spill loads
+ptxas info    : Used 168 registers, used 16 barriers, 8 bytes cumulative stack size
+ptxas info    : Compiling entry function '_ZN7pi_attn16prefill90_kernel' for 'sm_90a'
+ptxas info    : Function properties for _ZN7pi_attn16prefill90_kernel
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 249 registers, used 1 barriers
+ptxas info    : Compiling entry function '_ZN7pi_attn13decode_kernel' for 'sm_90a'
+
+[run_gpu] L4 pre:build2: exit=0 wall=197s cost~$0.102 ledger=$6.34

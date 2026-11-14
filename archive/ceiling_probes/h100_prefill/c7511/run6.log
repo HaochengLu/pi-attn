@@ -1,0 +1,72 @@
+[run_gpu] workstream pre: $5.09 of $14.00
+[run_gpu] start L4 pre:c7511_6: ledger $11.77, gateway $11.51, budget $40.00
+8
+=== w515k40 :: real.cu -DPF=515 -DWK=40
+      1 rc=0
+      1     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads	Used 168 registers, used 16 barriers
+1*WARPGROUP.ARRIVE 8*HGMMA.64x64x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 8*HGMMA.64x64x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 2*HGMMA.64x128x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 8*HGMMA.64x64x1
+=== w513k40 :: real.cu -DPF=513 -DWK=40
+      1 rc=0
+      1     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads	Used 168 registers, used 16 barriers
+1*WARPGROUP.ARRIVE 8*HGMMA.64x64x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 8*HGMMA.64x64x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 2*HGMMA.64x128x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 8*HGMMA.64x64x1
+=== w515k136 :: real.cu -DPF=515 -DWK=136
+      1 rc=0
+      1     8 bytes stack frame, 4 bytes spill stores, 8 bytes spill loads	Used 168 registers, used 16 barriers, 8 bytes cumulative stack size
+1*WARPGROUP.ARRIVE 8*HGMMA.64x64x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 8*HGMMA.64x64x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 2*HGMMA.64x128x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 8*HGMMA.64x64x1
+=== w513k392 :: real.cu -DPF=513 -DWK=392
+      1 rc=0
+      1     8 bytes stack frame, 4 bytes spill stores, 8 bytes spill loads	Used 168 registers, used 16 barriers, 8 bytes cumulative stack size
+1*WARPGROUP.ARRIVE 8*HGMMA.64x64x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 8*HGMMA.64x64x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 2*HGMMA.64x128x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 8*HGMMA.64x64x1
+=== w515k520 :: real.cu -DPF=515 -DWK=520
+      1 rc=0
+      1     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads	Used 168 registers, used 16 barriers
+1*WARPGROUP.ARRIVE 8*HGMMA.64x64x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 8*HGMMA.64x64x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 2*HGMMA.64x128x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 8*HGMMA.64x64x1
+=== w513k776 :: real.cu -DPF=513 -DWK=776
+      1 rc=0
+      1     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads	Used 168 registers, used 16 barriers
+1*WARPGROUP.ARRIVE 8*HGMMA.64x64x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 8*HGMMA.64x64x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 2*HGMMA.64x128x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 8*HGMMA.64x64x1
+=== w519k136 :: real.cu -DPF=519 -DWK=136
+      1 rc=0
+      1     8 bytes stack frame, 4 bytes spill stores, 8 bytes spill loads	Used 168 registers, used 16 barriers, 8 bytes cumulative stack size
+1*WARPGROUP.ARRIVE 8*HGMMA.64x64x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 8*HGMMA.64x64x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 2*HGMMA.64x128x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 8*HGMMA.64x64x1
+=== w2k136 :: real.cu -DPF=2 -DWK=136
+      1 rc=0
+      1     8 bytes stack frame, 4 bytes spill stores, 8 bytes spill loads	Used 168 registers, used 16 barriers, 8 bytes cumulative stack size
+1*WARPGROUP.ARRIVE 8*HGMMA.64x64x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 8*HGMMA.64x64x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 2*HGMMA.64x128x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 8*HGMMA.64x64x1
+=== w0k392 :: real.cu -DPF=0 -DWK=392
+      1 rc=0
+      1     8 bytes stack frame, 4 bytes spill stores, 8 bytes spill loads	Used 168 registers, used 16 barriers, 8 bytes cumulative stack size
+1*WARPGROUP.ARRIVE 8*HGMMA.64x64x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 8*HGMMA.64x64x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 2*HGMMA.64x128x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 8*HGMMA.64x64x1
+=== w513k136 :: real.cu -DPF=513 -DWK=136
+      1 rc=0
+      1     8 bytes stack frame, 4 bytes spill stores, 8 bytes spill loads	Used 168 registers, used 16 barriers, 8 bytes cumulative stack size
+1*WARPGROUP.ARRIVE 8*HGMMA.64x64x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 8*HGMMA.64x64x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 2*HGMMA.64x128x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 8*HGMMA.64x64x1
+=== oA :: real.cu -DNO_W -DWITH_OLD -DBK=1 -DWK=136
+      1 rc=0
+      1     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads	Used 236 registers, used 1 barriers
+1*WARPGROUP.ARRIVE 8*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 8*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.ARRIVE 2*HGMMA.64x128x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 8*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.ARRIVE 
+=== oB :: real.cu -DNO_W -DWITH_OLD -DBK=0 -DWK=392
+      1 rc=0
+      1     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads	Used 236 registers, used 1 barriers
+1*WARPGROUP.ARRIVE 8*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 8*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.ARRIVE 2*HGMMA.64x128x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 8*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.ARRIVE 
+=== oC :: real.cu -DNO_W -DWITH_OLD -DBK=1 -DWK=128
+      1 rc=0
+      1     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads	Used 241 registers, used 1 barriers
+1*WARPGROUP.ARRIVE 8*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 8*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.ARRIVE 2*HGMMA.64x128x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 8*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.ARRIVE 
+=== oD :: real.cu -DNO_W -DWITH_OLD -DBK=1 -DWK=8
+      1 (C7511) Potential Performance Loss: wgmma.mma_async instructions are serialized due to insufficient register resources for the wgmma pipeline 
+      1 rc=0
+      1     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads	Used 255 registers, used 1 barriers
+1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16
+=== oE :: real.cu -DNO_W -DWITH_OLD -DBK=1
+      1 (C7511) Potential Performance Loss: wgmma.mma_async instructions are serialized due to insufficient register resources for the wgmma pipeline 
+      1 rc=0
+      1     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads	Used 248 registers, used 1 barriers
+1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 1*HGMMA.64x32x16
+=== fi :: FI
+FISRC /root/.cache/flashinfer/0.6.18/89/generated/batch_prefill_with_kv_cache_dtype_q_bf16_dtype_kv_bf16_dtype_o_bf16_dtype_idx_i32_head_dim_qk_128_head_dim_vo_128_posenc_0_use_swa_False_use_logits_cap_False_f16qk_False_sm90/batch_prefill_paged_sm90_kernel_mask_1.cu
+      1 rc=0
+      2     0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads	Used 168 registers, used 16 barriers
+1*WARPGROUP.ARRIVE 8*HGMMA.64x96x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 8*HGMMA.64x96x16.F32.BF16 1*WARPGROUP.ARRIVE 6*HGMMA.64x128x16.F32.BF16 1*WARPGROUP.DEPBAR.LEgsb0,0x1 1*WARPGROUP.DEPBAR.LEgsb0,0x0 1*WARPGROUP.ARRIVE 8*HGMMA.64x96x1
+
+[run_gpu] L4 pre:c7511_6: exit=0 wall=205s cost~$0.106 ledger=$12.01

@@ -1,0 +1,25 @@
+[run_gpu] workstream pre: $1.31 of $14.00
+[run_gpu] start H100 pre:v6b: ledger $4.47, gateway $3.03, budget $40.00
+len 128 done
+len 129 done
+len 200 done
+len 511 done
+len 512 done
+len 513 done
+len 517 done
+len 1024 done
+len 1300 done
+len 2049 done
+len 3000 done
+QUICK mismatches: 0
+quick rc=0
+PRE hq=16 b=1 q=1024 prefix=0: fa2    76.4 fa3    23.5 | v5    44.7 (1.90x fa3, 1.90x best) | v6    45.6 (1.94x fa3, 1.94x best)
+PRE hq=16 b=1 q=4096 prefix=0: fa2   330.4 fa3   170.7 | v5   408.3 (2.39x fa3, 2.39x best) | v6   433.7 (2.54x fa3, 2.54x best)
+PRE hq=16 b=8 q=1024 prefix=0: fa2   164.4 fa3   117.4 | v5   222.9 (1.90x fa3, 1.90x best) | v6   240.8 (2.05x fa3, 2.05x best)
+PRE hq=16 b=1 q=128 prefix=4096: fa2    32.3 fa3    66.1 | v5    37.1 (0.56x fa3, 1.15x best) | v6    41.3 (0.62x fa3, 1.28x best)
+PRE hq=32 b=1 q=1024 prefix=0: fa2    59.6 fa3    37.6 | v5    72.7 (1.93x fa3, 1.93x best) | v6    78.0 (2.07x fa3, 2.07x best)
+PRE hq=32 b=1 q=4096 prefix=0: fa2   530.0 fa3   303.8 | v5   711.4 (2.34x fa3, 2.34x best) | v6   748.1 (2.46x fa3, 2.46x best)
+PRE hq=32 b=8 q=1024 prefix=0: fa2   290.7 fa3   214.0 | v5   417.2 (1.95x fa3, 1.95x best) | v6   434.8 (2.03x fa3, 2.03x best)
+PRE hq=32 b=1 q=128 prefix=4096: fa2    48.1 fa3    64.7 | v5    61.7 (0.95x fa3, 1.28x best) | v6    65.7 (1.02x fa3, 1.37x best)
+
+[run_gpu] H100 pre:v6b: exit=0 wall=279s cost~$0.462 ledger=$5.21

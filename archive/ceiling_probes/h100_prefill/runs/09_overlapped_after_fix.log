@@ -1,0 +1,36 @@
+[run_gpu] workstream pre: $6.98 of $14.00
+[run_gpu] start H100 pre:v9b: ledger $15.24, gateway $13.44, budget $40.00
+len 2049 done
+len 3000 done
+QUICK mismatches: 0
+quick rc=0
+PRE hq=16 b=1 q=512 prefix=0: fa2 36.0 fa3 15.4 | v7 19.8 (1.29) | v600 23.3 (1.51) | v604 25.3 (1.64) | v20000 20.0 (1.30) | v20004 21.2 (1.38)
+PRE hq=16 b=1 q=1024 prefix=0: fa2 74.1 fa3 22.9 | v7 36.5 (1.59) | v600 41.4 (1.81) | v604 44.7 (1.95) | v20000 33.7 (1.47) | v20004 35.5 (1.55)
+PRE hq=16 b=1 q=2048 prefix=0: fa2 106.5 fa3 60.4 | v7 79.4 (1.31) | v600 79.4 (1.31) | v604 89.1 (1.48) | v20000 72.0 (1.19) | v20004 76.7 (1.27)
+PRE hq=16 b=1 q=4096 prefix=0: fa2 340.2 fa3 174.0 | v7 293.6 (1.69) | v600 225.5 (1.30) | v604 255.8 (1.47) | v20000 251.3 (1.44) | v20004 270.1 (1.55)
+PRE hq=16 b=8 q=1024 prefix=0: fa2 163.0 fa3 117.7 | v7 190.4 (1.62) | v600 156.9 (1.33) | v604 169.9 (1.44) | v20000 171.7 (1.46) | v20004 181.8 (1.54)
+PRE hq=16 b=8 q=2048 prefix=0: fa2 498.7 fa3 353.5 | v7 639.6 (1.81) | v600 484.0 (1.37) | v604 532.0 (1.50) | v20000 556.4 (1.57) | v20004 669.7 (1.89)
+PRE hq=16 b=1 q=2048 prefix=2048: fa2 219.9 fa3 127.4 | v7 220.0 (1.73) | v600 195.5 (1.53) | v604 221.6 (1.74) | v20000 185.7 (1.46) | v20004 200.5 (1.57)
+PRE hq=16 b=1 q=128 prefix=4096: fa2 32.3 fa3 65.6 | v7 34.5 (1.07) | v600 35.5 (1.10) | v604 38.6 (1.20) | v20000 32.1 (0.99) | v20004 34.2 (1.06)
+PRE hq=32 b=1 q=512 prefix=0: fa2 61.4 fa3 16.0 | v7 21.5 (1.34) | v600 23.3 (1.46) | v604 24.9 (1.56) | v20000 20.1 (1.26) | v20004 21.1 (1.32)
+PRE hq=32 b=1 q=1024 prefix=0: fa2 59.4 fa3 37.5 | v7 48.1 (1.28) | v600 41.4 (1.10) | v604 45.8 (1.22) | v20000 42.5 (1.13) | v20004 44.4 (1.18)
+PRE hq=32 b=1 q=2048 prefix=0: fa2 176.8 fa3 99.9 | v7 160.5 (1.61) | v600 125.3 (1.25) | v604 139.2 (1.39) | v20000 140.6 (1.41) | v20004 146.2 (1.46)
+PRE hq=32 b=1 q=4096 prefix=0: fa2 526.4 fa3 318.1 | v7 577.4 (1.82) | v600 402.7 (1.27) | v604 456.6 (1.44) | v20000 478.5 (1.50) | v20004 518.5 (1.63)
+PRE hq=32 b=8 q=1024 prefix=0: fa2 281.9 fa3 214.5 | v7 382.0 (1.78) | v600 298.7 (1.39) | v604 325.9 (1.52) | v20000 342.1 (1.59) | v20004 363.0 (1.69)
+PRE hq=32 b=8 q=2048 prefix=0: fa2 944.4 fa3 694.7 | v7 1255.9 (1.81) | v600 1023.5 (1.47) | v604 1043.0 (1.50) | v20000 1113.2 (1.60) | v20004 1204.3 (1.73)
+PRE hq=32 b=1 q=2048 prefix=2048: fa2 404.6 fa3 221.4 | v7 438.5 (1.98) | v600 327.6 (1.48) | v604 375.4 (1.70) | v20000 365.7 (1.65) | v20004 394.4 (1.78)
+PRE hq=32 b=1 q=128 prefix=4096: fa2 48.5 fa3 64.7 | v7 60.2 (1.24) | v600 52.4 (1.08) | v604 57.3 (1.18) | v20000 53.7 (1.11) | v20004 56.5 (1.16)
+ptxas info    : Function properties for _ZN7pi_attn17prefill90w_kernelILi3ELi4EEEvPK13__nv_bfloat16PS1_S3_S3_PKiS6_S6_lS6_S6_iiiifiPfP6float2i
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 128 registers, used 16 barriers
+ptxas info    : Function properties for _ZN7pi_attn17prefill90w_kernelILi3ELi0EEEvPK13__nv_bfloat16PS1_S3_S3_PKiS6_S6_lS6_S6_iiiifiPfP6float2i
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 128 registers, used 16 barriers
+ptxas info    : Function properties for _ZN7pi_attn17prefill90w_kernelILi2ELi0EEEvPK13__nv_bfloat16PS1_S3_S3_PKiS6_S6_lS6_S6_iiiifiPfP6float2i
+    8 bytes stack frame, 4 bytes spill stores, 20 bytes spill loads
+ptxas info    : Used 168 registers, used 16 barriers, 8 bytes cumulative stack size
+ptxas info    : Function properties for _ZN7pi_attn17prefill90w_kernelILi2ELi4EEEvPK13__nv_bfloat16PS1_S3_S3_PKiS6_S6_lS6_S6_iiiifiPfP6float2i
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 168 registers, used 16 barriers
+
+[run_gpu] H100 pre:v9b: exit=0 wall=342s cost~$0.565 ledger=$17.16

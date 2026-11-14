@@ -1,0 +1,62 @@
+[run_gpu] workstream pre: $2.32 of $14.00
+[run_gpu] start L4 pre:build3: ledger $6.34, gateway $3.38, budget $40.00
+(C7511) Potential Performance Loss: wgmma.mma_async instructions are serialized due to insufficient register resources for the wgmma pipeline in the function '_ZN7pi_attn17prefill90w_kernelILi20993EE'
+(C7511) Potential Performance Loss: wgmma.mma_async instructions are serialized due to insufficient register resources for the wgmma pipeline in the function '_ZN7pi_attn17prefill90w_kernelILi16897EE'
+(C7511) Potential Performance Loss: wgmma.mma_async instructions are serialized due to insufficient register resources for the wgmma pipeline in the function '_ZN7pi_attn17prefill90w_kernelILi66064EE'
+(C7511) Potential Performance Loss: wgmma.mma_async instructions are serialized due to insufficient register resources for the wgmma pipeline in the function '_ZN7pi_attn17prefill90w_kernelILi33296EE'
+(C7511) Potential Performance Loss: wgmma.mma_async instructions are serialized due to insufficient register resources for the wgmma pipeline in the function '_ZN7pi_attn17prefill90w_kernelILi16912EE'
+(C7511) Potential Performance Loss: wgmma.mma_async instructions are serialized due to insufficient register resources for the wgmma pipeline in the function '_ZN7pi_attn17prefill90w_kernelILi4624EE'
+(C7511) Potential Performance Loss: wgmma.mma_async instructions are serialized due to insufficient register resources for the wgmma pipeline in the function '_ZN7pi_attn17prefill90w_kernelILi528EE'
+(C7511) Potential Performance Loss: wgmma.mma_async instructions are serialized due to insufficient register resources for the wgmma pipeline in the function '_ZN7pi_attn17prefill90w_kernelILi4609EE'
+(C7511) Potential Performance Loss: wgmma.mma_async instructions are serialized due to insufficient register resources for the wgmma pipeline in the function '_ZN7pi_attn17prefill90w_kernelILi513EE'
+(C7511) Potential Performance Loss: wgmma.mma_async instructions are serialized due to insufficient register resources for the wgmma pipeline in the function '_ZN7pi_attn16prefill90_kernelEPK13__nv_bfloat16PS0_S2_S2_PKiS5_S5_lS5_S
+Function properties for _ZN7pi_attn14prefill_kernelILb0ELi4EE
+    8 bytes stack frame, 4 bytes spill stores, 4 bytes spill loads
+Used 255 registers, used 1 barriers, 8 bytes cumulative stack size
+Function properties for _ZN7pi_attn14prefill_kernelILb1ELi4EE
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+Used 234 registers, used 1 barriers
+Function properties for _ZN7pi_attn14prefill_kernelILb0ELi8EE
+    8 bytes stack frame, 4 bytes spill stores, 4 bytes spill loads
+Used 255 registers, used 1 barriers, 8 bytes cumulative stack size
+Function properties for _ZN7pi_attn14prefill_kernelILb1ELi8EE
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+Used 234 registers, used 1 barriers
+Function properties for _ZN7pi_attn17prefill90w_kernelILi20993EE
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+Used 168 registers, used 16 barriers
+Function properties for _ZN7pi_attn17prefill90w_kernelILi16897EE
+    24 bytes stack frame, 72 bytes spill stores, 68 bytes spill loads
+Used 168 registers, used 16 barriers, 24 bytes cumulative stack size
+Function properties for _ZN7pi_attn17prefill90w_kernelILi66064EE
+    8 bytes stack frame, 8 bytes spill stores, 52 bytes spill loads
+Used 168 registers, used 16 barriers, 8 bytes cumulative stack size
+Function properties for _ZN7pi_attn17prefill90w_kernelILi33296EE
+    16 bytes stack frame, 20 bytes spill stores, 84 bytes spill loads
+Used 168 registers, used 16 barriers, 16 bytes cumulative stack size
+Function properties for _ZN7pi_attn17prefill90w_kernelILi16912EE
+    32 bytes stack frame, 36 bytes spill stores, 180 bytes spill loads
+Used 168 registers, used 16 barriers, 32 bytes cumulative stack size
+Function properties for _ZN7pi_attn17prefill90w_kernelILi4624EE
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+Used 168 registers, used 16 barriers
+Function properties for _ZN7pi_attn17prefill90w_kernelILi528EE
+    32 bytes stack frame, 36 bytes spill stores, 180 bytes spill loads
+Used 168 registers, used 16 barriers, 32 bytes cumulative stack size
+Function properties for _ZN7pi_attn17prefill90w_kernelILi4609EE
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+Used 168 registers, used 16 barriers
+Function properties for _ZN7pi_attn17prefill90w_kernelILi513EE
+    24 bytes stack frame, 72 bytes spill stores, 68 bytes spill loads
+Used 168 registers, used 16 barriers, 24 bytes cumulative stack size
+Function properties for _ZN7pi_attn16prefill90_kernelEPK13__nv_bfloat16PS0_S2_S2_PKiS5_S5_lS5_S5_iiiifiPfP6float2i
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+Used 249 registers, used 1 barriers
+Function properties for _ZN7pi_attn13decode_kernelEPK13__nv_bfloat16S2_S2_PKiS4_lS4_PfP6float2PiPS0_iiiiifb
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+Used 83 registers, used 1 barriers
+Function properties for _ZN7pi_attn20prefill_merge_kernelEPKfPK6float2PKiS6_S6_iP13__nv_bfloat16ii
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+Used 28 registers, used 0 barriers
+
+[run_gpu] L4 pre:build3: exit=0 wall=186s cost~$0.096 ledger=$7.38
