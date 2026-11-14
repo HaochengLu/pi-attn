@@ -1,0 +1,32 @@
+[run_gpu] start H100 t2:dev2_H100: ledger $0.20, gateway $1.45, budget $36.00
+patch applied
+NVIDIA H100 80GB HBM3
+attn ext exit=0 (68s)
+DEC b= 1 kv=  96 us/layer: fi    4.4 | v1    5.3 | v2    5.5 | v3    5.5 | v4    5.6 | best two-phase / per-tile 1.04
+DEC b= 1 kv= 640 us/layer: fi    9.1 | v1   21.8 | v2   27.6 | v3   19.5 | v4   19.6 | best two-phase / per-tile 0.89
+DEC b= 1 kv=2176 us/layer: fi   10.3 | v1   22.1 | v2   28.3 | v3   20.0 | v4   19.6 | best two-phase / per-tile 0.89
+DEC b= 8 kv=  96 us/layer: fi    5.9 | v1    6.2 | v2    7.0 | v3    6.2 | v4    6.2 | best two-phase / per-tile 1.00
+DEC b= 8 kv= 640 us/layer: fi   12.5 | v1   22.3 | v2   28.8 | v3   20.4 | v4   20.6 | best two-phase / per-tile 0.91
+DEC b= 8 kv=2176 us/layer: fi   30.5 | v1   32.2 | v2   40.2 | v3   38.0 | v4   40.7 | best two-phase / per-tile 1.18
+DEC b=32 kv=  96 us/layer: fi    7.7 | v1    8.3 | v2    9.5 | v3    9.2 | v4   10.0 | best two-phase / per-tile 1.11
+DEC b=32 kv= 640 us/layer: fi   34.6 | v1   36.9 | v2   45.0 | v3   43.1 | v4   45.0 | best two-phase / per-tile 1.17
+DEC b=32 kv=2176 us/layer: fi   98.6 | v1  102.2 | v2  136.5 | v3  127.7 | v4  132.3 | best two-phase / per-tile 1.25
+PRE hq=16 b=1 q=512 prefix=0: fi    15.4 | v1    21.3 | v5    21.5 | v6    21.7 | v6/v5 1.009
+PRE hq=16 b=1 q=1024 prefix=0: fi    22.9 | v1    47.6 | v5    42.6 | v6    43.1 | v6/v5 1.012
+PRE hq=16 b=1 q=2048 prefix=0: fi    60.4 | v1   139.8 | v5   131.3 | v6   132.1 | v6/v5 1.006
+PRE hq=16 b=1 q=4096 prefix=0: fi   175.1 | v1   445.2 | v5   404.0 | v6   405.4 | v6/v5 1.003
+PRE hq=16 b=8 q=1024 prefix=0: fi   116.7 | v1   238.4 | v5   223.6 | v6   223.2 | v6/v5 0.998
+PRE hq=16 b=8 q=2048 prefix=0: fi   358.8 | v1   799.1 | v5   724.6 | v6   720.4 | v6/v5 0.994
+PRE hq=16 b=1 q=2048 prefix=2048: fi   126.8 | v1   343.7 | v5   305.0 | v6   308.1 | v6/v5 1.010
+PRE hq=16 b=1 q=128 prefix=4096: fi    66.0 | v1    38.2 | v5    36.6 | v6    37.0 | v6/v5 1.011
+PRE hq=32 b=1 q=512 prefix=0: fi    16.5 | v1    27.2 | v5    24.9 | v6    24.5 | v6/v5 0.984
+PRE hq=32 b=1 q=1024 prefix=0: fi    37.5 | v1    78.8 | v5    74.4 | v6    74.4 | v6/v5 1.000
+PRE hq=32 b=1 q=2048 prefix=0: fi    97.9 | v1   236.7 | v5   215.3 | v6   215.7 | v6/v5 1.002
+PRE hq=32 b=1 q=4096 prefix=0: fi   310.2 | v1   790.9 | v5   709.8 | v6   705.5 | v6/v5 0.994
+PRE hq=32 b=8 q=1024 prefix=0: fi   214.2 | v1   451.4 | v5   415.3 | v6   414.3 | v6/v5 0.998
+PRE hq=32 b=8 q=2048 prefix=0: fi   700.1 | v1  1532.1 | v5  1382.9 | v6  1379.7 | v6/v5 0.998
+PRE hq=32 b=1 q=2048 prefix=2048: fi   229.4 | v1   594.2 | v5   530.9 | v6   535.5 | v6/v5 1.009
+PRE hq=32 b=1 q=128 prefix=4096: fi    66.9 | v1    66.4 | v5    62.8 | v6    63.7 | v6/v5 1.014
+total 162s
+
+[run_gpu] H100 t2:dev2_H100: exit=0 wall=197s cost~$0.326 ledger=$0.52

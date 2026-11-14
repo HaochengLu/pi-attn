@@ -1,0 +1,45 @@
+[run_gpu] start H100 t2:dev5_H100_decode90: ledger $0.74, gateway $2.97, budget $36.00
+patch applied
+NVIDIA H100 80GB HBM3
+attn ext exit=0 (95s)
+test_invariance exit=0 (164s)
+checks failed: 0 []
+DEC b= 1 kv=  96 us/layer: fi    4.5 | v1    5.3 | v2    6.7 | best two-phase / per-tile 1.26
+DEC b= 1 kv= 320 us/layer: fi    8.7 | v1   13.5 | v2   17.7 | best two-phase / per-tile 1.31
+DEC b= 1 kv= 640 us/layer: fi    9.2 | v1   21.9 | v2   29.6 | best two-phase / per-tile 1.35
+DEC b= 1 kv=1280 us/layer: fi    9.5 | v1   21.7 | v2   30.4 | best two-phase / per-tile 1.40
+DEC b= 1 kv=2176 us/layer: fi   10.3 | v1   22.0 | v2   30.4 | best two-phase / per-tile 1.38
+DEC b= 1 kv=4200 us/layer: fi   12.4 | v1   23.0 | v2   31.2 | best two-phase / per-tile 1.36
+DEC b= 4 kv=  96 us/layer: fi    5.7 | v1    6.2 | v2    6.9 | best two-phase / per-tile 1.11
+DEC b= 4 kv= 320 us/layer: fi    9.4 | v1   14.0 | v2   17.9 | best two-phase / per-tile 1.28
+DEC b= 4 kv= 640 us/layer: fi   10.5 | v1   22.1 | v2   31.5 | best two-phase / per-tile 1.43
+DEC b= 4 kv=1280 us/layer: fi   13.1 | v1   22.8 | v2   32.7 | best two-phase / per-tile 1.43
+DEC b= 4 kv=2176 us/layer: fi   18.2 | v1   25.1 | v2   40.5 | best two-phase / per-tile 1.61
+DEC b= 4 kv=4200 us/layer: fi   30.6 | v1   32.8 | v2   48.9 | best two-phase / per-tile 1.49
+DEC b= 8 kv=  96 us/layer: fi    6.0 | v1    6.3 | v2    6.8 | best two-phase / per-tile 1.08
+DEC b= 8 kv= 320 us/layer: fi   10.6 | v1   14.2 | v2   18.2 | best two-phase / per-tile 1.28
+DEC b= 8 kv= 640 us/layer: fi   12.9 | v1   22.5 | v2   32.4 | best two-phase / per-tile 1.44
+DEC b= 8 kv=1280 us/layer: fi   20.5 | v1   26.0 | v2   39.3 | best two-phase / per-tile 1.51
+DEC b= 8 kv=2176 us/layer: fi   31.4 | v1   33.2 | v2   50.4 | best two-phase / per-tile 1.52
+DEC b= 8 kv=4200 us/layer: fi   53.7 | v1   54.6 | v2  111.6 | best two-phase / per-tile 2.04
+DEC b=16 kv=  96 us/layer: fi    6.6 | v1    7.0 | v2    7.0 | best two-phase / per-tile 1.00
+DEC b=16 kv= 320 us/layer: fi   13.2 | v1   15.2 | v2   19.0 | best two-phase / per-tile 1.25
+DEC b=16 kv= 640 us/layer: fi   20.8 | v1   26.6 | v2   43.7 | best two-phase / per-tile 1.64
+DEC b=16 kv=1280 us/layer: fi   35.5 | v1   36.7 | v2   48.9 | best two-phase / per-tile 1.33
+DEC b=16 kv=2176 us/layer: fi   55.7 | v1   56.0 | v2  113.1 | best two-phase / per-tile 2.02
+DEC b=16 kv=4200 us/layer: fi   99.1 | v1  103.6 | v2  187.0 | best two-phase / per-tile 1.81
+DEC b=32 kv=  96 us/layer: fi    8.0 | v1    8.7 | v2    8.3 | best two-phase / per-tile 0.95
+DEC b=32 kv= 320 us/layer: fi   21.7 | v1   20.4 | v2   26.9 | best two-phase / per-tile 1.32
+DEC b=32 kv= 640 us/layer: fi   35.7 | v1   37.9 | v2   51.4 | best two-phase / per-tile 1.36
+DEC b=32 kv=1280 us/layer: fi   63.3 | v1   65.6 | v2  115.0 | best two-phase / per-tile 1.75
+DEC b=32 kv=2176 us/layer: fi  102.2 | v1  107.6 | v2  188.3 | best two-phase / per-tile 1.75
+DEC b=32 kv=4200 us/layer: fi  188.8 | v1  205.7 | v2  382.2 | best two-phase / per-tile 1.86
+DEC b=64 kv=  96 us/layer: fi   11.7 | v1   12.2 | v2   14.7 | best two-phase / per-tile 1.20
+DEC b=64 kv= 320 us/layer: fi   36.6 | v1   33.1 | v2   53.6 | best two-phase / per-tile 1.62
+DEC b=64 kv= 640 us/layer: fi   64.1 | v1   67.5 | v2  117.7 | best two-phase / per-tile 1.74
+DEC b=64 kv=1280 us/layer: fi  120.0 | v1  124.1 | v2  206.6 | best two-phase / per-tile 1.66
+DEC b=64 kv=2176 us/layer: fi  196.2 | v1  210.4 | v2  388.4 | best two-phase / per-tile 1.85
+DEC b=64 kv=4200 us/layer: fi  372.7 | v1  390.3 | v2  726.0 | best two-phase / per-tile 1.86
+total 209s
+
+[run_gpu] H100 t2:dev5_H100_decode90: exit=0 wall=246s cost~$0.406 ledger=$1.14

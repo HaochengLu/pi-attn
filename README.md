@@ -19,7 +19,7 @@ Ask an LLM server the same question twice at temperature 0 and you can get two d
 On one A800, Qwen3 0.6B–8B, with radix caching, chunked prefill, CUDA graphs and CPU/GPU overlap all enabled:
 
 - **No throughput cost.** On average (geometric mean over 40 workloads) the deterministic mode is **1.2% faster** than the same engine without determinism. It is on par with vLLM 0.17.1.
-- **2.0–3.7× faster than vLLM's batch-invariant mode**, the only other engine that passes our numeric checks.
+- **2.0–3.7× faster than vLLM's batch-invariant mode**, the only other engine that passes our numeric checks on the A800. On an H100 it is 1.7–2.9× faster than vLLM's batch-invariant mode and 1.4–1.75× faster than SGLang's deterministic mode, both of which pass there, at 4–12% below its own non-deterministic throughput.
 - **Bitwise identical** tokens *and* log-probabilities across concurrency, prefix-cache state, chunking, decode vs. re-prefill, seeded sampling, eight server configurations and restarts.
 - **Rollout = trainer.** A PyTorch forward on the same kernels reproduces all **55,593** rollout log-probabilities bit for bit, so every importance ratio is exactly 1. A standard bf16 trainer misses by more than 1% on 10–22% of tokens.
 - **Same bits across GPUs.**

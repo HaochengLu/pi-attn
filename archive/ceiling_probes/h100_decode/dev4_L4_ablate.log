@@ -1,0 +1,16 @@
+[run_gpu] start L4 t2:dev4_L4_ablate: ledger $0.62, gateway $2.89, budget $36.00
+patch applied
+NVIDIA L4
+attn ext exit=0
+variants: 1 per-tile, 3 two-phase(3,3); timing-only ablations of 3: 15 no ldmatrix+mma, 17 no K/V loads (mma on stale smem), 18 neither
+DEC b= 1 kv=  96 us/layer: fi    5.2 | v1    4.6 | v3    4.8 | v15    4.4 | v17    3.9 | v18    2.8 | best two-phase / per-tile 0.61
+DEC b= 1 kv= 640 us/layer: fi   14.7 | v1   19.2 | v3   18.9 | v15   18.1 | v17   10.3 | v18    6.9 | best two-phase / per-tile 0.36
+DEC b= 1 kv=2176 us/layer: fi   39.8 | v1   38.2 | v3   41.0 | v15   41.1 | v17   10.7 | v18    7.3 | best two-phase / per-tile 0.19
+DEC b= 8 kv=  96 us/layer: fi   14.6 | v1   15.0 | v3   17.0 | v15   16.9 | v17    6.8 | v18    4.7 | best two-phase / per-tile 0.31
+DEC b= 8 kv= 640 us/layer: fi   87.3 | v1   85.2 | v3   94.9 | v15   94.8 | v17   18.8 | v18   12.3 | best two-phase / per-tile 0.14
+DEC b= 8 kv=2176 us/layer: fi  290.3 | v1  304.6 | v3  304.1 | v15  301.9 | v17   45.7 | v18   29.7 | best two-phase / per-tile 0.10
+DEC b=32 kv=  96 us/layer: fi   51.9 | v1   54.0 | v3   53.5 | v15   53.5 | v17   16.5 | v18   11.1 | best two-phase / per-tile 0.21
+DEC b=32 kv= 640 us/layer: fi  343.0 | v1  357.9 | v3  354.8 | v15  352.7 | v17   62.5 | v18   42.4 | best two-phase / per-tile 0.12
+DEC b=32 kv=2176 us/layer: fi 1140.1 | v1 1206.1 | v3 1194.4 | v15 1189.2 | v17  182.7 | v18  112.8 | best two-phase / per-tile 0.09
+
+[run_gpu] L4 t2:dev4_L4_ablate: exit=0 wall=216s cost~$0.112 ledger=$0.74

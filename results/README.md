@@ -41,6 +41,8 @@ SGLang and vLLM 0.11.2, token ids only), which Section 7.1 cites for token-level
 | §7 Table 2, kernel hashes and suites on A100, A10G, L4, H100 | `../modal/<GPU>/xgpu_hashes.json`, `../modal/suite_<GPU>.log` | `eval/xgpu_hashes.py`, `eval/xgpu_compare.py`, `kernels/test_*.py` |
 | §7 Table 2, engine rollout replay, detcheck, trainer (A10G, H100) | `../modal/<GPU>/engine.log` | `eval/xgpu_rollout.py`, `detcheck/detcheck.py --logprobs`, `eval/rollout_logprobs.py` |
 | §7 Hopper kernels in the engine (H100) | `../modal/H100_sm90/` (suites, hashes, rollouts against the pre-change engine, end to end) | same |
+| §7 Table 4, H100 same-GPU baselines (SGLang, vLLM 0.17.1, PI; detcheck and loadgen) and PI vs FlashInfer at 64–256 requests | `../modal/H100_baselines/` (`SUMMARY.md`, `hc.*.json`, `run.log`) | `eval/baselines.sh` via `run_h100_baselines.sh` |
+| §7 H100 decode/prefill attention probes (not shipped) | `../../archive/ceiling_probes/h100_decode/` | see its README |
 | §7 tensor-core models and exact-lattice programs | `../../xclass/` | see `xclass/README.md` |
 
 The paper's figures are drawn from these files by `paper/figures.py` (`cd paper && python figures.py ../results figs`).

@@ -1,0 +1,55 @@
+[run_gpu] start H100 t1:h100_baselines: ledger $0.08, gateway $0.02, budget $40.00
+apt exit=0
+model sha256 OK
+cargo build exit=0 (339s)
+venv-sglang: 2.8.0+cu128 
+venv-vllm17: 2.10.0+cu128 
+NVIDIA H100 80GB HBM3, 610.57.04
+setup done 345s
+Qwen3-1.7B rust detcheck exit=1
+Qwen3-1.7B rust loadgen exit=0
+Qwen3-1.7B rust-det detcheck exit=0
+Qwen3-1.7B rust-det loadgen exit=0
+Qwen3-1.7B sglang detcheck exit=1
+Qwen3-1.7B sglang loadgen exit=0
+eval/baselines.sh: line 54: 11837 Killed                  LD_LIBRARY_PATH=$ROOT/env/syslibs/lib:${LD_LIBRARY_PATH:-} $ROOT/env/venv-sglang/bin/python -m sglang.launch_server --model-path $M --served-model-name default --port $port --max-running-requests 32 --context-length 8192 --chunked-prefill-size 2048 --mem-fraction-static 0.8 --cuda-graph-max-bs 32 "${d[@]}" > $out/$eng.server.log 2>&1
+Qwen3-1.7B sglang-det detcheck exit=0
+Qwen3-1.7B sglang-det loadgen exit=0
+eval/baselines.sh: line 54: 12713 Killed                  LD_LIBRARY_PATH=$ROOT/env/syslibs/lib:${LD_LIBRARY_PATH:-} $ROOT/env/venv-sglang/bin/python -m sglang.launch_server --model-path $M --served-model-name default --port $port --max-running-requests 32 --context-length 8192 --chunked-prefill-size 2048 --mem-fraction-static 0.8 --cuda-graph-max-bs 32 "${d[@]}" > $out/$eng.server.log 2>&1
+Qwen3-1.7B vllm17 detcheck exit=1
+Qwen3-1.7B vllm17 loadgen exit=0
+Qwen3-1.7B vllm17-det detcheck exit=1
+Qwen3-1.7B vllm17-det loadgen exit=0
+BASELINES_DONE
+| engine | batch c4/c16 | shared prefix x32 | path | seeded path | repeat (unique/200) | seeded sample c4/c16 | prefix full/partial hit |
+|---|---|---|---|---|---|---|---|
+| llm_infer_rust (FlashInfer) | 16/16 (of 16) | 32/32 | 24/24 | 24/24 | 169 | 16/16 (of 16) | 5/6 (of 8) |
+| llm_infer_rust --deterministic (PI) | 0/0 (of 16) | 0/32 | 0/24 | 0/24 | 1 | 0/0 (of 16) | 0/0 (of 8) |
+| SGLang 0.5.5 | 16/16 (of 16) | 32/32 | 24/24 | 24/24 | 50 | 16/16 (of 16) | 8/8 (of 8) |
+| SGLang 0.5.5 deterministic (FlashInfer) | 0/0 (of 16) | 0/32 | 0/24 | 0/24 | 1 | 0/0 (of 16) | 0/0 (of 8) |
+| SGLang 0.5.5 deterministic (Triton) | not run | | | | | | |
+| vLLM 0.11.2 | not run | | | | | | |
+| vLLM 0.11.2 VLLM_BATCH_INVARIANT=1 | not run | | | | | | |
+| vLLM 0.17.1 | 16/16 (of 16) | 32/32 | 24/24 | 24/24 | 161 | 16/16 (of 16) | 8/6 (of 8) |
+| vLLM 0.17.1 VLLM_BATCH_INVARIANT=1 | 0/0 (of 16) | 0/32 | 0/24 | 8/24 | 1 | 0/0 (of 16) | 0/0 (of 8) |
+
+| engine (greedy out tok/s) | 64/256 c1 | 512/256 c8 | 512/256 c32 | 2048/256 c16 | 4096/128 c4 |
+|---|---|---|---|---|---|
+| llm_infer_rust (FlashInfer) | 443 | 3024 | 8645 | 3411 | 985 |
+| llm_infer_rust --deterministic (PI) | 426 | 2661 | 8273 | 3239 | 899 |
+| SGLang 0.5.5 | 407 | 2758 | 7812 | 3296 | 956 |
+| SGLang 0.5.5 deterministic (FlashInfer) | 243 | 1710 | 5446 | 2311 | 577 |
+| vLLM 0.17.1 | 442 | 3066 | 8738 | 3648 | 1081 |
+| vLLM 0.17.1 VLLM_BATCH_INVARIANT=1 | 149 | 1168 | 4442 | 1889 | 467 |
+baselines done 2741s
+highconc flashinfer L1 exit=0
+highconc deterministic L1 exit=0
+highconc flashinfer L2 exit=0
+highconc deterministic L2 exit=0
+HC 512/256/c64: out tok/s FI 13009.6 PI 12536.0 (-3.6%) | TTFT FI 72.1 PI 82.4 (+14.3%)
+HC 512/256/c128: out tok/s FI 16580.6 PI 15409.9 (-7.1%) | TTFT FI 147.2 PI 167.2 (+13.6%)
+HC 512/256/c256: out tok/s FI 18293.4 PI 16398.4 (-10.4%) | TTFT FI 327.2 PI 369.8 (+13.0%)
+HC 2048/128/c64: out tok/s FI 3969.7 PI 3659.4 (-7.8%) | TTFT FI 221.5 PI 252.6 (+14.0%)
+total 2926s
+
+[run_gpu] H100 t1:h100_baselines: exit=0 wall=2959s cost~$4.896 ledger=$6.37

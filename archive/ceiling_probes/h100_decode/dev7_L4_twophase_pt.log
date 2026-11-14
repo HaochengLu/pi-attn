@@ -1,0 +1,18 @@
+[run_gpu] start L4 t2:dev7_L4_twophase_pt: ledger $1.36, gateway $6.02, budget $36.00
+patch applied
+NVIDIA L4
+attn ext exit=0 (105s)
+test_invariance exit=0 (136s)
+checks failed: 0 []
+DEC b= 1 kv=  96 us/layer: fi    5.2 | v1    4.6 | v2    4.8 | v3    5.0 | best two-phase / per-tile 1.04
+DEC b= 1 kv= 640 us/layer: fi   14.7 | v1   19.3 | v2   24.2 | v3   18.6 | best two-phase / per-tile 0.96
+DEC b= 1 kv=2176 us/layer: fi   39.8 | v1   38.3 | v2   41.5 | v3   42.4 | best two-phase / per-tile 1.08
+DEC b= 8 kv=  96 us/layer: fi   14.6 | v1   15.0 | v2   15.5 | v3   19.2 | best two-phase / per-tile 1.03
+DEC b= 8 kv= 640 us/layer: fi   87.4 | v1   85.1 | v2   90.0 | v3   94.9 | best two-phase / per-tile 1.06
+DEC b= 8 kv=2176 us/layer: fi  291.3 | v1  304.0 | v2  321.0 | v3  314.5 | best two-phase / per-tile 1.03
+DEC b=32 kv=  96 us/layer: fi   52.0 | v1   53.9 | v2   54.7 | v3   57.3 | best two-phase / per-tile 1.01
+DEC b=32 kv= 640 us/layer: fi  344.4 | v1  357.5 | v2  372.4 | v3  366.1 | best two-phase / per-tile 1.02
+DEC b=32 kv=2176 us/layer: fi 1142.0 | v1 1206.4 | v2 1252.8 | v3 1222.3 | best two-phase / per-tile 1.01
+total 198s
+
+[run_gpu] L4 t2:dev7_L4_twophase_pt: exit=0 wall=231s cost~$0.119 ledger=$1.48

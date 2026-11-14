@@ -1,0 +1,33 @@
+[run_gpu] start L4 t2:dev1_L4: ledger $0.08, gateway $0.58, budget $36.00
+patch applied
+NVIDIA L4
+sm_90a compile exit=0 (128s)
+C7511 lines: 2
+ '_ZN7pi_attn16prefill90_kernelILb0EEEvPK13__nv_bfloat16PS1_S3_S3_PKiS6_S6_lS6_S
+ '_ZN7pi_attn16prefill90_kernelILb1EEEvPK13__nv_bfloat16PS1_S3_S3_PKiS6_S6_lS6_S
+ '_ZN7pi_attn13decode_kernelILb1ELi4ELi4EEEvPK13__nv_bfloat16S3_S3_PKiS5_lS5_PfP6float2PiPS1_iiiiifb' for 'sm_
+ptxas info    : Used 128 registers, used 1 barriers, 8 bytes cumulative stack size
+ '_ZN7pi_attn13decode_kernelILb1ELi3ELi3EEEvPK13__nv_bfloat16S3_S3_PKiS5_lS5_PfP6float2PiPS1_iiiiifb' for 'sm_
+ptxas info    : Used 135 registers, used 1 barriers
+ '_ZN7pi_attn13decode_kernelILb1ELi2ELi2EEEvPK13__nv_bfloat16S3_S3_PKiS5_lS5_PfP6float2PiPS1_iiiiifb' for 'sm_
+ptxas info    : Used 137 registers, used 1 barriers
+ '_ZN7pi_attn13decode_kernelILb0ELi2ELi2EEEvPK13__nv_bfloat16S3_S3_PKiS5_lS5_PfP6float2PiPS1_iiiiifb' for 'sm_
+ptxas info    : Used 83 registers, used 1 barriers
+ '_ZN7pi_attn16prefill90_kernelILb0EEEvPK13__nv_bfloat16PS1_S3_S3_PKiS6_S6_lS6_S6_iiiifiPfP6float2i' for 'sm_9
+ptxas info    : Used 249 registers, used 1 barriers
+ '_ZN7pi_attn16prefill90_kernelILb1EEEvPK13__nv_bfloat16PS1_S3_S3_PKiS6_S6_lS6_S6_iiiifiPfP6float2i' for 'sm_9
+ptxas info    : Used 211 registers, used 1 barriers
+test_invariance (native build) exit=0 (130s)
+checks failed: 0 []
+DEC b= 1 kv=  96 us/layer: fi    5.2 | v1    4.7 | v2    4.8 | v3    4.8 | v4    4.9 | best two-phase / per-tile 1.02
+DEC b= 1 kv= 640 us/layer: fi   14.7 | v1   19.3 | v2   24.8 | v3   18.8 | v4   19.2 | best two-phase / per-tile 0.97
+DEC b= 1 kv=2176 us/layer: fi   39.9 | v1   38.3 | v2   41.7 | v3   41.5 | v4   42.1 | best two-phase / per-tile 1.08
+DEC b= 8 kv=  96 us/layer: fi   14.6 | v1   15.1 | v2   15.4 | v3   17.1 | v4   17.7 | best two-phase / per-tile 1.02
+DEC b= 8 kv= 640 us/layer: fi   87.5 | v1   85.2 | v2   89.3 | v3   95.3 | v4   96.2 | best two-phase / per-tile 1.05
+DEC b= 8 kv=2176 us/layer: fi  291.8 | v1  305.1 | v2  320.3 | v3  302.1 | v4  310.1 | best two-phase / per-tile 0.99
+DEC b=32 kv=  96 us/layer: fi   52.0 | v1   54.3 | v2   54.8 | v3   53.8 | v4   56.3 | best two-phase / per-tile 0.99
+DEC b=32 kv= 640 us/layer: fi  344.2 | v1  358.1 | v2  368.1 | v3  359.7 | v4  361.7 | best two-phase / per-tile 1.00
+DEC b=32 kv=2176 us/layer: fi 1141.8 | v1 1205.7 | v2 1239.2 | v3 1198.6 | v4 1207.9 | best two-phase / per-tile 0.99
+total 191s
+
+[run_gpu] L4 t2:dev1_L4: exit=0 wall=226s cost~$0.117 ledger=$0.20

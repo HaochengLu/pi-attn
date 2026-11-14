@@ -1,0 +1,375 @@
+diff --git a/kernels/pi_attn_torch.cu b/kernels/pi_attn_torch.cu
+index 16556b9..be6fe52 100644
+--- a/kernels/pi_attn_torch.cu
++++ b/kernels/pi_attn_torch.cu
+@@ -107,6 +107,10 @@ at::Tensor prefill(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Ten
+ // 2 * DECODE_WARPS] f32 with rows >= batch * ceil(max_kv_len / GROUP_KEYS);
+ // max_kv_len bounds every request. counters: [rows, Hq, DECODE_WARPS] int32, zero
+ // before the first call and left zero by each.
++// Decode kernel: 0 = the device's choice (decode_two_phase), 1 = per-tile (decode_kernel<false>), 2 = two-phase
++// with the device's ring depths, 3 / 4 = two-phase with other ring depths (benchmarks). Same bits.
++static int g_decode_variant = 0;
++
+ at::Tensor decode(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Tensor kv_page_indptr,
+                   at::Tensor kv_page_indices, at::Tensor kv_lens, at::Tensor ws_o, at::Tensor ws_ml,
+                   at::Tensor counters, int64_t max_kv_len, double sm_scale) {
+@@ -125,14 +129,26 @@ at::Tensor decode(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Tens
+   const int max_groups = (int)((max_kv_len + kGroupKeys - 1) / kGroupKeys);
+   TORCH_CHECK(ws_o.size(0) >= (int64_t)batch * max_groups, "decode workspace below batch * max_groups");
+   auto stream = at::cuda::getCurrentCUDAStream();
+-  cudaFuncSetAttribute(decode_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, decode_smem_bytes());
+-  decode_kernel<<<decode_grid(max_groups, hkv, batch), kDecodeWarps * 32, decode_smem_bytes(), stream>>>(
+-      (const __nv_bfloat16*)q.data_ptr(), (const __nv_bfloat16*)k_cache.data_ptr(),
+-      (const __nv_bfloat16*)v_cache.data_ptr(), kv_page_indptr.data_ptr<int32_t>(),
+-      kv_page_indices.data_ptr<int32_t>(), (int64_t)0, kv_lens.data_ptr<int32_t>(), ws_o.data_ptr<float>(),
+-      (float2*)ws_ml.data_ptr<float>(), counters.data_ptr<int32_t>(), (__nv_bfloat16*)out.data_ptr(),
+-      max_groups, hq, hkv, page_size, page_shift_of(page_size), (float)(sm_scale * 1.4426950408889634),
+-      decode_group_fastest(batch));
++  auto launch = [&](auto kernel, int smem) {
++    TORCH_CHECK(cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem) == cudaSuccess,
++                "decode variant ", g_decode_variant, " needs ", smem, " bytes of shared memory");
++    kernel<<<decode_grid(max_groups, hkv, batch), kDecodeWarps * 32, smem, stream>>>(
++        (const __nv_bfloat16*)q.data_ptr(), (const __nv_bfloat16*)k_cache.data_ptr(),
++        (const __nv_bfloat16*)v_cache.data_ptr(), kv_page_indptr.data_ptr<int32_t>(),
++        kv_page_indices.data_ptr<int32_t>(), (int64_t)0, kv_lens.data_ptr<int32_t>(), ws_o.data_ptr<float>(),
++        (float2*)ws_ml.data_ptr<float>(), counters.data_ptr<int32_t>(), (__nv_bfloat16*)out.data_ptr(),
++        max_groups, hq, hkv, page_size, page_shift_of(page_size), (float)(sm_scale * 1.4426950408889634),
++        decode_group_fastest(batch));
++  };
++  int major = 0, minor = 0;
++  cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, q.get_device());
++  cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, q.get_device());
++  const int group = hq / hkv;
++  const int variant = g_decode_variant ? g_decode_variant : decode_two_phase(major, minor) ? 2 : 1;
++  if (variant == 1) launch(decode_kernel<false>, decode_smem_bytes());
++  else if (variant == 2) launch(decode_kernel<true>, decode2_smem_bytes<kDecodeRK, kDecodeRV>(group));
++  else if (variant == 3) launch(decode_kernel<true, 4, 4>, decode2_smem_bytes<4, 4>(group));
++  else launch(decode_kernel<true, 8, 8>, decode2_smem_bytes<8, 8>(group));
+   C10_CUDA_KERNEL_LAUNCH_CHECK();
+   return out;
+ }
+@@ -142,6 +158,10 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+         py::arg("kv_page_indptr"), py::arg("kv_page_indices"), py::arg("kv_lens"), py::arg("max_q_len"),
+         py::arg("max_kv_len"), py::arg("sm_scale"), py::arg("kv_splits"), py::arg("variant") = 0);
+   m.def("decode", &decode);
++  m.def("set_decode_variant", [](int64_t v) {
++    TORCH_CHECK(v >= 0 && v <= 4, "decode variant: 0 to 4");
++    g_decode_variant = (int)v;
++  });
+   // Shared memory a prefill variant (1-4) needs per CTA; tests skip variants the GPU cannot run.
+   m.def("prefill_smem_bytes", [](int64_t variant) {
+     TORCH_CHECK(variant >= 1 && variant <= 4, "variant: 1 to 4");
+diff --git a/kernels/test_invariance.py b/kernels/test_invariance.py
+index 6ac78cd..d1d85a6 100644
+--- a/kernels/test_invariance.py
++++ b/kernels/test_invariance.py
+@@ -233,6 +233,22 @@ def run_checks():
+             if not same(decode(pool, [(seqs[L][0][p:p + 1].contiguous(), pages[L], p + 1)])[0][0], alone[L][p]):
+                 fails.append(("path alone", L, p))
+ 
++    # decode kernels: the per-tile and the two-phase kernel on every position, one random batching each, vs
++    # prefill ("path", as above; the checks above ran the device's choice).
++    for variant in (1, 2):
++        ext.set_decode_variant(variant)
++        probes = [(L, p) for L in lens for p in range(L)]
++        random.shuffle(probes)
++        i = 0
++        while i < len(probes):
++            n = random.randint(1, 64)
++            group, i = probes[i:i + n], i + n
++            reqs = [(seqs[L][0][p:p + 1].contiguous(), pages[L], p + 1) for L, p in group]
++            for (L, p), out in zip(group, decode(pool, reqs)):
++                if not same(out[0], alone[L][p]):
++                    fails.append((f"path decode-variant-{variant}", L, p))
++    ext.set_decode_variant(0)
++
+     check_heads(pool, seqs, pages, alone, fails)
+ 
+     # Accuracy vs float64, against FlashInfer's.
+diff --git a/llm_infer_rust/src/kernels/pi/pi_attn_kernels.cu b/llm_infer_rust/src/kernels/pi/pi_attn_kernels.cu
+index 0be6eb0..fcccdfc 100644
+--- a/llm_infer_rust/src/kernels/pi/pi_attn_kernels.cu
++++ b/llm_infer_rust/src/kernels/pi/pi_attn_kernels.cu
+@@ -414,6 +414,37 @@ inline dim3 decode_grid(int max_groups, int num_kv_heads, int batch) {
+ constexpr int kDecodeWarps = 4;
+ constexpr int decode_smem_bytes() { return (2 * kTile * kHeadDim + 16 * (kTile + 8)) * 2 + kDecodeWarps * 16 * 4; }
+ 
++// TWO_PHASE (decode_kernel<true, RK, RV>): the same program with the group's work reordered so that only the
++// O / D chain is serial. Within a fold group the S = Q K^T of each tile depends on nothing of the other tiles,
++// and the running maximum m' is an exact prefix maximum, so
++//   A. every warp computes its S n-tile of all (up to 16) tiles from its own rows of K (which its own threads
++//      copy: no CTA barrier), each element's head_dim k-steps in ascending order, and publishes the tile row
++//      maxima;                                                                             -- one barrier --
++//   B. every lane walks the tiles in order: m', sigma = 2^(m - m') and P = bf16(2^(s - m')) with exactly the
++//      per-tile kernel's operations, and publishes P;                                      -- one barrier --
++//   C. the serial chain, tile by tile: warp 0 forms sum P in online_step's order and d = fma(d, sigma, sum P);
++//      every warp runs o = fma(o, sigma, +0) and the two key k-steps of P V on its O n-tiles, V read from a
++//      warp-private copy of its 32 output dims (no CTA barrier).
++// Every element's operation sequence is the per-tile kernel's; only the interleaving across elements and the
++// number of CTA barriers (2 per group instead of 4 per tile) change. K and V stream through rings of RK / RV
++// tile slots, loads issued RK - 1 / RV - 1 tiles ahead. Shared memory: the rings, the maxima and P of the
++// whole group (sized by the GQA group: decode2_smem_bytes).
++constexpr int kDecVStride = kTile + 8;  // bf16 elements per key of a warp's V slice (32 dims + pad: conflict-free ldmatrix)
++// The group's page-table entries are copied to shared memory once (cp.async), so that issuing a tile's loads
++// reads no global memory: a page-table read in every tile is a synchronous round trip on the group's
++// critical path. Up to kGroupKeys entries (page_size 1).
++template <int RK, int RV>
++constexpr int decode2_smem_bytes(int group) {
++  return (RK * kTile * kHeadDim + kDecodeWarps * RV * kTile * kDecVStride) * 2 + kGroupTiles * kDecodeWarps * 16 * 4 +
++         kGroupKeys * 4 + kGroupTiles * group * (kTile + 8) * 2;
++}
++
++// The ring depths the device's two-phase decode runs, and where it runs (speed only; every decode kernel
++// gives the same bits).
++constexpr int kDecodeRK = 2, kDecodeRV = 2;
++inline bool decode_two_phase(int cc_major, int cc_minor) { return cc_major == 9 && cc_minor == 0; }
++
++template <bool TWO_PHASE, int RK = kDecodeRK, int RV = kDecodeRV>
+ __global__ void __launch_bounds__(kDecodeWarps * 32)
+     decode_kernel(const __nv_bfloat16* __restrict__ q, const __nv_bfloat16* __restrict__ k_cache,
+                    const __nv_bfloat16* __restrict__ v_cache, const int32_t* __restrict__ kv_page_indptr,
+@@ -425,10 +456,14 @@ __global__ void __launch_bounds__(kDecodeWarps * 32)
+   static_assert(kTileNS == kDecodeWarps && kNTilesO % kDecodeWarps == 0, "one S n-tile per warp");
+   constexpr int kON = kNTilesO / kDecodeWarps, kPStride = kTile + 8;
+   extern __shared__ __align__(16) __nv_bfloat16 smem[];
+-  __nv_bfloat16* sK = smem;
+-  __nv_bfloat16* sV = sK + kTile * kHeadDim;
+-  __nv_bfloat16* sP = sV + kTile * kHeadDim;  // [16 rows][kTile] rounded P
+-  float* sMax = reinterpret_cast<float*>(sP + 16 * kPStride);  // [warps][16]
++  constexpr int kSlot = kTile * kHeadDim, kVSlot = kTile * kDecVStride;
++  __nv_bfloat16* sK = smem;                   // TWO_PHASE: [RK][kTile][128]
++  __nv_bfloat16* sV = sK + (TWO_PHASE ? RK : 1) * kSlot;  // TWO_PHASE: [warps][RV][kTile][kDecVStride]
++  int32_t* sPages = reinterpret_cast<int32_t*>(sV + kDecodeWarps * RV * kVSlot + kGroupTiles * kDecodeWarps * 16 * 2);
++  __nv_bfloat16* sP = TWO_PHASE ? reinterpret_cast<__nv_bfloat16*>(sPages + kGroupKeys)
++                                : sV + kSlot;  // [16 rows][kTile] rounded P; TWO_PHASE: [tiles][group rows][kPStride]
++  float* sMax = TWO_PHASE ? reinterpret_cast<float*>(sV + kDecodeWarps * RV * kVSlot)   // [tiles][warps][16]
++                          : reinterpret_cast<float*>(sP + 16 * kPStride);               // [warps][16]
+   const int kvh = group_fastest ? blockIdx.y : blockIdx.x, b = group_fastest ? 0 : blockIdx.y;
+   const int fg = group_fastest ? blockIdx.x : blockIdx.z;
+   const int kv_len = kv_lens[b], pos = kv_len - 1;
+@@ -440,12 +475,54 @@ __global__ void __launch_bounds__(kDecodeWarps * 32)
+   const int g = lane >> 2, t4 = lane & 3, mat = lane >> 3, r8 = lane & 7;
+   const int group = num_qo_heads / num_kv_heads;
+   const int32_t* pages = request_pages(kv_page_indices, kv_page_indptr, table_stride, b);
+-  int64_t row;
+-  row = tile_row(pages, page_size, page_shift, t_begin, kv_len, num_kv_heads, kvh, tid);
+-  issue_tile(sK, k_cache, row, tid);
+-  cp_async_commit();
+-  issue_tile(sV, v_cache, row, tid);
+-  cp_async_commit();
++  int64_t row = 0;
++  // TWO_PHASE loads. K(i): issue_tile's map, in which a warp's threads copy exactly the 8 keys of its S n-tile.
++  // V(i): lane l of warp w copies key l, dims [32 w, 32 w + 32), to the warp's own slice. One commit group per
++  // tile and cache (empty past the last tile, to keep the wait counts).
++  const int nt = t_end - t_begin;
++  __nv_bfloat16* sVw = sV + warp * RV * kVSlot;
++  // tile_row with the page table read from sPages (entries of this group, from page first_page on).
++  const int first_page = page_shift >= 0 ? (t_begin * kTile) >> page_shift : (t_begin * kTile) / page_size;
++  auto row_of = [&](int t, int key) -> int64_t {
++    const int p = t * kTile + key;
++    if (p >= kv_len) return -1;
++    const int slot = page_shift >= 0 ? (sPages[(p >> page_shift) - first_page] << page_shift) + (p & (page_size - 1))
++                                     : sPages[p / page_size - first_page] * page_size + p % page_size;
++    return ((int64_t)slot * num_kv_heads + kvh) * kHeadDim;
++  };
++  auto issue_k = [&](int i) {
++    if (i < nt) issue_tile(sK + (i % RK) * kSlot, k_cache, row_of(t_begin + i, tid >> 2), tid);
++    cp_async_commit();
++  };
++  auto issue_v = [&](int i) {
++    if (i < nt) {
++      const int64_t vr = row_of(t_begin + i, lane);
++      const __nv_bfloat16* src = v_cache + (vr >= 0 ? vr : 0) + warp * 32;
++      __nv_bfloat16* dst = sVw + (i % RV) * kVSlot + lane * kDecVStride;
++#pragma unroll
++      for (int c = 0; c < 4; ++c) cp_async16(dst + c * 8, src + c * 8, vr >= 0 ? 16 : 0);
++    }
++    cp_async_commit();
++  };
++  if constexpr (TWO_PHASE) {
++    const int last_page = page_shift >= 0 ? (min(t_end * kTile, kv_len) - 1) >> page_shift
++                                          : (min(t_end * kTile, kv_len) - 1) / page_size;
++    for (int e = tid; e <= last_page - first_page; e += kDecodeWarps * 32)
++      asm volatile("cp.async.ca.shared.global [%0], [%1], 4;" ::"r"(smem_u32(sPages + e)), "l"(pages + first_page + e));
++    cp_async_commit();
++    cp_async_wait<0>();
++    __syncthreads();  // the group's page-table entries
++#pragma unroll
++    for (int j = 0; j < RV - 1; ++j) issue_v(j);
++#pragma unroll
++    for (int j = 0; j < RK - 1; ++j) issue_k(j);
++  } else {
++    row = tile_row(pages, page_size, page_shift, t_begin, kv_len, num_kv_heads, kvh, tid);
++    issue_tile(sK, k_cache, row, tid);
++    cp_async_commit();
++    issue_tile(sV, v_cache, row, tid);
++    cp_async_commit();
++  }
+   QFrag qf;
+   const int64_t q_stride = (int64_t)num_qo_heads * kHeadDim;
+   load_q(qf, [&](int r) -> const __nv_bfloat16* {
+@@ -456,6 +533,119 @@ __global__ void __launch_bounds__(kDecodeWarps * 32)
+ #pragma unroll
+   for (int n = 0; n < kON; ++n) O[n][0] = O[n][1] = O[n][2] = O[n][3] = 0.f;
+ 
++  if constexpr (TWO_PHASE) {
++    // ---- A: S of every tile (this warp's n-tile), tile row maxima ----
++    float sg[kGroupTiles][4];
++#pragma unroll
++    for (int i = 0; i < kGroupTiles; ++i) {
++      if (i >= nt) break;
++      cp_async_wait<RK - 2>();  // this warp's rows of K(i) landed
++      issue_k(i + RK - 1);      // into tile i - 1's slot
++      const __nv_bfloat16* sKi = sK + (i % RK) * kSlot;
++      float s[4] = {0.f, 0.f, 0.f, 0.f};
++#pragma unroll
++      for (int ks = 0; ks < kKStepsQK; ++ks) {
++        uint32_t bk[4];
++        ldmatrix_x4(bk, sKi + swz(warp * 8 + r8, ks * 2 + (mat & 1)));
++        mma_bf16(s, qf.a[ks], bk[0], bk[1]);
++      }
++      float mx[2] = {-INFINITY, -INFINITY};
++#pragma unroll
++      for (int e = 0; e < 4; ++e) {
++        const int qrow = g + (e >> 1) * 8, key = (t_begin + i) * kTile + warp * 8 + t4 * 2 + (e & 1);
++        s[e] = (qrow < group && key <= pos) ? mul(s[e], scale_log2) : -INFINITY;
++        mx[e >> 1] = fmaxf(mx[e >> 1], s[e]);
++        sg[i][e] = s[e];
++      }
++#pragma unroll
++      for (int r = 0; r < 2; ++r) {
++        mx[r] = fmaxf(mx[r], __shfl_xor_sync(0xffffffffu, mx[r], 1));
++        mx[r] = fmaxf(mx[r], __shfl_xor_sync(0xffffffffu, mx[r], 2));
++      }
++      if (t4 == 0) {
++        sMax[(i * kDecodeWarps + warp) * 16 + g] = mx[0];
++        sMax[(i * kDecodeWarps + warp) * 16 + g + 8] = mx[1];
++      }
++    }
++    __syncthreads();  // maxima of every tile published
++    // ---- B: m', sigma, P of every tile, in tile order ----
++    float sc[kGroupTiles][2];
++#pragma unroll
++    for (int i = 0; i < kGroupTiles; ++i) {
++      if (i >= nt) break;
++      float mm[2];
++#pragma unroll
++      for (int r = 0; r < 2; ++r) {
++        float tmax = -INFINITY;
++#pragma unroll
++        for (int w = 0; w < kDecodeWarps; ++w) tmax = fmaxf(tmax, sMax[(i * kDecodeWarps + w) * 16 + g + r * 8]);
++        const float mn = fmaxf(M[r], tmax);
++        mm[r] = mn == -INFINITY ? 0.f : mn;
++        sc[i][r] = ex2(sub(M[r], mm[r]));
++        M[r] = mn;
++      }
++      float p[4];
++#pragma unroll
++      for (int e = 0; e < 4; ++e) p[e] = round_bf16(ex2(sub(sg[i][e], mm[e >> 1])));
++      const int key = warp * 8 + t4 * 2;  // padding rows (>= group) have P = +0 and are not stored
++      if (g < group) *reinterpret_cast<uint32_t*>(sP + (i * group + g) * kPStride + key) = pack_bf16(p[0], p[1]);
++      if (g + 8 < group) *reinterpret_cast<uint32_t*>(sP + (i * group + g + 8) * kPStride + key) = pack_bf16(p[2], p[3]);
++    }
++    __syncthreads();  // P of every tile published
++    // ---- C: the serial chain ----
++#pragma unroll
++    for (int i = 0; i < kGroupTiles; ++i) {
++      if (i >= nt) break;
++      auto prd = [&](int qrow, int k) -> uint32_t {
++        return qrow < group ? *reinterpret_cast<const uint32_t*>(sP + (i * group + qrow) * kPStride + k) : 0u;
++      };
++      if (warp == 0) {  // d in exactly online_step's order
++        float ls[2] = {0.f, 0.f};
++#pragma unroll
++        for (int n = 0; n < kTileNS; ++n) {
++          const uint32_t u0 = prd(g, n * 8 + t4 * 2), u1 = prd(g + 8, n * 8 + t4 * 2);
++          const __nv_bfloat162 p0 = *reinterpret_cast<const __nv_bfloat162*>(&u0);
++          const __nv_bfloat162 p1 = *reinterpret_cast<const __nv_bfloat162*>(&u1);
++          ls[0] = add(ls[0], __low2float(p0));
++          ls[0] = add(ls[0], __high2float(p0));
++          ls[1] = add(ls[1], __low2float(p1));
++          ls[1] = add(ls[1], __high2float(p1));
++        }
++#pragma unroll
++        for (int r = 0; r < 2; ++r) {
++          ls[r] = add(ls[r], __shfl_xor_sync(0xffffffffu, ls[r], 1));
++          ls[r] = add(ls[r], __shfl_xor_sync(0xffffffffu, ls[r], 2));
++        }
++        D = __fmaf_rn(D, sc[i][0], ls[0]);
++        Dh = __fmaf_rn(Dh, sc[i][1], ls[1]);
++      }
++      uint32_t pa[kTileKS][4];
++#pragma unroll
++      for (int j = 0; j < kTileKS; ++j) {
++        const int k0 = j * 16 + t4 * 2;
++        pa[j][0] = prd(g, k0);
++        pa[j][1] = prd(g + 8, k0);
++        pa[j][2] = prd(g, k0 + 8);
++        pa[j][3] = prd(g + 8, k0 + 8);
++      }
++#pragma unroll
++      for (int n = 0; n < kON; ++n)
++#pragma unroll
++        for (int e = 0; e < 4; ++e) O[n][e] = __fmaf_rn(O[n][e], sc[i][e >> 1], 0.f);
++      cp_async_wait<RV - 2>();  // this warp's slice of V(i) landed
++      issue_v(i + RV - 1);      // into tile i - 1's slot
++      const __nv_bfloat16* sVi = sVw + (i % RV) * kVSlot;
++#pragma unroll
++      for (int j = 0; j < kTileKS; ++j)
++#pragma unroll
++        for (int n = 0; n < kON; n += 2) {
++          uint32_t bv[4];
++          ldmatrix_x4_trans(bv, sVi + (j * 16 + (mat & 1) * 8 + r8) * kDecVStride + (n + (mat >> 1)) * 8);
++          mma_bf16(O[n], pa[j], bv[0], bv[1]);
++          mma_bf16(O[n + 1], pa[j], bv[2], bv[3]);
++        }
++    }
++  } else
+   for (int t = t_begin; t < t_end; ++t) {
+     if (t + 1 < t_end) row = tile_row(pages, page_size, page_shift, t + 1, kv_len, num_kv_heads, kvh, tid);
+     cp_async_wait<1>();  // K(t) landed
+diff --git a/llm_infer_rust/src/kernels/pi/pi_launch.cu b/llm_infer_rust/src/kernels/pi/pi_launch.cu
+index d3926e5..5b116c6 100644
+--- a/llm_infer_rust/src/kernels/pi/pi_launch.cu
++++ b/llm_infer_rust/src/kernels/pi/pi_launch.cu
+@@ -41,6 +41,7 @@ struct DeviceInfo {
+   bool prefill_qreg = false;  // prefill kernel variant (prefill_qreg in pi_attn_kernels.cu)
+   bool prefill_tail_splits = false;  // prefill planner (prefill_tail_splits)
+   bool prefill_wgmma = false;  // sm_90a build on compute capability 9.0: prefill90_kernel
++  bool decode_two_phase = false;  // decode kernel (decode_two_phase)
+ };
+ 
+ DeviceInfo device_info() {
+@@ -60,6 +61,7 @@ DeviceInfo device_info() {
+   info.prefill_qreg = prefill_qreg(major, minor);
+   info.prefill_tail_splits = prefill_tail_splits(major, minor);
+   info.prefill_wgmma = prefill_wgmma(major, minor);
++  info.decode_two_phase = decode_two_phase(major, minor);
+   cache[device] = info;
+   return info;
+ }
+@@ -107,12 +109,18 @@ const char* pi_attn_decode(const void* q, const void* k_cache, const void* v_cac
+   if (ws_rows < (int64_t)batch * max_groups)
+     return fail("PI decode workspace smaller than batch * fold groups per request");
+   auto st = (cudaStream_t)stream;
+-  set_smem(decode_kernel, decode_smem_bytes());
+-  decode_kernel<<<decode_grid(max_groups, num_kv_heads, batch), kDecodeWarps * 32, decode_smem_bytes(), st>>>(
+-      (const __nv_bfloat16*)q, (const __nv_bfloat16*)k_cache, (const __nv_bfloat16*)v_cache,
+-      nullptr, page_table, table_stride, seqlens, ws_o, (float2*)ws_ml, counters, (__nv_bfloat16*)out,
+-      max_groups, num_qo_heads, num_kv_heads, page_size, page_shift_of(page_size),
+-      (float)(sm_scale * 1.4426950408889634), decode_group_fastest(batch));
++  auto launch = [&](auto kernel, int smem) {
++    set_smem(kernel, smem);
++    kernel<<<decode_grid(max_groups, num_kv_heads, batch), kDecodeWarps * 32, smem, st>>>(
++        (const __nv_bfloat16*)q, (const __nv_bfloat16*)k_cache, (const __nv_bfloat16*)v_cache,
++        nullptr, page_table, table_stride, seqlens, ws_o, (float2*)ws_ml, counters, (__nv_bfloat16*)out,
++        max_groups, num_qo_heads, num_kv_heads, page_size, page_shift_of(page_size),
++        (float)(sm_scale * 1.4426950408889634), decode_group_fastest(batch));
++  };
++  if (device_info().decode_two_phase)
++    launch(decode_kernel<true>, decode2_smem_bytes<kDecodeRK, kDecodeRV>(num_qo_heads / num_kv_heads));
++  else
++    launch(decode_kernel<false>, decode_smem_bytes());
+   return check_launch("pi decode");
+ }
+ 

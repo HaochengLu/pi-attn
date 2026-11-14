@@ -1,0 +1,18 @@
+[run_gpu] start L4 t2:dev6b_L4_split: ledger $1.14, gateway $3.08, budget $36.00
+patch applied
+NVIDIA L4
+attn ext exit=0 (97s)
+test_invariance exit=0 (129s)
+checks failed: 0 []
+DEC b= 1 kv=  96 us/layer: fi    5.2 | v1    4.7 | v2    5.5 | best two-phase / per-tile 1.17
+DEC b= 1 kv= 640 us/layer: fi   14.7 | v1   19.3 | v2   24.2 | best two-phase / per-tile 1.25
+DEC b= 1 kv=2176 us/layer: fi   39.8 | v1   38.3 | v2   45.0 | best two-phase / per-tile 1.17
+DEC b= 8 kv=  96 us/layer: fi   14.6 | v1   15.1 | v2   19.0 | best two-phase / per-tile 1.26
+DEC b= 8 kv= 640 us/layer: fi   87.4 | v1   85.1 | v2   96.4 | best two-phase / per-tile 1.13
+DEC b= 8 kv=2176 us/layer: fi  291.2 | v1  304.8 | v2  328.7 | best two-phase / per-tile 1.08
+DEC b=32 kv=  96 us/layer: fi   51.9 | v1   54.1 | v2   59.9 | best two-phase / per-tile 1.11
+DEC b=32 kv= 640 us/layer: fi  343.3 | v1  358.3 | v2  390.0 | best two-phase / per-tile 1.09
+DEC b=32 kv=2176 us/layer: fi 1140.2 | v1 1202.3 | v2 1340.6 | best two-phase / per-tile 1.12
+total 184s
+
+[run_gpu] L4 t2:dev6b_L4_split: exit=0 wall=213s cost~$0.110 ledger=$1.36
