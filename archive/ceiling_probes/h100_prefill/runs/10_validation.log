@@ -1,0 +1,50 @@
+[run_gpu] workstream pre: $7.54 of $14.00
+[run_gpu] start H100 pre:val1: ledger $17.16, gateway $13.60, budget $40.00
+NVIDIA H100 80GB HBM3
+== test_invariance
+test_invariance exit=0
+L=517 hq=16 hkv=8: PI err mean 5.772e-04 max 8.920e-03 | FlashInfer err mean 5.904e-04 max 8.674e-03 | bf16(exact) err mean 5.142e-04
+L=2049 hq=16 hkv=8: PI err mean 4.427e-04 max 8.383e-03 | FlashInfer err mean 4.617e-04 max 9.142e-03 | bf16(exact) err mean 4.002e-04
+checks failed: 0 []
+== test_directed
+baseline: fails=0 [] nan_or_negzero=False
+V all -0: fails=0 [] nan_or_negzero=False
+V half -0 half negative: fails=0 [] nan_or_negzero=False
+huge scale 40 (ftz/alpha=0): fails=0 [] nan_or_negzero=False
+huge scale 40, L=4500: fails=0 [] nan_or_negzero=False
+zero Q (max ties): fails=0 [] nan_or_negzero=False
+page 64: fails=0 [] nan_or_negzero=False
+page 1: fails=0 [] nan_or_negzero=False
+hq=16 hkv=1 (group 16): fails=0 [] nan_or_negzero=False
+group 32 rejected: GQA group size must be <= 16 (one 16-row MMA group per kv head)
+DIRECTED FAILURES: 0
+test_directed exit=0
+== hashes
+HASH prefill b1 q512: reference f0edc5bce36ef0f1 | v0=f0edc5bce36ef0f1 v1=f0edc5bce36ef0f1 v2=f0edc5bce36ef0f1 v5=f0edc5bce36ef0f1 v6=f0edc5bce36ef0f1 v7=f0edc5bce36ef0f1 v6/splits1=f0edc5bce36ef0f1 v6/splits3=f0edc5bce36ef0f1 v7/splits1=f0edc5bce36ef0f1 v7/splits3=f0edc5bce36ef0f1 | EQUAL
+HASH prefill b4 q2048: reference f60713f799b36d27 | v0=f60713f799b36d27 v1=f60713f799b36d27 v2=f60713f799b36d27 v5=f60713f799b36d27 v6=f60713f799b36d27 v7=f60713f799b36d27 v6/splits1=f60713f799b36d27 v6/splits3=f60713f799b36d27 v7/splits1=f60713f799b36d27 v7/splits3=f60713f799b36d27 | EQUAL
+HASH extend b1 q128 prefix 4096: reference 876ab4d2eac19ca6 | v0=876ab4d2eac19ca6 v1=876ab4d2eac19ca6 v2=876ab4d2eac19ca6 v5=876ab4d2eac19ca6 v6=876ab4d2eac19ca6 v7=876ab4d2eac19ca6 v6/splits1=876ab4d2eac19ca6 v6/splits3=876ab4d2eac19ca6 v7/splits1=876ab4d2eac19ca6 v7/splits3=876ab4d2eac19ca6 | EQUAL
+HASH decode b8 kv 2048: reference c46fe141743f0c65 | decode=c46fe141743f0c65 | EQUAL
+HASH decode b1 kv 32768: reference 16a1ede29cc1ab6c | decode=16a1ede29cc1ab6c | EQUAL
+attention hashes equal to results/modal/H100_sm90/hashes_H100.json: True
+== bench
+PRE hq=16 b=1 q=512 prefix=0: fa2 36.1 fa3 15.3 | v5 19.8 (1.29) | v0 19.2 (1.25) | v6 22.6 (1.48) | v7 19.2 (1.25)
+PRE hq=16 b=1 q=1024 prefix=0: fa2 75.6 fa3 22.7 | v5 39.4 (1.74) | v0 33.4 (1.47) | v6 40.5 (1.78) | v7 33.0 (1.45)
+PRE hq=16 b=1 q=2048 prefix=0: fa2 107.5 fa3 62.9 | v5 120.0 (1.91) | v0 70.9 (1.13) | v6 77.9 (1.24) | v7 70.7 (1.12)
+PRE hq=16 b=1 q=4096 prefix=0: fa2 336.9 fa3 174.6 | v5 362.8 (2.08) | v0 223.0 (1.28) | v6 223.2 (1.28) | v7 247.6 (1.42)
+PRE hq=16 b=8 q=1024 prefix=0: fa2 163.4 fa3 118.1 | v5 202.9 (1.72) | v0 155.3 (1.31) | v6 155.5 (1.32) | v7 171.1 (1.45)
+PRE hq=16 b=8 q=2048 prefix=0: fa2 505.0 fa3 358.6 | v5 659.2 (1.84) | v0 494.8 (1.38) | v6 501.5 (1.40) | v7 548.9 (1.53)
+PRE hq=16 b=1 q=2048 prefix=2048: fa2 217.0 fa3 127.5 | v5 278.5 (2.18) | v0 183.5 (1.44) | v6 191.7 (1.50) | v7 184.0 (1.44)
+PRE hq=16 b=1 q=128 prefix=4096: fa2 31.9 fa3 65.1 | v5 33.8 (1.06) | v0 31.4 (0.98) | v6 34.4 (1.08) | v7 31.3 (0.98)
+PRE hq=32 b=1 q=512 prefix=0: fa2 61.7 fa3 15.9 | v5 22.7 (1.43) | v0 19.5 (1.23) | v6 22.6 (1.42) | v7 19.4 (1.22)
+PRE hq=32 b=1 q=1024 prefix=0: fa2 59.4 fa3 37.2 | v5 65.9 (1.77) | v0 41.1 (1.10) | v6 40.1 (1.08) | v7 41.1 (1.10)
+PRE hq=32 b=1 q=2048 prefix=0: fa2 178.4 fa3 100.0 | v5 194.2 (1.94) | v0 123.2 (1.23) | v6 123.0 (1.23) | v7 138.4 (1.38)
+PRE hq=32 b=1 q=4096 prefix=0: fa2 527.6 fa3 314.8 | v5 641.5 (2.04) | v0 406.2 (1.29) | v6 396.0 (1.26) | v7 478.2 (1.52)
+PRE hq=32 b=8 q=1024 prefix=0: fa2 284.2 fa3 214.3 | v5 377.8 (1.76) | v0 293.6 (1.37) | v6 294.6 (1.37) | v7 335.2 (1.56)
+PRE hq=32 b=8 q=2048 prefix=0: fa2 950.4 fa3 700.9 | v5 1262.0 (1.80) | v0 940.8 (1.34) | v6 968.2 (1.38) | v7 1153.1 (1.65)
+PRE hq=32 b=1 q=2048 prefix=2048: fa2 401.8 fa3 219.3 | v5 493.0 (2.25) | v0 324.6 (1.48) | v6 325.0 (1.48) | v7 360.9 (1.65)
+PRE hq=32 b=1 q=128 prefix=4096: fa2 49.4 fa3 65.9 | v5 58.5 (1.18) | v0 52.6 (1.06) | v6 53.2 (1.08) | v7 52.7 (1.07)
+== mutant
+mutated file: pi_attn_sm90.cuh
+mutant prefill_group_256: 6465 failed checks, kinds ['heads', 'path', 'split']; caught: True
+
+[run_gpu] H100 pre:val1: exit=0 wall=413s cost~$0.684 ledger=$19.23

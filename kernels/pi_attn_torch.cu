@@ -37,7 +37,7 @@ static int sm_count(const at::Tensor& t) {
 // (prefill_qreg, prefill_warps, prefill_wgmma, prefill90w_wg), 1 = Q in smem, 2 = Q in registers (QREG), 3 / 4 =
 // the same with 8 warps (128 rows) per CTA; sm_90a builds on compute capability 9.0 only: 5 = the wgmma kernel
 // of 64 rows per CTA, 6 / 7 = the warp-specialised wgmma kernel with 3 / 2 consumer warp groups (192 / 128 rows
-// per CTA; the device's choice is one of the two); all give the same bits.
+// per CTA; the device's choice is one of the three, prefill90w_wg); all give the same bits.
 at::Tensor prefill(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Tensor qo_indptr,
                    at::Tensor kv_page_indptr, at::Tensor kv_page_indices, at::Tensor kv_lens,
                    int64_t max_q_len, int64_t max_kv_len, double sm_scale, int64_t kv_splits,
@@ -55,11 +55,12 @@ at::Tensor prefill(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Ten
   cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, q.get_device());
   const bool wgmma = variant >= 5 || (variant == 0 && prefill_wgmma(major, minor));
   TORCH_CHECK(!wgmma || prefill_wgmma(major, minor), "variants 5 to 7 need an sm_90a build on compute capability 9.0");
-  const bool ws = wgmma && variant != 5;  // the warp-specialised wgmma kernel
-  int nwg = variant == 6 ? 3 : 2;         // its consumer warp groups
+  int nwg = variant == 5 ? 0 : variant == 6 ? 3 : 2;  // consumer warp groups; 0 = the 64-row wgmma kernel
 #ifdef PI_SM90A
-  if (variant == 0) nwg = prefill90w_wg(batch, hq, hkv, (int)max_q_len, sm_count(q));
+  if (variant == 0)
+    nwg = prefill90w_wg(batch, hq, hkv, (int)max_q_len, (int)((max_kv_len - 1) / kGroupKeys + 1), sm_count(q));
 #endif
+  const bool ws = wgmma && nwg > 0;  // the warp-specialised wgmma kernel
   const bool qreg = wgmma ? false : variant ? variant % 2 == 0 : prefill_qreg(major, minor);
   const int warps = ws ? 4 * (1 + nwg) : wgmma ? kPrefillWarps : variant ? (variant >= 3 ? 8 : kPrefillWarps)
                             : prefill_warps(qreg, batch, hq, hkv, (int)max_q_len, sm_count(q));
@@ -162,7 +163,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
          : variant == 3 ? prefill_smem_bytes<false, 8>() : prefill_smem_bytes<true, 8>();
   });
   // Whether this build has the wgmma prefill kernels (variants 5 to 7; the device's choice on compute capability
-  // 9.0 is 6 or 7).
+  // 9.0 is one of them, by shape).
 #ifdef PI_SM90A
   m.attr("WGMMA") = true;
 #else

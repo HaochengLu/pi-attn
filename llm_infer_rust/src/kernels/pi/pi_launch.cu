@@ -122,11 +122,14 @@ void pi_attn_prefill_plan(int batch, int num_qo_heads, int num_kv_heads, int max
                           int max_kv_len, int* splits, int* max_groups) {
   const DeviceInfo info = device_info();
 #ifdef PI_SM90A
-  if (info.prefill_wgmma) {  // prefill90w_kernel: one CTA per SM
-    const int nwg = prefill90w_wg(batch, num_qo_heads, num_kv_heads, max_q_len, info.sms);
-    prefill_plan(batch, num_qo_heads, num_kv_heads, max_q_len, max_kv_len, info.sms, info.prefill_tail_splits, splits,
-                 max_groups, prefill90w_rows(nwg), 1);
-    return;
+  if (info.prefill_wgmma) {
+    const int nwg = prefill90w_wg(batch, num_qo_heads, num_kv_heads, max_q_len, (max_kv_len - 1) / kGroupKeys + 1,
+                                  info.sms);
+    if (nwg > 0) {  // prefill90w_kernel: one CTA per SM
+      prefill_plan(batch, num_qo_heads, num_kv_heads, max_q_len, max_kv_len, info.sms, info.prefill_tail_splits,
+                   splits, max_groups, prefill90w_rows(nwg), 1);
+      return;
+    }
   }
 #endif
   const int warps = prefill_warps(info.prefill_qreg, batch, num_qo_heads, num_kv_heads, max_q_len, info.sms);
@@ -155,9 +158,9 @@ const char* pi_attn_prefill(const void* q, const void* k_cache, const void* v_ca
   int tiles = (int)(((int64_t)max_q_len * group + warps * 16 - 1) / (warps * 16)), threads = warps * 32;
   dim3 grid(tiles, num_kv_heads, batch * splits);
 #ifdef PI_SM90A
-  int nwg = 0;  // consumer warp groups of prefill90w_kernel
-  if (info.prefill_wgmma) {
-    nwg = prefill90w_wg(batch, num_qo_heads, num_kv_heads, max_q_len, info.sms);
+  int nwg = 0;  // consumer warp groups of prefill90w_kernel; 0: another kernel
+  if (info.prefill_wgmma) nwg = prefill90w_wg(batch, num_qo_heads, num_kv_heads, max_q_len, max_groups, info.sms);
+  if (nwg > 0) {
     tiles = (int)(((int64_t)max_q_len * group + prefill90w_rows(nwg) - 1) / prefill90w_rows(nwg));
     threads = prefill90w_threads(nwg);
     grid = prefill90w_grid(tiles, num_kv_heads, batch * splits);
@@ -179,6 +182,7 @@ const char* pi_attn_prefill(const void* q, const void* k_cache, const void* v_ca
 #ifdef PI_SM90A
     if (nwg == 3) launch(prefill90w_kernel<3>, prefill90w_smem_bytes<3>());
     else if (nwg == 2) launch(prefill90w_kernel<2>, prefill90w_smem_bytes<2>());
+    else if (info.prefill_wgmma) launch(prefill90_kernel, prefill90_smem_bytes());
     else
 #endif
     launch(prefill_kernel<false>, prefill_smem_bytes<false>());

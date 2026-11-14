@@ -311,8 +311,8 @@ __global__ void __launch_bounds__(128, 2)
 }  // namespace pi_attn
 
 // ---------------------------------------------------------------------------------------------------------
-// Warp-specialised prefill (prefill90w_kernel<NWG>), the device's prefill kernel on Hopper: the same row
-// program, one CTA per SM.
+// Warp-specialised prefill (prefill90w_kernel<NWG>), the device's prefill kernel on Hopper but for the
+// shortest sequences (prefill90w_wg): the same row program, one CTA per SM.
 //   threads 0..127   producer: gathers the paged K / V into two-stage rings (a stage: kStageKeys keys = two
 //                    contract tiles) with cp.async; a stage is published / recycled through mbarriers
 //   threads 128..    NWG consumer warp groups of 64 rows each: 64 NWG rows per CTA share one K / V stream
@@ -474,9 +474,13 @@ constexpr int prefill90w_rows(int nwg) { return 64 * nwg; }
 constexpr int prefill90w_threads(int nwg) { return 128 * (1 + nwg); }
 template <int NWG>
 constexpr int prefill90w_smem_bytes() { return (int)sizeof(pi_ws::Smem<NWG>); }
-// Consumer warp groups per CTA: three when the 192-row CTAs fill the SMs twice over; otherwise two, which makes
-// more and shorter CTAs for short prompts and short extends (archive/ceiling_probes/h100_prefill).
-inline int prefill90w_wg(int batch, int num_qo_heads, int num_kv_heads, int max_q_len, int sms) {
+// Which prefill kernel a Hopper device runs for a shape: prefill90w_kernel with the returned number of consumer
+// warp groups, or (0) prefill90_kernel. Three warp groups when the 192-row CTAs fill the SMs twice over;
+// otherwise two, which makes more and shorter CTAs for short prompts and short extends; prefill90_kernel for at
+// most 128 new tokens inside one fold group, where a CTA runs a few tiles and its start-up (384 threads, the
+// rings) costs more than they do (archive/ceiling_probes/h100_prefill). max_groups: prefill_plan's.
+inline int prefill90w_wg(int batch, int num_qo_heads, int num_kv_heads, int max_q_len, int max_groups, int sms) {
+  if (max_groups == 1 && max_q_len <= 4 * kTile) return 0;
   const int64_t rows = (int64_t)max_q_len * (num_qo_heads / std::max(num_kv_heads, 1));
   const int64_t ctas = (rows + 191) / 192 * num_kv_heads * batch;
   return ctas >= 2 * (int64_t)sms ? 3 : 2;

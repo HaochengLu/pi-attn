@@ -25,7 +25,22 @@ Measured on H100 (Modal, CUDA 12.6.3, FlashInfer 0.6.18) against pi-attn @ 61ff5
 | hq=32 b=1 q=2048 prefix=2048 | 219.3 | 534.3 | 324.6 | 1.48 |
 | hq=32 b=1 q=128 prefix=4096 | 49.4 (fa2) | 62.5 | 52.6 | 1.06 |
 
-"Before" is `logs/05_longest_first_and_exit_probes.log` (column `v5`), "After" and FlashInfer are the final validation run (`logs/10_validation.log`, column `v0`). The target of 1.15× is met on four rows and missed on twelve (1.23–1.48×).
+"Before" is `runs/05_longest_first_and_exit_probes.log` (column `v5`), "After" and FlashInfer are the final validation run (`runs/10_validation.log`, column `v0`). Log columns in the tables below are the files of `runs/` by their number; the variant numbers in the logs are development ids (600 + flags, 20000 + flags) of the kernels in the two `*_not_shipped.diff` files. The target of 1.15× is met on four rows and missed on twelve (1.23–1.48×).
+
+## Engine (Qwen3-1.7B, H100, `eng.sh`)
+
+The engine built with these kernels replays the H100 reference rollouts bit for bit (`runs/13_engine_final.log`: `64 rollouts: 64 with identical token ids; 14442/14442 log-probabilities bitwise equal`), and its build has no C7511 line. TTFT in ms, the median of three interleaved launches of each server; "before" is the paper's Table 3 run (`results/modal/H100_sm90/engine_round4.log`), another machine and day, so compare the relative columns.
+
+| Workload (in/out/concurrency) | FlashInfer | PI | PI vs FlashInfer | Before | Throughput vs FlashInfer (before) |
+|---|---|---|---|---|---|
+| 64/32/c1 | 4.2 | 4.6 | +7.4% | +19.3% | −2.1% (−4.1%) |
+| 64/32/c8 | 12.3 | 13.3 | +8.2% | +17.5% | −3.5% (−7.7%) |
+| 64/32/c32 | 22.7 | 24.2 | +6.7% | +16.5% | −5.1% (−11.5%) |
+| 512/256/c8 | 29.2 | 33.0 | +13.0% | +18.4% | −11.6% (−15.7%) |
+| 2048/128/c8 | 58.3 | 67.0 | +15.0% | +19.7% | −6.7% (−10.6%) |
+| 1024/512/c32 | 96.5 | 110.1 | +14.1% | +12.4% | −5.2% (−10.8%) |
+
+The first engine run (`runs/11_engine.log`, one launch each, before the short-sequence rule) is kept for the record; its c32 rows are what led to `runs/12_engine_shapes.log`.
 
 ## What moved the time
 
@@ -36,6 +51,7 @@ Measured on H100 (Modal, CUDA 12.6.3, FlashInfer 0.6.18) against pi-attn @ 61ff5
 | Three consumer warp groups per SM (192 rows per CTA) instead of two | 481 → 399. One warp group is not faster when the other is idle (`06`: 602 with the second one idle against 546 with both working), so a third adds throughput; with three, each takes about a third longer per tile. | `06`, `07`, `08` |
 | P rounded once per pair into the A-fragment word | 746 → 671 on the two-warp-group kernel: `cvt.rn.bf16.f32` is a slow instruction | `03` |
 | Two warp groups when the 192-row CTAs do not fill the SMs twice | hq=16 q=1024: 41 → 33 | `08`, `10` |
+| `prefill90_kernel` (64 rows per CTA, two CTAs per SM) for at most 128 new tokens inside one fold group | hq=16 b=32 q=32 prefix=96: 23.0 → 14.9; b=1 q=64: 9.0 → 7.4. A `prefill90w` CTA starts 384 threads and two rings for a few tiles. From 256 keys on the new kernel wins (b=8 q=256: 23.8 against 30.4). | `12` |
 
 ## What did not
 

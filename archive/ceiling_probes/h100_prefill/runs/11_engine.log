@@ -1,0 +1,24 @@
+[run_gpu] workstream pre: $8.23 of $14.00
+[run_gpu] start H100 pre:engine: ledger $19.23, gateway $13.82, budget $40.00
+apt exit=0
+model sha256 OK
+cargo build exit=0 (402s)
+C7511 lines in build: 0
+NVIDIA H100 80GB HBM3, 610.57.04
+server pi up (427s)
+64 rollouts: 64 with identical token ids; 14442/14442 log-probabilities bitwise equal
+ROLLOUTS IDENTICAL TO REFERENCE: True
+xgpu_rollout exit=0
+loadgen pi exit=0
+server flashinfer up (457s)
+loadgen fi exit=0
+E2E 64/32/c1: out tok/s FI 431.9 PI 421.8 (-2.3%) | TTFT FI 4.9 PI 5.4 (+10.0%)  raw {'flashinfer': [(431.8668092866974, 4.87154728125283)], 'pi': [(421.810887120158, 5.358733968755303)]}
+E2E 64/32/c8: out tok/s FI 2805.7 PI 2644.4 (-5.8%) | TTFT FI 12.7 PI 15.0 (+18.2%)  raw {'flashinfer': [(2805.7375875999296, 12.709261500003066)], 'pi': [(2644.3693443553466, 15.018793031245536)]}
+E2E 64/32/c32: out tok/s FI 7772.2 PI 6806.6 (-12.4%) | TTFT FI 20.8 PI 26.3 (+26.5%)  raw {'flashinfer': [(7772.165702359517, 20.81224745312049)], 'pi': [(6806.610761172648, 26.32615060937482)]}
+E2E 512/256/c8: out tok/s FI 2970.0 PI 2613.8 (-12.0%) | TTFT FI 29.2 PI 31.3 (+7.2%)  raw {'flashinfer': [(2970.0041770650737, 29.19804449998864)], 'pi': [(2613.7557579716326, 31.30095296875446)]}
+E2E 2048/128/c8: out tok/s FI 2023.5 PI 1888.1 (-6.7%) | TTFT FI 59.4 PI 68.1 (+14.6%)  raw {'flashinfer': [(2023.475258298842, 59.42814606250302)], 'pi': [(1888.1474757500266, 68.09546028124736)]}
+E2E 1024/512/c32: out tok/s FI 6927.3 PI 6586.1 (-4.9%) | TTFT FI 103.4 PI 129.1 (+24.8%)  raw {'flashinfer': [(6927.310794272271, 103.38828267187239)], 'pi': [(6586.119577925124, 129.0632500156281)]}
+pi server error|panic lines: 0
+total 474s
+
+[run_gpu] H100 pre:engine: exit=0 wall=522s cost~$0.864 ledger=$21.79

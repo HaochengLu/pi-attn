@@ -6,7 +6,9 @@ warm_gpu()
 VARS = [int(v) for v in os.environ.get("PI_PRE_VARIANTS", "5,6").split(",")]
 SHAPES = [(1, 512, 0), (1, 1024, 0), (1, 2048, 0), (1, 4096, 0), (8, 1024, 0), (8, 2048, 0), (1, 2048, 2048), (1, 128, 4096)]
 if os.environ.get("PI_PRE_SHORT"): SHAPES = [(1, 1024, 0), (1, 4096, 0), (8, 1024, 0), (1, 128, 4096)]
-for hq, hkv in [(16, 8), (32, 8)]:
+if os.environ.get("PI_PRE_ENGINE"): SHAPES = [(1, 64, 0), (8, 64, 0), (32, 64, 0), (2, 1024, 0), (4, 512, 0), (8, 256, 0), (16, 128, 0), (8, 64, 1024), (32, 32, 96), (2, 1000, 24)]
+HEADS = [(16, 8)] if os.environ.get("PI_PRE_ENGINE") else [(16, 8), (32, 8)]
+for hq, hkv in HEADS:
     for batch, q_len, prefix in SHAPES:
         kv_len = q_len + prefix
         kv, indptr, indices, last, lens = make_cache(batch, kv_len, hkv)

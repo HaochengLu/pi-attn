@@ -1,0 +1,50 @@
+[run_gpu] workstream pre: $9.49 of $14.00
+[run_gpu] start H100 pre:engine2: ledger $22.19, gateway $14.17, budget $40.00
+apt exit=0
+model sha256 OK
+cargo build exit=0 (368s)
+checks failed: 0 []
+test_invariance exit=0
+HASH prefill b1 q512: reference f0edc5bce36ef0f1 | v0=f0edc5bce36ef0f1 v1=f0edc5bce36ef0f1 v2=f0edc5bce36ef0f1 v5=f0edc5bce36ef0f1 v6=f0edc5bce36ef0f1 v7=f0edc5bce36ef0f1 v6/splits1=f0edc5bce36ef0f1 v
+HASH prefill b4 q2048: reference f60713f799b36d27 | v0=f60713f799b36d27 v1=f60713f799b36d27 v2=f60713f799b36d27 v5=f60713f799b36d27 v6=f60713f799b36d27 v7=f60713f799b36d27 v6/splits1=f60713f799b36d27 
+HASH extend b1 q128 prefix 4096: reference 876ab4d2eac19ca6 | v0=876ab4d2eac19ca6 v1=876ab4d2eac19ca6 v2=876ab4d2eac19ca6 v5=876ab4d2eac19ca6 v6=876ab4d2eac19ca6 v7=876ab4d2eac19ca6 v6/splits1=876ab4d
+HASH decode b8 kv 2048: reference c46fe141743f0c65 | decode=c46fe141743f0c65 | EQUAL
+HASH decode b1 kv 32768: reference 16a1ede29cc1ab6c | decode=16a1ede29cc1ab6c | EQUAL
+attention hashes equal to results/modal/H100_sm90/hashes_H100.json: True
+PRE hq=16 b=1 q=64 prefix=0: fa2 7.6 fa3 7.3 | v5 7.5 (1.03) | v0 7.5 (1.03) | v6 9.8 (1.34) | v7 9.0 (1.23)
+PRE hq=16 b=8 q=64 prefix=0: fa2 9.2 fa3 8.9 | v5 8.7 (0.98) | v0 8.7 (0.98) | v6 10.0 (1.12) | v7 9.3 (1.04)
+PRE hq=16 b=32 q=64 prefix=0: fa2 15.4 fa3 21.0 | v5 18.5 (1.20) | v0 18.5 (1.20) | v6 21.4 (1.39) | v7 20.2 (1.31)
+PRE hq=16 b=2 q=1024 prefix=0: fa2 59.4 fa3 38.0 | v5 66.2 (1.74) | v0 42.2 (1.11) | v6 40.9 (1.08) | v7 42.1 (1.11)
+PRE hq=16 b=4 q=512 prefix=0: fa2 34.7 fa3 28.1 | v5 41.6 (1.48) | v0 29.3 (1.04) | v6 32.7 (1.16) | v7 29.1 (1.04)
+PRE hq=16 b=8 q=256 prefix=0: fa2 22.7 fa3 20.0 | v5 30.5 (1.52) | v0 23.9 (1.19) | v6 27.8 (1.39) | v7 23.8 (1.19)
+PRE hq=16 b=16 q=128 prefix=0: fa2 16.9 fa3 17.1 | v5 20.3 (1.20) | v0 20.1 (1.19) | v6 27.1 (1.60) | v7 22.5 (1.33)
+PRE hq=16 b=8 q=64 prefix=1024: fa2 50.3 fa3 26.3 | v5 40.5 (1.54) | v0 38.8 (1.48) | v6 46.4 (1.76) | v7 38.8 (1.48)
+PRE hq=16 b=32 q=32 prefix=96: fa2 15.9 fa3 25.9 | v5 15.0 (0.94) | v0 15.0 (0.94) | v6 25.3 (1.59) | v7 23.3 (1.47)
+PRE hq=16 b=2 q=1000 prefix=24: fa2 60.3 fa3 39.7 | v5 68.7 (1.73) | v0 45.6 (1.15) | v6 41.3 (1.04) | v7 45.6 (1.15)
+C7511 lines in build: 0
+NVIDIA H100 80GB HBM3, 610.57.04
+server flashinfer up (376s)
+loadgen fi L1 exit=0
+server pi up (416s)
+64 rollouts: 64 with identical token ids; 14442/14442 log-probabilities bitwise equal
+ROLLOUTS IDENTICAL TO REFERENCE: True
+server pi up (445s)
+loadgen pi L1 exit=0
+server flashinfer up (471s)
+loadgen fi L2 exit=0
+server pi up (512s)
+loadgen pi L2 exit=0
+server flashinfer up (538s)
+loadgen fi L3 exit=0
+server pi up (577s)
+loadgen pi L3 exit=0
+E2E 64/32/c1: out tok/s FI 436.7 PI 427.5 (-2.1%) | TTFT FI 4.2 PI 4.6 (+7.4%) | TTFT runs FI [4.2, 4.2, 4.2] PI [4.5, 4.6, 4.6]
+E2E 64/32/c8: out tok/s FI 2859.0 PI 2758.6 (-3.5%) | TTFT FI 12.3 PI 13.3 (+8.2%) | TTFT runs FI [11.8, 13.8, 12.3] PI [13.3, 14.0, 12.7]
+E2E 64/32/c32: out tok/s FI 8387.5 PI 7959.1 (-5.1%) | TTFT FI 22.7 PI 24.2 (+6.7%) | TTFT runs FI [25.5, 22.7, 22.2] PI [24.2, 24.2, 23.1]
+E2E 512/256/c8: out tok/s FI 2988.2 PI 2642.3 (-11.6%) | TTFT FI 29.2 PI 33.0 (+13.0%) | TTFT runs FI [28.7, 29.2, 29.8] PI [33.0, 33.0, 32.7]
+E2E 2048/128/c8: out tok/s FI 2039.2 PI 1901.8 (-6.7%) | TTFT FI 58.3 PI 67.0 (+15.0%) | TTFT runs FI [56.3, 58.3, 59.9] PI [67.0, 67.0, 67.4]
+E2E 1024/512/c32: out tok/s FI 7060.4 PI 6694.0 (-5.2%) | TTFT FI 96.5 PI 110.1 (+14.1%) | TTFT runs FI [96.5, 96.7, 94.9] PI [110.7, 109.9, 110.1]
+pi server error|panic lines: 0
+total 595s
+
+[run_gpu] H100 pre:engine2: exit=0 wall=676s cost~$1.118 ledger=$25.14
