@@ -71,8 +71,11 @@ inline int prefill_warps(bool qreg, int batch, int num_qo_heads, int num_kv_head
 }
 // Whether the planner may split a few-wave prefill against its causal tail. The
 // dispatch simulation below was fitted on sm_89; on sm_80 every split it picks measured
-// slower than one (archive/ceiling_probes/a800/prefill_split_planner.txt).
-inline bool prefill_tail_splits(int cc_major, int cc_minor) { return !(cc_major == 8 && cc_minor == 0); }
+// slower than one (archive/ceiling_probes/a800/prefill_split_planner.txt), and so did every one measured on
+// sm_90 (H100, both prefill kernels: 2 or 4 splits cost 11-24% on 512- and 1024-CTA prefills).
+inline bool prefill_tail_splits(int cc_major, int cc_minor) {
+  return !(cc_major == 8 && cc_minor == 0) && !(cc_major == 9 && cc_minor == 0);
+}
 
 template <bool QREG, int WARPS = kPrefillWarps>
 __global__ void __launch_bounds__(WARPS * 32, WARPS == 4 ? 2 : 1)
