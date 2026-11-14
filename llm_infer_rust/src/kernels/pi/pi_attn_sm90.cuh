@@ -333,12 +333,12 @@ __global__ void __launch_bounds__(128, 2)
 // A CTA holds 220 KB of shared memory, one per SM, so the grid has no CTA that only returns: per (request, kv
 // head) it has `slots` CTAs (decode90_slots: as many as fit one wave), and CTA j runs the request's fold
 // groups j, j + slots, ... one after the other. Which CTA runs a group changes no value. Where it runs instead
-// of decode_kernel: decode90_plan (pi_attn_kernels.cu).
+// of decode_kernel: decode_plan (pi_attn_kernels.cu).
 // 16 warps (128 registers per thread: with 20 warps the loop over groups spilled). Warps 0-7 run the o chain,
 // warps 8-11 the tile maxima and the row sums, warp 8 the running max and the d chain.
 constexpr int kD90Warps = 16, kD90OWarps = 8, kD90DWarp = 8;
 // CTAs per (request, kv head): one per fold group while batch * num_kv_heads * slots stays within one CTA per
-// SM; 0 = the launch does not fit (decode_kernel runs it). decode90_plan only takes launches with a CTA per
+// SM; 0 = the launch does not fit (decode_kernel runs it). decode_plan only takes launches with a CTA per
 // group; the tests also run the others.
 inline int decode90_slots(int batch, int num_kv_heads, int max_groups, int sms) {
   return std::min(max_groups, sms / std::max(batch * num_kv_heads, 1));

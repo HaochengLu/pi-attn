@@ -324,6 +324,10 @@ impl ModelExecutor for Qwen3ForCausalLM {
         self.attention.prepare_decode_graph(metadata)
     }
 
+    fn decode_graph_plans(&self, metadata: &AttentionMetadata) -> Result<Vec<(usize, u32)>> {
+        self.attention.decode_graph_plans(metadata)
+    }
+
     fn forward(
         &self,
         batch: &crate::engine::ForwardBatch<'_>,

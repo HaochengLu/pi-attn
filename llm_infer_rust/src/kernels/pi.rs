@@ -68,6 +68,13 @@ mod ffi {
             stream: *mut c_void,
         ) -> *const c_char;
         pub fn pi_attn_decode_groups(max_kv_len: i64) -> i32;
+        pub fn pi_attn_decode_plan(
+            batch: i32,
+            num_kv_heads: i32,
+            capacity: i64,
+            max_kv_len: i64,
+            same_until: *mut i64,
+        ) -> i32;
         pub fn pi_attn_decode(
             q: *const c_void,
             k_cache: *const c_void,
@@ -85,6 +92,7 @@ mod ffi {
             num_kv_heads: i32,
             page_size: i32,
             sm_scale: f64,
+            max_kv_len: i64,
             stream: *mut c_void,
         ) -> *const c_char;
         pub fn pi_attn_prefill_plan(
@@ -304,6 +312,33 @@ pub(crate) fn decode_groups(table_columns: i64, page_size: i64) -> i64 {
     }
 }
 
+/// Launch plans of decode for `batch` requests and a page table of `capacity` keys per
+/// request: `(bound, plan)` ascending in `bound`, where every step whose longest request
+/// has at most `bound` keys (and more than the previous bound) launches the same kernel,
+/// named by `plan`. The last bound is the capacity. Every plan gives the same bits; a
+/// decode graph is captured per distinct plan and chosen by the step's longest request.
+pub(crate) fn decode_plans(batch: i64, num_kv_heads: i64, capacity: i64) -> Vec<(usize, u32)> {
+    #[cfg(has_pi)]
+    {
+        let mut plans = Vec::new();
+        let mut length = 1;
+        while length <= capacity {
+            let mut bound = length;
+            let plan = unsafe {
+                ffi::pi_attn_decode_plan(batch as i32, num_kv_heads as i32, capacity, length, &mut bound)
+            };
+            plans.push((bound.max(length) as usize, plan as u32));
+            length = bound.max(length) + 1;
+        }
+        plans
+    }
+    #[cfg(not(has_pi))]
+    {
+        let _ = (batch, num_kv_heads);
+        vec![(capacity.max(1) as usize, 0)]
+    }
+}
+
 /// Decode group partials: o `[rows, Hq, 128]` and ml `[rows, Hq, 8]` f32 (an (m, l)
 /// pair per decode warp), one row per (request, fold group), so `rows = batch *
 /// decode_groups(..)`; `counters` `[rows, Hq, 4]` i32 count finished groups per
@@ -328,6 +363,8 @@ impl DecodeWorkspace {
 }
 
 /// Decode attention for `q [batch, Hq, 128]` against the paged caches; writes `out [batch, Hq*128]`.
+/// `max_kv_len`: the longest request of the batch if the host knows it (0 = unknown). It only
+/// selects the kernel (`decode_plans`), never a value.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn decode(
     q: &Tensor,
@@ -337,6 +374,7 @@ pub(crate) fn decode(
     seqlens: &Tensor,
     workspace: &DecodeWorkspace,
     num_kv_heads: i64,
+    max_kv_len: i64,
     out: &Tensor,
 ) -> Result<(), String> {
     let (batch, num_heads) = (q.size()[0], q.size()[1]);
@@ -365,12 +403,13 @@ pub(crate) fn decode(
             num_kv_heads as i32,
             page_size as i32,
             1.0 / (q.size()[2] as f64).sqrt(),
+            max_kv_len,
             stream_of(q)?,
         )
     });
     #[cfg(not(has_pi))]
     {
-        let _ = (k_cache, v_cache, seqlens, workspace, num_kv_heads, out, num_heads);
+        let _ = (k_cache, v_cache, seqlens, workspace, num_kv_heads, max_kv_len, out, num_heads);
         Err("PI kernels were not built".into())
     }
 }

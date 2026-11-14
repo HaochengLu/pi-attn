@@ -117,18 +117,19 @@ at::Tensor prefill(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Ten
   return out;
 }
 
-// Decode kernel: 0 = the engine's choice for this device, batch and capacity (decode90_plan), 1 = decode_kernel,
-// 2 = decode90_kernel wherever it can run (sm_90a builds on compute capability 9.0, batch * kv heads <= SMs),
-// else decode_kernel; both give the same bits.
+// Decode kernel: 0 = the engine's choice for this device, batch and bound of the kv lengths (decode_plan),
+// 1 = decode_kernel, 2 = decode90_kernel wherever it can run (sm_90a builds on compute capability 9.0,
+// batch * kv heads <= SMs), else decode_kernel; both give the same bits.
 static int decode_variant = 0;
 
 // q: [batch, Hq, 128]. Workspace ws_o [rows, Hq, 128] f32, ws_ml [rows, Hq,
 // 2 * DECODE_WARPS] f32 with rows >= batch * ceil(max_kv_len / GROUP_KEYS);
 // max_kv_len bounds every request. counters: [rows, Hq, DECODE_WARPS] int32, zero
-// before the first call and left zero by each.
+// before the first call and left zero by each. kv_len_bound: the longest request of the call if the caller
+// knows it (as the engine does), for decode_plan; 0 = max_kv_len.
 at::Tensor decode(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Tensor kv_page_indptr,
                   at::Tensor kv_page_indices, at::Tensor kv_lens, at::Tensor ws_o, at::Tensor ws_ml,
-                  at::Tensor counters, int64_t max_kv_len, double sm_scale) {
+                  at::Tensor counters, int64_t max_kv_len, double sm_scale, int64_t kv_len_bound) {
   check_inputs(q, k_cache, v_cache, {kv_page_indptr, kv_page_indices, kv_lens});
   const c10::cuda::CUDAGuard guard(q.device());
   auto out = at::empty_like(q);
@@ -147,18 +148,21 @@ at::Tensor decode(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Tens
   int major = 0, minor = 0;
   cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, q.get_device());
   cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, q.get_device());
+  const float scale_log2 = (float)(sm_scale * 1.4426950408889634);
+  int kernel = decode_variant == 0 ? decode_plan(major, minor, batch, max_groups, hkv, sm_count(q), kv_len_bound) : 1;
+  (void)kernel;
 #ifdef PI_SM90A
-  const int slots = decode90_slots(batch, hkv, max_groups, sm_count(q));
-  if (decode_variant == 0 ? decode90_plan(major, minor, batch, max_groups, hkv, sm_count(q))
-                          : decode_variant == 2 && major == 9 && minor == 0 && slots >= 1) {
+  if (decode_variant == 2 && major == 9 && minor == 0 && decode90_slots(batch, hkv, max_groups, sm_count(q)) >= 1)
+    kernel = 2;
+  if (kernel == 2) {
+    const int slots = decode90_slots(batch, hkv, max_groups, sm_count(q));
     cudaFuncSetAttribute(decode90_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, decode90_smem_bytes());
     decode90_kernel<<<decode90_grid(slots, hkv, batch), kD90Warps * 32, decode90_smem_bytes(), stream>>>(
         (const __nv_bfloat16*)q.data_ptr(), (const __nv_bfloat16*)k_cache.data_ptr(),
         (const __nv_bfloat16*)v_cache.data_ptr(), kv_page_indptr.data_ptr<int32_t>(),
         kv_page_indices.data_ptr<int32_t>(), (int64_t)0, kv_lens.data_ptr<int32_t>(), ws_o.data_ptr<float>(),
         (float2*)ws_ml.data_ptr<float>(), counters.data_ptr<int32_t>(), (__nv_bfloat16*)out.data_ptr(),
-        max_groups, hq, hkv, page_size, page_shift_of(page_size), (float)(sm_scale * 1.4426950408889634),
-        decode_group_fastest(batch), slots);
+        max_groups, hq, hkv, page_size, page_shift_of(page_size), scale_log2, decode_group_fastest(batch), slots);
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     return out;
   }
@@ -169,8 +173,7 @@ at::Tensor decode(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Tens
       (const __nv_bfloat16*)v_cache.data_ptr(), kv_page_indptr.data_ptr<int32_t>(),
       kv_page_indices.data_ptr<int32_t>(), (int64_t)0, kv_lens.data_ptr<int32_t>(), ws_o.data_ptr<float>(),
       (float2*)ws_ml.data_ptr<float>(), counters.data_ptr<int32_t>(), (__nv_bfloat16*)out.data_ptr(),
-      max_groups, hq, hkv, page_size, page_shift_of(page_size), (float)(sm_scale * 1.4426950408889634),
-      decode_group_fastest(batch));
+      max_groups, hq, hkv, page_size, page_shift_of(page_size), scale_log2, decode_group_fastest(batch));
   C10_CUDA_KERNEL_LAUNCH_CHECK();
   return out;
 }
@@ -179,10 +182,22 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("prefill", &prefill, py::arg("q"), py::arg("k_cache"), py::arg("v_cache"), py::arg("qo_indptr"),
         py::arg("kv_page_indptr"), py::arg("kv_page_indices"), py::arg("kv_lens"), py::arg("max_q_len"),
         py::arg("max_kv_len"), py::arg("sm_scale"), py::arg("kv_splits"), py::arg("variant") = 0);
-  m.def("decode", &decode);
+  m.def("decode", &decode, py::arg("q"), py::arg("k_cache"), py::arg("v_cache"), py::arg("kv_page_indptr"),
+        py::arg("kv_page_indices"), py::arg("kv_lens"), py::arg("ws_o"), py::arg("ws_ml"), py::arg("counters"),
+        py::arg("max_kv_len"), py::arg("sm_scale"), py::arg("kv_len_bound") = 0);
   m.def("set_decode_variant", [](int64_t v) {
     TORCH_CHECK(v == 0 || v == 1 || v == 2, "decode variant: 0, 1 or 2");
     decode_variant = (int)v;
+  });
+  // The kernel decode_plan gives a launch on this device (1 or 2).
+  m.def("decode_plan", [](int64_t batch, int64_t hkv, int64_t max_kv_len, int64_t kv_len_bound) {
+    int dev = 0, major = 0, minor = 0, sms = 0;
+    cudaGetDevice(&dev);
+    cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, dev);
+    cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, dev);
+    cudaDeviceGetAttribute(&sms, cudaDevAttrMultiProcessorCount, dev);
+    return decode_plan(major, minor, (int)batch, (int)((max_kv_len + kGroupKeys - 1) / kGroupKeys), (int)hkv, sms,
+                       kv_len_bound);
   });
   // Shared memory a prefill variant (1-4) needs per CTA; tests skip variants the GPU cannot run.
   m.def("prefill_smem_bytes", [](int64_t variant) {

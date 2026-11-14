@@ -94,35 +94,62 @@ void pi_set_device(int device) {
 // Workspace: ws_o [batch * max_groups, Hq, 128] f32 and ws_ml [.., Hq, 8] f32 (one
 // (m, l) pair per decode warp) with max_groups = pi_attn_decode_groups(table_stride
 // * page_size), and counters [ws_rows, Hq, 4] int32, zero before the first call;
-// every call leaves them zero. The kernel (decode90_plan) and the grid depend
-// only on (batch, table_stride), so they are fixed per CUDA-graph bucket.
+// every call leaves them zero. max_kv_len: an upper bound of seqlens known on the
+// host (0 = unknown: the table's capacity). The kernel (decode_plan) depends only on
+// (batch, table_stride, max_kv_len) and the grid on (batch, table_stride), so a CUDA
+// graph is fixed per batch and per kernel: pi_attn_decode_plan tells which bounds
+// share one.
 static_assert(kDecodeWarps == 4, "pi.rs sizes the decode ml and counter workspaces for 4 warps");
 int pi_attn_decode_groups(int64_t max_kv_len) {
   return (int)((max_kv_len + kGroupKeys - 1) / kGroupKeys);
+}
+
+// The kernel pi_attn_decode runs for a batch whose longest request has max_kv_len keys, with a page table of
+// `capacity` keys per request (1 = decode_kernel, 2 = decode90_kernel; the same bits).
+// *same_until: the largest bound >= max_kv_len (at most the capacity) up to which every bound gives this kernel.
+int pi_attn_decode_plan(int batch, int num_kv_heads, int64_t capacity, int64_t max_kv_len, int64_t* same_until) {
+  const DeviceInfo info = device_info();
+  const int max_groups = pi_attn_decode_groups(capacity);
+  auto plan = [&](int64_t bound) {
+    return info.decode90 ? decode_plan(info.cc_major, info.cc_minor, batch, max_groups, num_kv_heads, info.sms, bound)
+                         : 1;
+  };
+  max_kv_len = std::min(std::max<int64_t>(max_kv_len, 1), std::max<int64_t>(capacity, 1));
+  const int kernel = plan(max_kv_len);
+  if (same_until) {
+    int64_t end = max_kv_len;
+    while (end < capacity && plan(end + 1) == kernel) ++end;
+    *same_until = end;
+  }
+  return kernel;
 }
 
 const char* pi_attn_decode(const void* q, const void* k_cache, const void* v_cache,
                            const int32_t* page_table, int64_t table_stride, const int32_t* seqlens,
                            float* ws_o, float* ws_ml, int* counters, int64_t ws_rows, void* out, int batch,
                            int num_qo_heads, int num_kv_heads, int page_size, double sm_scale,
-                           void* stream) {
+                           int64_t max_kv_len, void* stream) {
   if (num_kv_heads <= 0 || num_qo_heads % num_kv_heads || num_qo_heads / num_kv_heads > 16)
     return fail("PI attention needs num_qo_heads = g * num_kv_heads with g <= 16");
   if (batch == 0) return nullptr;
-  const int max_groups = pi_attn_decode_groups(table_stride * page_size);
+  const int64_t capacity = table_stride * page_size;
+  const int max_groups = pi_attn_decode_groups(capacity);
   if (ws_rows < (int64_t)batch * max_groups)
     return fail("PI decode workspace smaller than batch * fold groups per request");
   auto st = (cudaStream_t)stream;
+  const float scale_log2 = (float)(sm_scale * 1.4426950408889634);
 #ifdef PI_SM90A
   const DeviceInfo info = device_info();
-  if (info.decode90 && decode90_plan(info.cc_major, info.cc_minor, batch, max_groups, num_kv_heads, info.sms)) {
+  const int kernel = pi_attn_decode_plan(batch, num_kv_heads, capacity, max_kv_len > 0 ? max_kv_len : capacity,
+                                         nullptr);
+  if (kernel == 2) {
     const int slots = decode90_slots(batch, num_kv_heads, max_groups, info.sms);
     set_smem(decode90_kernel, decode90_smem_bytes());
     decode90_kernel<<<decode90_grid(slots, num_kv_heads, batch), kD90Warps * 32, decode90_smem_bytes(), st>>>(
         (const __nv_bfloat16*)q, (const __nv_bfloat16*)k_cache, (const __nv_bfloat16*)v_cache,
         nullptr, page_table, table_stride, seqlens, ws_o, (float2*)ws_ml, counters, (__nv_bfloat16*)out,
-        max_groups, num_qo_heads, num_kv_heads, page_size, page_shift_of(page_size),
-        (float)(sm_scale * 1.4426950408889634), decode_group_fastest(batch), slots);
+        max_groups, num_qo_heads, num_kv_heads, page_size, page_shift_of(page_size), scale_log2,
+        decode_group_fastest(batch), slots);
     return check_launch("pi decode");
   }
 #endif
@@ -130,8 +157,8 @@ const char* pi_attn_decode(const void* q, const void* k_cache, const void* v_cac
   decode_kernel<<<decode_grid(max_groups, num_kv_heads, batch), kDecodeWarps * 32, decode_smem_bytes(), st>>>(
       (const __nv_bfloat16*)q, (const __nv_bfloat16*)k_cache, (const __nv_bfloat16*)v_cache,
       nullptr, page_table, table_stride, seqlens, ws_o, (float2*)ws_ml, counters, (__nv_bfloat16*)out,
-      max_groups, num_qo_heads, num_kv_heads, page_size, page_shift_of(page_size),
-      (float)(sm_scale * 1.4426950408889634), decode_group_fastest(batch));
+      max_groups, num_qo_heads, num_kv_heads, page_size, page_shift_of(page_size), scale_log2,
+      decode_group_fastest(batch));
   return check_launch("pi decode");
 }
 

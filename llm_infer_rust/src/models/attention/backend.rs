@@ -189,6 +189,16 @@ impl Attention {
         )
     }
 
+    /// See `ModelExecutor::decode_graph_plans`.
+    pub fn decode_graph_plans(&self, metadata: &AttentionMetadata) -> Result<Vec<(usize, u32)>> {
+        self.backend.decode_graph_plans(
+            metadata,
+            self.spec,
+            self.page_size
+                .ok_or_else(|| model_error("graph requires a bound KV cache"))?,
+        )
+    }
+
     pub fn prepare<'a>(
         &'a self,
         metadata: Option<&'a AttentionMetadata>,
@@ -312,6 +322,15 @@ trait AttentionBackend {
         Ok(None)
     }
 
+    fn decode_graph_plans(
+        &self,
+        _metadata: &AttentionMetadata,
+        _spec: AttentionSpec,
+        _page_size: i64,
+    ) -> Result<Vec<(usize, u32)>> {
+        Ok(Vec::new())
+    }
+
     fn prepare(
         &self,
         _metadata: Option<&AttentionMetadata>,
@@ -417,6 +436,25 @@ impl AttentionBackend for PiAttentionBackend {
         })))
     }
 
+    /// The decode kernel depends on the longest request of the step, which only the
+    /// host knows: one captured graph per kernel, chosen at replay by that length.
+    fn decode_graph_plans(
+        &self,
+        metadata: &AttentionMetadata,
+        spec: AttentionSpec,
+        page_size: i64,
+    ) -> Result<Vec<(usize, u32)>> {
+        let table = metadata
+            .block_table
+            .as_ref()
+            .ok_or_else(|| model_error("PI decode requires block_table"))?;
+        Ok(crate::kernels::pi::decode_plans(
+            table.size()[0],
+            spec.num_kv_heads,
+            table.stride()[0].max(table.size()[1]) * page_size,
+        ))
+    }
+
     fn prepare(
         &self,
         metadata: Option<&AttentionMetadata>,
@@ -481,8 +519,10 @@ fn pi_forward(
                 .cache_seqlens
                 .as_ref()
                 .ok_or_else(|| model_error("PI decode requires cache_seqlens"))?;
+            // The step's longest request selects the decode kernel (never a value).
+            let max_kv_len = metadata.max_seqlen.unwrap_or(0) as i64;
             crate::kernels::pi::decode(
-                &q, k_cache, v_cache, table, lengths, workspace, num_kv_heads, out,
+                &q, k_cache, v_cache, table, lengths, workspace, num_kv_heads, max_kv_len, out,
             )
         }
         BackendPlan::PiPrefill(plan) => {

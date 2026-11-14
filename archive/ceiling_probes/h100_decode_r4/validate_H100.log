@@ -1,0 +1,73 @@
+[run_gpu] workstream dec2: $0.60 of $4.00
+[run_gpu] start H100 dec2:validate: ledger $31.87, gateway $29.38, budget $40.00
+patch applied
+NVIDIA H100 80GB HBM3, 610.57.04
+test_invariance exit=0 (140s)
+L=2049 hq=16 hkv=8: PI err mean 4.427e-04 max 8.383e-03 | FlashInfer err mean 4.617e-04 max 9.142e-03 | bf16(exact) err mean 4.002e-04
+checks failed: 0 []
+DECODE_VARIANTS [1, 2]
+EQ decode variant 2 vs decode_kernel: 432 comparisons, 0 mismatches
+EQ decode variant 0 vs decode_kernel: 432 comparisons, 0 mismatches
+HASH prefill b1 q512: reference f0edc5bce36ef0f1 | prefill v0=f0edc5bce36ef0f1 | EQUAL
+HASH prefill b4 q2048: reference f60713f799b36d27 | prefill v0=f60713f799b36d27 | EQUAL
+HASH extend b1 q128 prefix 4096: reference 876ab4d2eac19ca6 | prefill v0=876ab4d2eac19ca6 | EQUAL
+HASH decode b8 kv 2048: reference c46fe141743f0c65 | decode v0=c46fe141743f0c65 decode v1=c46fe141743f0c65 decode v2=c46fe141743f0c65 | EQUAL
+HASH decode b1 kv 32768: reference 16a1ede29cc1ab6c | decode v0=16a1ede29cc1ab6c decode v1=16a1ede29cc1ab6c decode v2=16a1ede29cc1ab6c | EQUAL
+attention hashes equal to results/modal/H100_sm90/hashes_H100.json: True
+bits done (154s)
+TABLE b= 1 kv=  96 us/layer: fi    4.5 fi_tc    5.5 v1    5.4 v2    6.3 v0    5.4 | plan v1 best v1 | r3 6.3 (1.40 fi) -> v0 5.4 (1.20 fi)
+TABLE b= 1 kv= 192 us/layer: fi    7.5 fi_tc    7.5 v1    8.6 v2    8.0 v0    8.0 | plan v2 best v2 | r3 8.0 (1.07 fi) -> v0 8.0 (1.07 fi)
+TABLE b= 1 kv= 320 us/layer: fi    8.9 fi_tc    8.1 v1   13.9 v2   10.0 v0    9.8 | plan v2 best v2 | r3 10.0 (1.23 fi) -> v0 9.8 (1.21 fi)
+TABLE b= 1 kv= 512 us/layer: fi    9.1 fi_tc    8.5 v1   20.6 v2   12.6 v0   12.6 | plan v2 best v2 | r3 12.6 (1.48 fi) -> v0 12.6 (1.48 fi)
+TABLE b= 1 kv= 640 us/layer: fi    9.2 fi_tc    8.7 v1   21.7 v2   14.3 v0   14.3 | plan v2 best v2 | r3 14.3 (1.64 fi) -> v0 14.3 (1.64 fi)
+TABLE b= 1 kv=1280 us/layer: fi    9.5 fi_tc    9.7 v1   21.6 v2   14.4 v0   14.4 | plan v2 best v2 | r3 14.4 (1.52 fi) -> v0 14.4 (1.52 fi)
+TABLE b= 1 kv=2176 us/layer: fi   10.3 fi_tc   12.8 v1   21.9 v2   15.1 v0   15.1 | plan v2 best v2 | r3 15.1 (1.47 fi) -> v0 15.1 (1.47 fi)
+TABLE b= 1 kv=4200 us/layer: fi   12.3 fi_tc   15.7 v1   23.0 v2   17.8 v0   17.8 | plan v2 best v2 | r3 17.8 (1.45 fi) -> v0 17.8 (1.45 fi)
+TABLE b= 2 kv=  96 us/layer: fi    4.4 fi_tc    5.4 v1    5.4 v2    6.2 v0    5.4 | plan v1 best v1 | r3 5.4 (1.23 fi) -> v0 5.4 (1.23 fi)
+TABLE b= 2 kv= 192 us/layer: fi    8.8 fi_tc    8.3 v1    9.1 v2    8.0 v0    8.0 | plan v2 best v2 | r3 9.1 (1.10 fi) -> v0 8.0 (0.96 fi)
+TABLE b= 2 kv= 320 us/layer: fi    9.1 fi_tc    8.8 v1   13.9 v2   10.1 v0   10.1 | plan v2 best v2 | r3 13.9 (1.58 fi) -> v0 10.1 (1.15 fi)
+TABLE b= 2 kv= 512 us/layer: fi    9.3 fi_tc    9.2 v1   20.6 v2   12.6 v0   12.6 | plan v2 best v2 | r3 20.6 (2.24 fi) -> v0 12.6 (1.37 fi)
+TABLE b= 2 kv= 640 us/layer: fi    9.4 fi_tc    9.6 v1   21.8 v2   14.6 v0   14.7 | plan v2 best v2 | r3 21.8 (2.32 fi) -> v0 14.7 (1.56 fi)
+TABLE b= 2 kv=1280 us/layer: fi   10.6 fi_tc   13.2 v1   22.0 v2   16.0 v0   16.0 | plan v2 best v2 | r3 22.0 (2.08 fi) -> v0 16.0 (1.51 fi)
+TABLE b= 2 kv=2176 us/layer: fi   12.5 fi_tc   17.0 v1   22.7 v2   17.6 v0   17.7 | plan v2 best v2 | r3 22.7 (1.82 fi) -> v0 17.7 (1.42 fi)
+TABLE b= 2 kv=4200 us/layer: fi   17.8 fi_tc   22.5 v1   25.1 v2   27.5 v0   25.1 | plan v1 best v1 | r3 25.1 (1.41 fi) -> v0 25.1 (1.41 fi)
+TABLE b= 4 kv=  96 us/layer: fi    5.7 fi_tc    6.1 v1    6.0 v2    6.7 v0    6.0 | plan v1 best v1 | r3 6.0 (1.05 fi) -> v0 6.0 (1.05 fi)
+TABLE b= 4 kv= 192 us/layer: fi    9.2 fi_tc    8.9 v1    9.4 v2    8.7 v0    8.7 | plan v2 best v2 | r3 9.4 (1.06 fi) -> v0 8.7 (0.98 fi)
+TABLE b= 4 kv= 320 us/layer: fi    9.4 fi_tc    9.5 v1   13.9 v2   10.8 v0   10.8 | plan v2 best v2 | r3 13.9 (1.48 fi) -> v0 10.8 (1.15 fi)
+TABLE b= 4 kv= 512 us/layer: fi    9.8 fi_tc   10.7 v1   20.6 v2   13.6 v0   13.6 | plan v2 best v2 | r3 20.6 (2.10 fi) -> v0 13.6 (1.39 fi)
+TABLE b= 4 kv= 640 us/layer: fi   10.4 fi_tc   13.0 v1   22.0 v2   16.1 v0   16.1 | plan v2 best v2 | r3 22.0 (2.12 fi) -> v0 16.1 (1.55 fi)
+TABLE b= 4 kv=1280 us/layer: fi   13.0 fi_tc   17.0 v1   23.7 v2   18.4 v0   18.5 | plan v2 best v2 | r3 23.7 (1.82 fi) -> v0 18.5 (1.42 fi)
+TABLE b= 4 kv=2176 us/layer: fi   18.4 fi_tc   23.2 v1   25.6 v2   27.6 v0   25.6 | plan v1 best v1 | r3 25.6 (1.39 fi) -> v0 25.6 (1.39 fi)
+TABLE b= 4 kv=4200 us/layer: fi   30.4 fi_tc   34.4 v1   32.7 v2   45.5 v0   32.7 | plan v1 best v1 | r3 32.7 (1.08 fi) -> v0 32.7 (1.08 fi)
+TABLE b= 8 kv=  96 us/layer: fi    6.0 fi_tc    6.8 v1    6.4 v2    7.1 v0    6.4 | plan v1 best v1 | r3 6.4 (1.07 fi) -> v0 6.4 (1.07 fi)
+TABLE b= 8 kv= 192 us/layer: fi    9.7 fi_tc   10.0 v1    9.6 v2    9.6 v0    9.6 | plan v2 best v1 | r3 9.6 (0.99 fi) -> v0 9.6 (0.99 fi)
+TABLE b= 8 kv= 320 us/layer: fi   10.6 fi_tc   13.1 v1   14.4 v2   12.3 v0   12.3 | plan v2 best v2 | r3 14.4 (1.36 fi) -> v0 12.3 (1.16 fi)
+TABLE b= 8 kv= 512 us/layer: fi   11.8 fi_tc   15.2 v1   21.3 v2   15.8 v0   15.8 | plan v2 best v2 | r3 21.3 (1.81 fi) -> v0 15.8 (1.34 fi)
+TABLE b= 8 kv= 640 us/layer: fi   12.9 fi_tc   17.1 v1   23.3 v2   18.5 v0   18.5 | plan v2 best v2 | r3 23.3 (1.81 fi) -> v0 18.5 (1.43 fi)
+TABLE b= 8 kv=1280 us/layer: fi   20.4 fi_tc   24.5 v1   27.1 v2   30.3 v0   27.1 | plan v1 best v1 | r3 27.1 (1.33 fi) -> v0 27.1 (1.33 fi)
+TABLE b= 8 kv=2176 us/layer: fi   31.3 fi_tc   35.1 v1   33.9 v2   45.2 v0   33.8 | plan v1 best v1 | r3 33.9 (1.08 fi) -> v0 33.8 (1.08 fi)
+TABLE b= 8 kv=4200 us/layer: fi   53.0 fi_tc   56.2 v1   54.6 v2   77.3 v0   54.7 | plan v1 best v1 | r3 54.6 (1.03 fi) -> v0 54.7 (1.03 fi)
+TABLE b=16 kv=  96 us/layer: fi    6.4 fi_tc    7.7 v1    6.9 v2    8.0 v0    6.9 | plan v1 best v1 | r3 6.9 (1.08 fi) -> v0 6.9 (1.08 fi)
+TABLE b=16 kv= 192 us/layer: fi   11.2 fi_tc   13.9 v1   10.7 v2   11.4 v0   10.7 | plan v1 best v1 | r3 10.7 (0.96 fi) -> v0 10.7 (0.96 fi)
+TABLE b=16 kv= 320 us/layer: fi   13.2 fi_tc   17.2 v1   15.8 v2   15.0 v0   15.0 | plan v2 best v2 | r3 15.8 (1.20 fi) -> v0 15.0 (1.14 fi)
+TABLE b=16 kv= 512 us/layer: fi   17.2 fi_tc   21.5 v1   23.5 v2   19.3 v0   19.3 | plan v2 best v2 | r3 23.5 (1.37 fi) -> v0 19.3 (1.12 fi)
+TABLE b=16 kv= 640 us/layer: fi   20.5 fi_tc   24.6 v1   27.5 v2   28.3 v0   27.6 | plan v1 best v1 | r3 27.5 (1.34 fi) -> v0 27.6 (1.35 fi)
+TABLE b=16 kv=1280 us/layer: fi   35.1 fi_tc   38.7 v1   37.1 v2   50.1 v0   37.0 | plan v1 best v1 | r3 37.1 (1.06 fi) -> v0 37.0 (1.05 fi)
+TABLE b=16 kv=2176 us/layer: fi   54.9 fi_tc   57.9 v1   55.3 v2   77.3 v0   55.4 | plan v1 best v1 | r3 55.3 (1.01 fi) -> v0 55.4 (1.01 fi)
+TABLE b=16 kv=4200 us/layer: fi   98.0 fi_tc  101.4 v1  102.8 v2  132.1 v0  102.9 | plan v1 best v1 | r3 102.8 (1.05 fi) -> v0 102.9 (1.05 fi)
+TABLE b=32 kv=  96 us/layer: fi    7.8 fi_tc   11.5 v1    8.5 v2    8.5 v0    8.5 | plan v1 best v1 | r3 8.5 (1.09 fi) -> v0 8.5 (1.09 fi)
+TABLE b=32 kv= 192 us/layer: fi   15.1 fi_tc   15.7 v1   13.3 v2   13.3 v0   13.3 | plan v1 best v1 | r3 13.3 (0.88 fi) -> v0 13.3 (0.88 fi)
+TABLE b=32 kv= 320 us/layer: fi   21.3 fi_tc   22.0 v1   20.3 v2   20.3 v0   20.3 | plan v1 best v1 | r3 20.3 (0.95 fi) -> v0 20.3 (0.95 fi)
+TABLE b=32 kv= 512 us/layer: fi   29.9 fi_tc   30.2 v1   30.0 v2   29.9 v0   29.9 | plan v1 best v2 | r3 30.0 (1.00 fi) -> v0 29.9 (1.00 fi)
+TABLE b=32 kv= 640 us/layer: fi   34.9 fi_tc   35.7 v1   37.7 v2   37.8 v0   37.7 | plan v1 best v1 | r3 37.7 (1.08 fi) -> v0 37.7 (1.08 fi)
+TABLE b=32 kv=1280 us/layer: fi   62.5 fi_tc   63.1 v1   65.0 v2   65.0 v0   65.0 | plan v1 best v1 | r3 65.0 (1.04 fi) -> v0 65.0 (1.04 fi)
+TABLE b=32 kv=2176 us/layer: fi  101.0 fi_tc  101.7 v1  106.2 v2  106.3 v0  106.3 | plan v1 best v1 | r3 106.2 (1.05 fi) -> v0 106.3 (1.05 fi)
+TABLE b=32 kv=4200 us/layer: fi  187.4 fi_tc  189.2 v1  206.2 v2  206.2 v0  205.7 | plan v1 best v1 | r3 206.2 (1.10 fi) -> v0 205.7 (1.10 fi)
+table done (189s)
+pi_launch.cu sm_90a compile exit=0 (232s)
+mutant decode_fold_unfused: 78 failed checks, kinds ['path']
+mutant decode90_d_unfused: 15 failed checks, kinds ['path']
+UNCAUGHT DECODE MUTANTS: 0 []
+done (333s)
+
+[run_gpu] H100 dec2:validate: exit=0 wall=395s cost~$0.654 ledger=$32.52

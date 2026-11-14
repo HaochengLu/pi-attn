@@ -1,0 +1,10 @@
+[run_gpu] workstream dec2: $0.00 of $4.00
+[run_gpu] start L4 dec2:l4check: ledger $30.37, gateway $29.42, budget $40.00
+patch applied
+apt exit=0
+ext build exit=0 (154s)
+cargo build exit=0 (611s)
+cargo check --tests exit=0 (625s)
+done (625s)
+
+[run_gpu] L4 dec2:l4check: exit=0 wall=658s cost~$0.340 ledger=$31.28

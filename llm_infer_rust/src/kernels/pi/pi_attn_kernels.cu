@@ -413,20 +413,27 @@ inline dim3 decode_grid(int max_groups, int num_kv_heads, int batch) {
   return decode_group_fastest(batch) ? dim3(max_groups, num_kv_heads, 1) : dim3(num_kv_heads, batch, max_groups);
 }
 constexpr int kDecodeWarps = 4;
-// Whether a launch runs decode90_kernel (pi_attn_sm90.cuh: decode_kernel's program on 16 warps, the same bits)
-// instead of decode_kernel. Scheduling only. decode90_kernel takes one SM per CTA and is faster only while SMs
-// would otherwise idle. On H100 (archive/ceiling_probes/h100_decode_cluster), with a CTA per fold group it
-// measured 9-36% faster than decode_kernel from 192 keys on for 1 to 8 requests and 5-15% slower at 96 keys;
-// once its CTAs run several fold groups in turn it is 10-49% slower, and with 16 requests it does not gain.
-// A launch knows its batch and max_groups (in the engine the page table's capacity, --max-seq-len), not its
-// lengths, so the rule is: every fold group the launch can hold gets a CTA of its own in one wave, with
-// at least two per (request, kv head).
-inline bool decode90_plan(int cc_major, int cc_minor, int batch, int max_groups, int num_kv_heads, int sms) {
+// The kernel of a decode launch: 1 = decode_kernel, 2 = decode90_kernel (pi_attn_sm90.cuh: decode_kernel's
+// program for a fold group on 16 warps, the same bits). Scheduling only. decode90_kernel takes one SM per CTA
+// and is faster only while every fold group of the launch runs at once on an SM of its own, and not for the
+// shortest requests. What decides is the launch's longest request, which the host knows: max_kv_len is an
+// upper bound of the launch's kv lengths (the engine passes the longest running request of the step and
+// captures a decode graph per kernel; 0 or more than the capacity max_groups = unknown, the capacity is
+// assumed). A wrong bound costs time, never bits. Measured on H100 with the engine's capacity of 16 groups
+// (archive/ceiling_probes/h100_decode_r4): with a CTA per group in one wave decode90_kernel is 3-40% faster
+// from 192 keys on (from 320 keys when the launch takes more than half the SMs: 16 requests of 8 kv heads),
+// below that 2-15% slower; with more groups than SMs it is up to 40% slower.
+constexpr int kD90MinKeys = 192, kD90MinKeysFull = 320;
+inline int decode_plan(int cc_major, int cc_minor, int batch, int max_groups, int num_kv_heads, int sms,
+                       int64_t max_kv_len) {
 #ifdef PI_SM90A
-  return cc_major == 9 && cc_minor == 0 && (int64_t)batch * num_kv_heads * std::max(max_groups, 2) <= sms;
-#else
-  return false;
+  if (cc_major != 9 || cc_minor != 0) return 1;
+  const int64_t capacity = (int64_t)max_groups * kGroupKeys;
+  if (max_kv_len <= 0 || max_kv_len > capacity) max_kv_len = capacity;
+  const int64_t groups = (max_kv_len + kGroupKeys - 1) / kGroupKeys, ctas = (int64_t)batch * num_kv_heads;
+  if (ctas * groups <= sms && max_kv_len >= (2 * ctas <= sms ? kD90MinKeys : kD90MinKeysFull)) return 2;
 #endif
+  return 1;
 }
 constexpr int decode_smem_bytes() { return (2 * kTile * kHeadDim + 16 * (kTile + 8)) * 2 + kDecodeWarps * 16 * 4; }
 

@@ -22,9 +22,31 @@ struct CapturedGraph {
     table_versions: RefCell<Vec<Option<u64>>>,
 }
 
-/// Holds one graph per batch size; padding reads the permanent reserved page 0.
+/// The graphs of one batch size: one per launch plan of the backend
+/// (`ModelExecutor::decode_graph_plans`), all with the same bits.
+struct PlannedGraphs {
+    /// `(bound, index into graphs)`, ascending: a step whose longest request has at most
+    /// `bound` tokens (and more than the previous bound) replays that graph.
+    bounds: Vec<(usize, usize)>,
+    graphs: Vec<CapturedGraph>,
+}
+
+impl PlannedGraphs {
+    /// The graph for a step whose longest request has `context` tokens (0 = unknown).
+    fn select(&self, context: usize) -> &CapturedGraph {
+        let index = self
+            .bounds
+            .iter()
+            .find(|(bound, _)| context != 0 && context <= *bound)
+            .or(self.bounds.last())
+            .map_or(0, |&(_, index)| index);
+        &self.graphs[index]
+    }
+}
+
+/// Holds the graphs of each batch size; padding reads the permanent reserved page 0.
 pub(crate) struct DecodeGraphRunner {
-    graphs: BTreeMap<usize, CapturedGraph>,
+    graphs: BTreeMap<usize, PlannedGraphs>,
     pad_pages: Tensor,
     pad_locations: Tensor,
     admission: GraphLimits,
@@ -97,9 +119,9 @@ impl DecodeGraphRunner {
         }
         for size in sizes.into_iter().rev() {
             tracing::info!(size, "capturing CUDA decode graph");
-            match graph_runner.capture_one(runner, args, context, device_index, size) {
-                Ok(graph) => {
-                    graph_runner.graphs.insert(size, graph);
+            match graph_runner.capture_plans(runner, args, context, device_index, size) {
+                Ok(graphs) => {
+                    graph_runner.graphs.insert(size, graphs);
                 }
                 Err(error) => {
                     context.check_execution_stream()?;
@@ -115,6 +137,49 @@ impl DecodeGraphRunner {
         Ok(Some(graph_runner))
     }
 
+    /// One graph per launch plan of the backend for this batch size.
+    fn capture_plans(
+        &self,
+        runner: &ModelRunner,
+        args: &ServerArgs,
+        context: &Rc<NativeGraphCaptureContext>,
+        device_index: usize,
+        size: usize,
+    ) -> Result<PlannedGraphs> {
+        let first = self.capture_one(runner, args, context, device_index, size, args.max_seq_len)?;
+        // Plans end at the table's capacity; a step is never longer than max_seq_len.
+        let mut plans = runner.decode_graph_plans(&first.metadata)?;
+        plans.retain(|&(bound, _)| bound > 0);
+        if let Some(cut) = plans.iter().position(|&(bound, _)| bound >= args.max_seq_len) {
+            plans.truncate(cut + 1);
+            plans[cut].0 = args.max_seq_len;
+        }
+        let Some(&(_, last_plan)) = plans.last() else {
+            return Ok(PlannedGraphs {
+                bounds: vec![(args.max_seq_len, 0)],
+                graphs: vec![first],
+            });
+        };
+        // `first` was captured at max_seq_len: the last plan.
+        let mut ids = vec![last_plan];
+        let mut graphs = vec![first];
+        let mut bounds = Vec::with_capacity(plans.len());
+        for (bound, plan) in plans {
+            let index = match ids.iter().position(|&id| id == plan) {
+                Some(index) => index,
+                None => {
+                    tracing::info!(size, bound, plan, "capturing CUDA decode graph of another launch plan");
+                    graphs.push(self.capture_one(runner, args, context, device_index, size, bound)?);
+                    ids.push(plan);
+                    ids.len() - 1
+                }
+            };
+            bounds.push((bound, index));
+        }
+        Ok(PlannedGraphs { bounds, graphs })
+    }
+
+    /// `max_seqlen`: the longest request the capture tells the backend (its launch plan).
     fn capture_one(
         &self,
         runner: &ModelRunner,
@@ -122,6 +187,7 @@ impl DecodeGraphRunner {
         context: &Rc<NativeGraphCaptureContext>,
         device_index: usize,
         size: usize,
+        max_seqlen: usize,
     ) -> Result<CapturedGraph> {
         let rows = size as i64;
         let device = runner.device();
@@ -147,7 +213,7 @@ impl DecodeGraphRunner {
                     .repeat([1, args.max_seq_len as i64])
             }),
             cache_seqlens: Some(Tensor::ones([rows], (Kind::Int, device))),
-            max_seqlen: Some(args.max_seq_len),
+            max_seqlen: Some(max_seqlen),
         };
         let backend = runner.prepare_decode_graph(&metadata)?;
         if backend
@@ -232,10 +298,11 @@ impl DecodeGraphRunner {
             );
             return Ok(None);
         }
-        let Some((_, graph)) = self.graphs.range(size..).next() else {
+        let Some((_, graphs)) = self.graphs.range(size..).next() else {
             tracing::debug!(size, "no captured decode bucket; using eager");
             return Ok(None);
         };
+        let graph = graphs.select(context);
         let rows = size as i64;
         let source = batch.attention.ok_or_else(|| {
             ModelRunnerError::Model("decode batch requires attention metadata".to_owned())
@@ -802,6 +869,7 @@ mod tests {
             graph
                 .graphs
                 .values()
+                .flat_map(|planned| &planned.graphs)
                 .all(|graph| graph.metadata.req_to_token.is_none())
         );
         assert_eq!(pool.borrow().free_count(), free);

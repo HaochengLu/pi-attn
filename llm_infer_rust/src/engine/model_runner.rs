@@ -143,6 +143,15 @@ pub trait ModelExecutor {
         Ok(None)
     }
 
+    /// Launch plans of a decode graph with `metadata`'s shapes: `(bound, plan)` ascending
+    /// in `bound`; a step whose `max_seqlen` is at most `bound` (and above the previous
+    /// bound) launches what a capture with `max_seqlen = bound` records, and equal `plan`
+    /// ids record the same launches. Empty: one graph serves every length. The plans
+    /// differ in speed only; their outputs are bit-identical.
+    fn decode_graph_plans(&self, _metadata: &AttentionMetadata) -> Result<Vec<(usize, u32)>> {
+        Ok(Vec::new())
+    }
+
     fn forward(&self, batch: &ForwardBatch<'_>) -> Result<ForwardOutput>;
 
     /// Receives native Hugging Face checkpoint tensors after model assembly.
@@ -369,6 +378,10 @@ impl ModelRunner {
         metadata: &AttentionMetadata,
     ) -> Result<Option<Box<dyn DecodeGraphState>>> {
         self.model.prepare_decode_graph(metadata)
+    }
+
+    pub(crate) fn decode_graph_plans(&self, metadata: &AttentionMetadata) -> Result<Vec<(usize, u32)>> {
+        self.model.decode_graph_plans(metadata)
     }
 
     /// Eager/capture model execution uses the same typed input and output.

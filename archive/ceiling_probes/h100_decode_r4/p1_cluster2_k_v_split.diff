@@ -1,0 +1,1193 @@
+diff --git a/kernels/pi_attn_torch.cu b/kernels/pi_attn_torch.cu
+index a7e8d93..9bc48af 100644
+--- a/kernels/pi_attn_torch.cu
++++ b/kernels/pi_attn_torch.cu
+@@ -117,18 +117,20 @@ at::Tensor prefill(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Ten
+   return out;
+ }
+ 
+-// Decode kernel: 0 = the engine's choice for this device, batch and capacity (decode90_plan), 1 = decode_kernel,
+-// 2 = decode90_kernel wherever it can run (sm_90a builds on compute capability 9.0, batch * kv heads <= SMs),
+-// else decode_kernel; both give the same bits.
++// Decode kernel: 0 = the engine's choice for this device, batch and bound of the kv lengths (decode_plan),
++// 1 = decode_kernel, 2 = decode90_kernel, 3 = decode90c_kernel, 4 = decode90c_kernel with one arrival per warp
++// (measurements); 2 to 4 wherever they can run (sm_90a builds on compute capability 9.0, a CTA or a cluster
++// per (request, kv head) within the SMs), else decode_kernel. All give the same bits.
+ static int decode_variant = 0;
+ 
+ // q: [batch, Hq, 128]. Workspace ws_o [rows, Hq, 128] f32, ws_ml [rows, Hq,
+ // 2 * DECODE_WARPS] f32 with rows >= batch * ceil(max_kv_len / GROUP_KEYS);
+ // max_kv_len bounds every request. counters: [rows, Hq, DECODE_WARPS] int32, zero
+-// before the first call and left zero by each.
++// before the first call and left zero by each. kv_len_bound: the longest request of the call if the caller
++// knows it (as the engine does), for decode_plan; 0 = max_kv_len.
+ at::Tensor decode(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Tensor kv_page_indptr,
+                   at::Tensor kv_page_indices, at::Tensor kv_lens, at::Tensor ws_o, at::Tensor ws_ml,
+-                  at::Tensor counters, int64_t max_kv_len, double sm_scale) {
++                  at::Tensor counters, int64_t max_kv_len, double sm_scale, int64_t kv_len_bound) {
+   check_inputs(q, k_cache, v_cache, {kv_page_indptr, kv_page_indices, kv_lens});
+   const c10::cuda::CUDAGuard guard(q.device());
+   auto out = at::empty_like(q);
+@@ -147,18 +149,35 @@ at::Tensor decode(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Tens
+   int major = 0, minor = 0;
+   cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, q.get_device());
+   cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, q.get_device());
++  const float scale_log2 = (float)(sm_scale * 1.4426950408889634);
++  int kernel = decode_variant == 0 ? decode_plan(major, minor, batch, max_groups, hkv, sm_count(q), kv_len_bound) : 1;
++  (void)kernel;
+ #ifdef PI_SM90A
+-  const int slots = decode90_slots(batch, hkv, max_groups, sm_count(q));
+-  if (decode_variant == 0 ? decode90_plan(major, minor, batch, max_groups, hkv, sm_count(q))
+-                          : decode_variant == 2 && major == 9 && minor == 0 && slots >= 1) {
++  if (decode_variant >= 2 && major == 9 && minor == 0) {
++    if (decode_variant == 2 && decode90_slots(batch, hkv, max_groups, sm_count(q)) >= 1) kernel = 2;
++    if (decode_variant >= 3 && decode90c_slots(batch, hkv, max_groups, sm_count(q)) >= 1) kernel = decode_variant;
++  }
++  if (kernel >= 3) {
++    const int slots = decode90c_slots(batch, hkv, max_groups, sm_count(q));
++    const auto launch = kernel == 4 ? decode90c_launch<true> : decode90c_launch<false>;
++    const cudaError_t err = launch(
++        stream, slots, batch, (const __nv_bfloat16*)q.data_ptr(), (const __nv_bfloat16*)k_cache.data_ptr(),
++        (const __nv_bfloat16*)v_cache.data_ptr(), kv_page_indptr.data_ptr<int32_t>(),
++        kv_page_indices.data_ptr<int32_t>(), (int64_t)0, kv_lens.data_ptr<int32_t>(), ws_o.data_ptr<float>(),
++        (float2*)ws_ml.data_ptr<float>(), counters.data_ptr<int32_t>(), (__nv_bfloat16*)out.data_ptr(),
++        max_groups, hq, hkv, page_size, page_shift_of(page_size), scale_log2);
++    TORCH_CHECK(err == cudaSuccess, "decode90c launch: ", cudaGetErrorString(err));
++    return out;
++  }
++  if (kernel == 2) {
++    const int slots = decode90_slots(batch, hkv, max_groups, sm_count(q));
+     cudaFuncSetAttribute(decode90_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, decode90_smem_bytes());
+     decode90_kernel<<<decode90_grid(slots, hkv, batch), kD90Warps * 32, decode90_smem_bytes(), stream>>>(
+         (const __nv_bfloat16*)q.data_ptr(), (const __nv_bfloat16*)k_cache.data_ptr(),
+         (const __nv_bfloat16*)v_cache.data_ptr(), kv_page_indptr.data_ptr<int32_t>(),
+         kv_page_indices.data_ptr<int32_t>(), (int64_t)0, kv_lens.data_ptr<int32_t>(), ws_o.data_ptr<float>(),
+         (float2*)ws_ml.data_ptr<float>(), counters.data_ptr<int32_t>(), (__nv_bfloat16*)out.data_ptr(),
+-        max_groups, hq, hkv, page_size, page_shift_of(page_size), (float)(sm_scale * 1.4426950408889634),
+-        decode_group_fastest(batch), slots);
++        max_groups, hq, hkv, page_size, page_shift_of(page_size), scale_log2, decode_group_fastest(batch), slots);
+     C10_CUDA_KERNEL_LAUNCH_CHECK();
+     return out;
+   }
+@@ -169,8 +188,7 @@ at::Tensor decode(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Tens
+       (const __nv_bfloat16*)v_cache.data_ptr(), kv_page_indptr.data_ptr<int32_t>(),
+       kv_page_indices.data_ptr<int32_t>(), (int64_t)0, kv_lens.data_ptr<int32_t>(), ws_o.data_ptr<float>(),
+       (float2*)ws_ml.data_ptr<float>(), counters.data_ptr<int32_t>(), (__nv_bfloat16*)out.data_ptr(),
+-      max_groups, hq, hkv, page_size, page_shift_of(page_size), (float)(sm_scale * 1.4426950408889634),
+-      decode_group_fastest(batch));
++      max_groups, hq, hkv, page_size, page_shift_of(page_size), scale_log2, decode_group_fastest(batch));
+   C10_CUDA_KERNEL_LAUNCH_CHECK();
+   return out;
+ }
+@@ -179,11 +197,23 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+   m.def("prefill", &prefill, py::arg("q"), py::arg("k_cache"), py::arg("v_cache"), py::arg("qo_indptr"),
+         py::arg("kv_page_indptr"), py::arg("kv_page_indices"), py::arg("kv_lens"), py::arg("max_q_len"),
+         py::arg("max_kv_len"), py::arg("sm_scale"), py::arg("kv_splits"), py::arg("variant") = 0);
+-  m.def("decode", &decode);
++  m.def("decode", &decode, py::arg("q"), py::arg("k_cache"), py::arg("v_cache"), py::arg("kv_page_indptr"),
++        py::arg("kv_page_indices"), py::arg("kv_lens"), py::arg("ws_o"), py::arg("ws_ml"), py::arg("counters"),
++        py::arg("max_kv_len"), py::arg("sm_scale"), py::arg("kv_len_bound") = 0);
+   m.def("set_decode_variant", [](int64_t v) {
+-    TORCH_CHECK(v == 0 || v == 1 || v == 2, "decode variant: 0, 1 or 2");
++    TORCH_CHECK(v >= 0 && v <= 4, "decode variant: 0 to 4");
+     decode_variant = (int)v;
+   });
++  // The kernel decode_plan gives a launch on this device (1 to 3).
++  m.def("decode_plan", [](int64_t batch, int64_t hkv, int64_t max_kv_len, int64_t kv_len_bound) {
++    int dev = 0, major = 0, minor = 0, sms = 0;
++    cudaGetDevice(&dev);
++    cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, dev);
++    cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, dev);
++    cudaDeviceGetAttribute(&sms, cudaDevAttrMultiProcessorCount, dev);
++    return decode_plan(major, minor, (int)batch, (int)((max_kv_len + kGroupKeys - 1) / kGroupKeys), (int)hkv, sms,
++                       kv_len_bound);
++  });
+   // Shared memory a prefill variant (1-4) needs per CTA; tests skip variants the GPU cannot run.
+   m.def("prefill_smem_bytes", [](int64_t variant) {
+     TORCH_CHECK(variant >= 1 && variant <= 4, "variant: 1 to 4");
+diff --git a/kernels/test_invariance.py b/kernels/test_invariance.py
+index 8634a4e..9e66fe2 100644
+--- a/kernels/test_invariance.py
++++ b/kernels/test_invariance.py
+@@ -38,9 +38,10 @@ VARIANT = 0
+ VARIANTS = [v for v in (1, 2, 3, 4)
+             if ext.prefill_smem_bytes(v) <= torch.cuda.get_device_properties(0).shared_memory_per_block_optin]
+ VARIANTS += [5, 6, 7] if ext.WGMMA else []
+-# Decode kernels forced one by one after the device's choice: 1 = decode_kernel, 2 = decode90_kernel wherever
+-# it can run (sm_90a builds: Hopper; batch * kv heads <= SMs), else decode_kernel.
+-DECODE_VARIANTS = [1, 2] if ext.WGMMA else []
++# Decode kernels forced one by one after the device's choice: 1 = decode_kernel, 2 = decode90_kernel and
++# 3 = decode90c_kernel wherever they can run (sm_90a builds: Hopper; a CTA / a 2-CTA cluster per (request, kv
++# head) within the SMs), else decode_kernel.
++DECODE_VARIANTS = [1, 2, 3] if ext.WGMMA else []
+ # PI error vs float64 may exceed FlashInfer's by at most this factor (mean, max).
+ ACC_SLACK = (1.05, 1.25)
+ # Decode arrival counters, shared by every call as in the engine: each call must
+@@ -237,7 +238,7 @@ def run_checks():
+             if not same(decode(pool, [(seqs[L][0][p:p + 1].contiguous(), pages[L], p + 1)])[0][0], alone[L][p]):
+                 fails.append(("path alone", L, p))
+     # The same check with each decode kernel forced, in batches of at most 16 requests: one fold group per CTA
+-    # for a few requests, several groups in turn per CTA of decode90_kernel for many.
++    # (or cluster) for a few requests, several groups in turn per CTA of the Hopper kernels for many.
+     for variant in DECODE_VARIANTS:
+         ext.set_decode_variant(variant)
+         probes = [(L, p) for L in lens for p in range(L)]
+diff --git a/kernels/test_mutants.py b/kernels/test_mutants.py
+index a856e31..6b9a786 100644
+--- a/kernels/test_mutants.py
++++ b/kernels/test_mutants.py
+@@ -65,6 +65,11 @@ if T.ext.WGMMA:
+                                      "      D0 = __fmaf_rn(D0, sScale[lt * 16 + g], sLS[lt * 16 + g]);",
+                                      "      D0 = __fadd_rn(__fmul_rn(D0, sScale[lt * 16 + g]), sLS[lt * 16 + g]);",
+                                      {"path"})
++    # The same in decode90c_kernel (the d chain of the cluster's second CTA).
++    MUTANTS["decode90c_d_unfused"] = ("pi_attn_sm90.cuh",
++                                      "      Dg = __fmaf_rn(Dg, sScale[lt * 16 + g], sLS[lt * 16 + g]);",
++                                      "      Dg = __fadd_rn(__fmul_rn(Dg, sScale[lt * 16 + g]), sLS[lt * 16 + g]);",
++                                      {"path"})
+ # PI_MUTANTS=name,name runs a subset.
+ if os.environ.get("PI_MUTANTS"):
+     MUTANTS = {k: MUTANTS[k] for k in os.environ["PI_MUTANTS"].split(",")}
+diff --git a/llm_infer_rust/src/engine/graph.rs b/llm_infer_rust/src/engine/graph.rs
+index 4af1a6e..2ef4b6e 100644
+--- a/llm_infer_rust/src/engine/graph.rs
++++ b/llm_infer_rust/src/engine/graph.rs
+@@ -22,9 +22,31 @@ struct CapturedGraph {
+     table_versions: RefCell<Vec<Option<u64>>>,
+ }
+ 
+-/// Holds one graph per batch size; padding reads the permanent reserved page 0.
++/// The graphs of one batch size: one per launch plan of the backend
++/// (`ModelExecutor::decode_graph_plans`), all with the same bits.
++struct PlannedGraphs {
++    /// `(bound, index into graphs)`, ascending: a step whose longest request has at most
++    /// `bound` tokens (and more than the previous bound) replays that graph.
++    bounds: Vec<(usize, usize)>,
++    graphs: Vec<CapturedGraph>,
++}
++
++impl PlannedGraphs {
++    /// The graph for a step whose longest request has `context` tokens (0 = unknown).
++    fn select(&self, context: usize) -> &CapturedGraph {
++        let index = self
++            .bounds
++            .iter()
++            .find(|(bound, _)| context != 0 && context <= *bound)
++            .or(self.bounds.last())
++            .map_or(0, |&(_, index)| index);
++        &self.graphs[index]
++    }
++}
++
++/// Holds the graphs of each batch size; padding reads the permanent reserved page 0.
+ pub(crate) struct DecodeGraphRunner {
+-    graphs: BTreeMap<usize, CapturedGraph>,
++    graphs: BTreeMap<usize, PlannedGraphs>,
+     pad_pages: Tensor,
+     pad_locations: Tensor,
+     admission: GraphLimits,
+@@ -97,9 +119,9 @@ impl DecodeGraphRunner {
+         }
+         for size in sizes.into_iter().rev() {
+             tracing::info!(size, "capturing CUDA decode graph");
+-            match graph_runner.capture_one(runner, args, context, device_index, size) {
+-                Ok(graph) => {
+-                    graph_runner.graphs.insert(size, graph);
++            match graph_runner.capture_plans(runner, args, context, device_index, size) {
++                Ok(graphs) => {
++                    graph_runner.graphs.insert(size, graphs);
+                 }
+                 Err(error) => {
+                     context.check_execution_stream()?;
+@@ -115,6 +137,49 @@ impl DecodeGraphRunner {
+         Ok(Some(graph_runner))
+     }
+ 
++    /// One graph per launch plan of the backend for this batch size.
++    fn capture_plans(
++        &self,
++        runner: &ModelRunner,
++        args: &ServerArgs,
++        context: &Rc<NativeGraphCaptureContext>,
++        device_index: usize,
++        size: usize,
++    ) -> Result<PlannedGraphs> {
++        let first = self.capture_one(runner, args, context, device_index, size, args.max_seq_len)?;
++        // Plans end at the table's capacity; a step is never longer than max_seq_len.
++        let mut plans = runner.decode_graph_plans(&first.metadata)?;
++        plans.retain(|&(bound, _)| bound > 0);
++        if let Some(cut) = plans.iter().position(|&(bound, _)| bound >= args.max_seq_len) {
++            plans.truncate(cut + 1);
++            plans[cut].0 = args.max_seq_len;
++        }
++        let Some(&(_, last_plan)) = plans.last() else {
++            return Ok(PlannedGraphs {
++                bounds: vec![(args.max_seq_len, 0)],
++                graphs: vec![first],
++            });
++        };
++        // `first` was captured at max_seq_len: the last plan.
++        let mut ids = vec![last_plan];
++        let mut graphs = vec![first];
++        let mut bounds = Vec::with_capacity(plans.len());
++        for (bound, plan) in plans {
++            let index = match ids.iter().position(|&id| id == plan) {
++                Some(index) => index,
++                None => {
++                    tracing::info!(size, bound, plan, "capturing CUDA decode graph of another launch plan");
++                    graphs.push(self.capture_one(runner, args, context, device_index, size, bound)?);
++                    ids.push(plan);
++                    ids.len() - 1
++                }
++            };
++            bounds.push((bound, index));
++        }
++        Ok(PlannedGraphs { bounds, graphs })
++    }
++
++    /// `max_seqlen`: the longest request the capture tells the backend (its launch plan).
+     fn capture_one(
+         &self,
+         runner: &ModelRunner,
+@@ -122,6 +187,7 @@ impl DecodeGraphRunner {
+         context: &Rc<NativeGraphCaptureContext>,
+         device_index: usize,
+         size: usize,
++        max_seqlen: usize,
+     ) -> Result<CapturedGraph> {
+         let rows = size as i64;
+         let device = runner.device();
+@@ -147,7 +213,7 @@ impl DecodeGraphRunner {
+                     .repeat([1, args.max_seq_len as i64])
+             }),
+             cache_seqlens: Some(Tensor::ones([rows], (Kind::Int, device))),
+-            max_seqlen: Some(args.max_seq_len),
++            max_seqlen: Some(max_seqlen),
+         };
+         let backend = runner.prepare_decode_graph(&metadata)?;
+         if backend
+@@ -232,10 +298,11 @@ impl DecodeGraphRunner {
+             );
+             return Ok(None);
+         }
+-        let Some((_, graph)) = self.graphs.range(size..).next() else {
++        let Some((_, graphs)) = self.graphs.range(size..).next() else {
+             tracing::debug!(size, "no captured decode bucket; using eager");
+             return Ok(None);
+         };
++        let graph = graphs.select(context);
+         let rows = size as i64;
+         let source = batch.attention.ok_or_else(|| {
+             ModelRunnerError::Model("decode batch requires attention metadata".to_owned())
+@@ -802,6 +869,7 @@ mod tests {
+             graph
+                 .graphs
+                 .values()
++                .flat_map(|planned| &planned.graphs)
+                 .all(|graph| graph.metadata.req_to_token.is_none())
+         );
+         assert_eq!(pool.borrow().free_count(), free);
+diff --git a/llm_infer_rust/src/engine/model_runner.rs b/llm_infer_rust/src/engine/model_runner.rs
+index 768cad8..2d7f364 100644
+--- a/llm_infer_rust/src/engine/model_runner.rs
++++ b/llm_infer_rust/src/engine/model_runner.rs
+@@ -143,6 +143,15 @@ pub trait ModelExecutor {
+         Ok(None)
+     }
+ 
++    /// Launch plans of a decode graph with `metadata`'s shapes: `(bound, plan)` ascending
++    /// in `bound`; a step whose `max_seqlen` is at most `bound` (and above the previous
++    /// bound) launches what a capture with `max_seqlen = bound` records, and equal `plan`
++    /// ids record the same launches. Empty: one graph serves every length. The plans
++    /// differ in speed only; their outputs are bit-identical.
++    fn decode_graph_plans(&self, _metadata: &AttentionMetadata) -> Result<Vec<(usize, u32)>> {
++        Ok(Vec::new())
++    }
++
+     fn forward(&self, batch: &ForwardBatch<'_>) -> Result<ForwardOutput>;
+ 
+     /// Receives native Hugging Face checkpoint tensors after model assembly.
+@@ -371,6 +380,10 @@ impl ModelRunner {
+         self.model.prepare_decode_graph(metadata)
+     }
+ 
++    pub(crate) fn decode_graph_plans(&self, metadata: &AttentionMetadata) -> Result<Vec<(usize, u32)>> {
++        self.model.decode_graph_plans(metadata)
++    }
++
+     /// Eager/capture model execution uses the same typed input and output.
+     pub fn run_model(&self, batch: &ForwardBatch<'_>) -> Result<ForwardOutput> {
+         batch.validate(self.device)?;
+diff --git a/llm_infer_rust/src/kernels/pi.rs b/llm_infer_rust/src/kernels/pi.rs
+index 29ad59d..3c67fc0 100644
+--- a/llm_infer_rust/src/kernels/pi.rs
++++ b/llm_infer_rust/src/kernels/pi.rs
+@@ -68,6 +68,13 @@ mod ffi {
+             stream: *mut c_void,
+         ) -> *const c_char;
+         pub fn pi_attn_decode_groups(max_kv_len: i64) -> i32;
++        pub fn pi_attn_decode_plan(
++            batch: i32,
++            num_kv_heads: i32,
++            capacity: i64,
++            max_kv_len: i64,
++            same_until: *mut i64,
++        ) -> i32;
+         pub fn pi_attn_decode(
+             q: *const c_void,
+             k_cache: *const c_void,
+@@ -85,6 +92,7 @@ mod ffi {
+             num_kv_heads: i32,
+             page_size: i32,
+             sm_scale: f64,
++            max_kv_len: i64,
+             stream: *mut c_void,
+         ) -> *const c_char;
+         pub fn pi_attn_prefill_plan(
+@@ -304,6 +312,33 @@ pub(crate) fn decode_groups(table_columns: i64, page_size: i64) -> i64 {
+     }
+ }
+ 
++/// Launch plans of decode for `batch` requests and a page table of `capacity` keys per
++/// request: `(bound, plan)` ascending in `bound`, where every step whose longest request
++/// has at most `bound` keys (and more than the previous bound) launches the same kernel,
++/// named by `plan`. The last bound is the capacity. Every plan gives the same bits; a
++/// decode graph is captured per distinct plan and chosen by the step's longest request.
++pub(crate) fn decode_plans(batch: i64, num_kv_heads: i64, capacity: i64) -> Vec<(usize, u32)> {
++    #[cfg(has_pi)]
++    {
++        let mut plans = Vec::new();
++        let mut length = 1;
++        while length <= capacity {
++            let mut bound = length;
++            let plan = unsafe {
++                ffi::pi_attn_decode_plan(batch as i32, num_kv_heads as i32, capacity, length, &mut bound)
++            };
++            plans.push((bound.max(length) as usize, plan as u32));
++            length = bound.max(length) + 1;
++        }
++        plans
++    }
++    #[cfg(not(has_pi))]
++    {
++        let _ = (batch, num_kv_heads);
++        vec![(capacity.max(1) as usize, 0)]
++    }
++}
++
+ /// Decode group partials: o `[rows, Hq, 128]` and ml `[rows, Hq, 8]` f32 (an (m, l)
+ /// pair per decode warp), one row per (request, fold group), so `rows = batch *
+ /// decode_groups(..)`; `counters` `[rows, Hq, 4]` i32 count finished groups per
+@@ -328,6 +363,8 @@ impl DecodeWorkspace {
+ }
+ 
+ /// Decode attention for `q [batch, Hq, 128]` against the paged caches; writes `out [batch, Hq*128]`.
++/// `max_kv_len`: the longest request of the batch if the host knows it (0 = unknown). It only
++/// selects the kernel (`decode_plans`), never a value.
+ #[allow(clippy::too_many_arguments)]
+ pub(crate) fn decode(
+     q: &Tensor,
+@@ -337,6 +374,7 @@ pub(crate) fn decode(
+     seqlens: &Tensor,
+     workspace: &DecodeWorkspace,
+     num_kv_heads: i64,
++    max_kv_len: i64,
+     out: &Tensor,
+ ) -> Result<(), String> {
+     let (batch, num_heads) = (q.size()[0], q.size()[1]);
+@@ -365,12 +403,13 @@ pub(crate) fn decode(
+             num_kv_heads as i32,
+             page_size as i32,
+             1.0 / (q.size()[2] as f64).sqrt(),
++            max_kv_len,
+             stream_of(q)?,
+         )
+     });
+     #[cfg(not(has_pi))]
+     {
+-        let _ = (k_cache, v_cache, seqlens, workspace, num_kv_heads, out, num_heads);
++        let _ = (k_cache, v_cache, seqlens, workspace, num_kv_heads, max_kv_len, out, num_heads);
+         Err("PI kernels were not built".into())
+     }
+ }
+diff --git a/llm_infer_rust/src/kernels/pi/pi_attn_kernels.cu b/llm_infer_rust/src/kernels/pi/pi_attn_kernels.cu
+index 71afa25..e48bf17 100644
+--- a/llm_infer_rust/src/kernels/pi/pi_attn_kernels.cu
++++ b/llm_infer_rust/src/kernels/pi/pi_attn_kernels.cu
+@@ -413,20 +413,26 @@ inline dim3 decode_grid(int max_groups, int num_kv_heads, int batch) {
+   return decode_group_fastest(batch) ? dim3(max_groups, num_kv_heads, 1) : dim3(num_kv_heads, batch, max_groups);
+ }
+ constexpr int kDecodeWarps = 4;
+-// Whether a launch runs decode90_kernel (pi_attn_sm90.cuh: decode_kernel's program on 16 warps, the same bits)
+-// instead of decode_kernel. Scheduling only. decode90_kernel takes one SM per CTA and is faster only while SMs
+-// would otherwise idle. On H100 (archive/ceiling_probes/h100_decode_cluster), with a CTA per fold group it
+-// measured 9-36% faster than decode_kernel from 192 keys on for 1 to 8 requests and 5-15% slower at 96 keys;
+-// once its CTAs run several fold groups in turn it is 10-49% slower, and with 16 requests it does not gain.
+-// A launch knows its batch and max_groups (in the engine the page table's capacity, --max-seq-len), not its
+-// lengths, so the rule is: every fold group the launch can hold gets a CTA of its own in one wave, with
+-// at least two per (request, kv head).
+-inline bool decode90_plan(int cc_major, int cc_minor, int batch, int max_groups, int num_kv_heads, int sms) {
++// The kernel of a decode launch: 1 = decode_kernel, 2 = decode90_kernel, 3 = decode90c_kernel (pi_attn_sm90.cuh:
++// decode_kernel's program for a fold group on 16 warps of one SM, or of each of two SMs; the same bits).
++// Scheduling only. The Hopper kernels take one SM per CTA and are faster only while SMs would otherwise idle
++// and a request's fold groups all run at once; decode_kernel is faster for the shortest requests
++// (archive/ceiling_probes/h100_decode_cluster, h100_decode_r4). What decides is the launch's longest request,
++// which the host knows: max_kv_len is an upper bound of the launch's kv lengths (the engine passes the longest
++// running request of the step and captures a decode graph per kernel; 0 or more than the capacity = unknown,
++// the capacity max_groups is assumed). A wrong bound costs time, never bits.
++constexpr int kD90MinKeys = 160, kD90cMinKeys = 160;
++inline int decode_plan(int cc_major, int cc_minor, int batch, int max_groups, int num_kv_heads, int sms,
++                       int64_t max_kv_len) {
+ #ifdef PI_SM90A
+-  return cc_major == 9 && cc_minor == 0 && (int64_t)batch * num_kv_heads * std::max(max_groups, 2) <= sms;
+-#else
+-  return false;
++  if (cc_major != 9 || cc_minor != 0) return 1;
++  const int64_t capacity = (int64_t)max_groups * kGroupKeys;
++  if (max_kv_len <= 0 || max_kv_len > capacity) max_kv_len = capacity;
++  const int64_t groups = (max_kv_len + kGroupKeys - 1) / kGroupKeys, ctas = (int64_t)batch * num_kv_heads;
++  if (max_kv_len >= kD90cMinKeys && 2 * ctas * groups <= sms) return 3;
++  if (max_kv_len >= kD90MinKeys && ctas * std::max<int64_t>(groups, 2) <= sms) return 2;
+ #endif
++  return 1;
+ }
+ constexpr int decode_smem_bytes() { return (2 * kTile * kHeadDim + 16 * (kTile + 8)) * 2 + kDecodeWarps * 16 * 4; }
+ 
+diff --git a/llm_infer_rust/src/kernels/pi/pi_attn_sm90.cuh b/llm_infer_rust/src/kernels/pi/pi_attn_sm90.cuh
+index 6030d05..1ad9e97 100644
+--- a/llm_infer_rust/src/kernels/pi/pi_attn_sm90.cuh
++++ b/llm_infer_rust/src/kernels/pi/pi_attn_sm90.cuh
+@@ -19,6 +19,7 @@
+ #include <cutlass/pipeline/pipeline.hpp>
+ #include <cutlass/arch/reg_reconfig.h>
+ #include <cutlass/arch/barrier.h>
++#include <cooperative_groups.h>
+ 
+ namespace pi_wg {
+ using BF = cutlass::bfloat16_t;
+@@ -356,6 +357,95 @@ __device__ __forceinline__ __nv_bfloat16* d90_v_slot(__nv_bfloat16* sKV, int lt)
+   return sKV + (lt < 8 ? 16 + lt : lt - 8) * (kTile * kHeadDim);
+ }
+ 
++// The end of a fold group for decode90_kernel and decode90c_kernel, by all the CTA's threads: output or group
++// partial as in decode_kernel, a warp per two O n-tiles (warps 0-7 hold O0, O1). sL / sMF: [16 rows] d and m of
++// the group in shared memory.
++__device__ __forceinline__ void d90_finish(
++    const float (&O0)[4], const float (&O1)[4], const float* sL, const float* sMF, float* __restrict__ ws_o,
++    float2* __restrict__ ws_ml, int* __restrict__ counters, __nv_bfloat16* __restrict__ out, int max_groups,
++    int num_qo_heads, int num_kv_heads, int n_groups, int b, int kvh, int fg) {
++  const int tid = threadIdx.x, warp = tid >> 5, lane = tid & 31;
++  const int g = lane >> 2, t4 = lane & 3;
++  const bool ow = warp < kD90OWarps;
++  const int group = num_qo_heads / num_kv_heads;
++  const float l0 = sL[g], l1 = sL[g + 8];
++  const int head0 = kvh * group, quarter = warp >> 1;
++  if (n_groups == 1) {
++    if (!ow) return;
++    __nv_bfloat16* o0 = out + ((int64_t)b * num_qo_heads + head0 + g) * kHeadDim;
++    __nv_bfloat16* o1 = o0 + 8 * kHeadDim;
++    const int col = warp * 16 + t4 * 2;
++    if (g < group) {
++      *reinterpret_cast<__nv_bfloat162*>(o0 + col) = __halves2bfloat162(finish(O0[0], l0), finish(O0[1], l0));
++      *reinterpret_cast<__nv_bfloat162*>(o0 + col + 8) = __halves2bfloat162(finish(O1[0], l0), finish(O1[1], l0));
++    }
++    if (g + 8 < group) {
++      *reinterpret_cast<__nv_bfloat162*>(o1 + col) = __halves2bfloat162(finish(O0[2], l1), finish(O0[3], l1));
++      *reinterpret_cast<__nv_bfloat162*>(o1 + col + 8) = __halves2bfloat162(finish(O1[2], l1), finish(O1[3], l1));
++    }
++    return;
++  }
++  // A quarter of the head dim (two warps) plays decode_kernel's warp: its dims of the partial, its copy of
++  // (m, l), its arrival counter, and the last arrival folds it.
++  if (ow) {
++    const int64_t slot0 = ((int64_t)b * max_groups + fg) * num_qo_heads + head0 + g;
++    const int64_t slot1 = slot0 + 8;
++    const int col = warp * 16 + t4 * 2;
++    if (g < group) {
++      *reinterpret_cast<float2*>(ws_o + slot0 * kHeadDim + col) = make_float2(O0[0], O0[1]);
++      *reinterpret_cast<float2*>(ws_o + slot0 * kHeadDim + col + 8) = make_float2(O1[0], O1[1]);
++    }
++    if (g + 8 < group) {
++      *reinterpret_cast<float2*>(ws_o + slot1 * kHeadDim + col) = make_float2(O0[2], O0[3]);
++      *reinterpret_cast<float2*>(ws_o + slot1 * kHeadDim + col + 8) = make_float2(O1[2], O1[3]);
++    }
++    if ((warp & 1) == 0 && t4 == 0) {
++      if (g < group) ws_ml[slot0 * kDecodeWarps + quarter] = make_float2(sMF[g], l0);
++      if (g + 8 < group) ws_ml[slot1 * kDecodeWarps + quarter] = make_float2(sMF[g + 8], l1);
++    }
++    __threadfence();  // this lane's part of the partial visible device-wide before the arrival
++  }
++  __syncthreads();  // ... and every lane's
++  if (!ow || (warp & 1)) return;
++  int last = 0;
++  if (lane == 0) {
++    int* cnt = counters + ((int64_t)b * num_kv_heads + kvh) * kDecodeWarps + quarter;
++    last = atomicAdd(cnt, 1) == n_groups - 1;
++    if (last) *cnt = 0;  // ready for the next launch
++  }
++  if (!__shfl_sync(0xffffffffu, last, 0)) return;
++  __threadfence();
++  constexpr int kFoldAhead = 8;
++  for (int p = lane; p < group * 8; p += 32) {
++    const int h = p >> 3, d0 = quarter * 32 + (p & 7) * 4;
++    float Mf = -INFINITY, L = 0.f, Of[4] = {0.f, 0.f, 0.f, 0.f};
++    const int64_t slot_h = (int64_t)b * max_groups * num_qo_heads + head0 + h;
++    for (int c0 = 0; c0 < n_groups; c0 += kFoldAhead) {
++      float2 ml[kFoldAhead];
++      float4 oc[kFoldAhead];
++#pragma unroll
++      for (int i = 0; i < kFoldAhead; ++i) {
++        if (c0 + i >= n_groups) break;
++        const int64_t slot = slot_h + (int64_t)(c0 + i) * num_qo_heads;
++        ml[i] = __ldcg(ws_ml + slot * kDecodeWarps + quarter);
++        oc[i] = __ldcg(reinterpret_cast<const float4*>(ws_o + slot * kHeadDim + d0));
++      }
++#pragma unroll
++      for (int i = 0; i < kFoldAhead; ++i) {
++        if (c0 + i >= n_groups) break;
++        const FoldScalars f = fold_scalars(Mf, L, ml[i].x, ml[i].y);
++        Of[0] = fold_elem(Of[0], oc[i].x, f);
++        Of[1] = fold_elem(Of[1], oc[i].y, f);
++        Of[2] = fold_elem(Of[2], oc[i].z, f);
++        Of[3] = fold_elem(Of[3], oc[i].w, f);
++      }
++    }
++    __nv_bfloat16* o = out + ((int64_t)b * num_qo_heads + head0 + h) * kHeadDim + d0;
++    reinterpret_cast<__nv_bfloat162*>(o)[0] = __halves2bfloat162(finish(Of[0], L), finish(Of[1], L));
++    reinterpret_cast<__nv_bfloat162*>(o)[1] = __halves2bfloat162(finish(Of[2], L), finish(Of[3], L));
++  }
++}
++
+ // Fold group fg of (request b, kv head kvh), by all the CTA's threads.
+ __device__ __forceinline__ void decode90_group(
+     const __nv_bfloat16* __restrict__ q, const __nv_bfloat16* __restrict__ k_cache,
+@@ -577,102 +667,369 @@ __device__ __forceinline__ void decode90_group(
+     sL[g] = D0, sL[g + 8] = D1;
+   }
+   __syncthreads();
++  d90_finish(O0, O1, sL, sMF, ws_o, ws_ml, counters, out, max_groups, num_qo_heads, num_kv_heads, n_groups, b, kvh, fg);
++}
+ 
+-  // The group is done: output or group partial as in decode_kernel, a warp per two O n-tiles.
+-  const float l0 = sL[g], l1 = sL[g + 8];
+-  const int head0 = kvh * group, quarter = warp >> 1;
+-  if (n_groups == 1) {
+-    if (!ow) return;
+-    __nv_bfloat16* o0 = out + ((int64_t)b * num_qo_heads + head0 + g) * kHeadDim;
+-    __nv_bfloat16* o1 = o0 + 8 * kHeadDim;
+-    const int col = warp * 16 + t4 * 2;
+-    if (g < group) {
+-      *reinterpret_cast<__nv_bfloat162*>(o0 + col) = __halves2bfloat162(finish(O0[0], l0), finish(O0[1], l0));
+-      *reinterpret_cast<__nv_bfloat162*>(o0 + col + 8) = __halves2bfloat162(finish(O1[0], l0), finish(O1[1], l0));
++// grid = decode90_grid(slots, num_kv_heads, batch): decode_grid with `slots` CTAs per (request, kv head).
++__global__ void __launch_bounds__(kD90Warps * 32)
++    decode90_kernel(const __nv_bfloat16* __restrict__ q, const __nv_bfloat16* __restrict__ k_cache,
++                    const __nv_bfloat16* __restrict__ v_cache, const int32_t* __restrict__ kv_page_indptr,
++                    const int32_t* __restrict__ kv_page_indices, int64_t table_stride,
++                    const int32_t* __restrict__ kv_lens, float* __restrict__ ws_o, float2* __restrict__ ws_ml,
++                    int* __restrict__ counters, __nv_bfloat16* __restrict__ out, int max_groups,
++                    int num_qo_heads, int num_kv_heads, int page_size, int page_shift, float scale_log2,
++                    bool group_fastest, int slots) {
++  const int kvh = group_fastest ? blockIdx.y : blockIdx.x, b = group_fastest ? 0 : blockIdx.y;
++  const int kv_len = kv_lens[b];
++  const int n_groups = (kv_len + kGroupKeys - 1) / kGroupKeys;
++  const int32_t* pages = request_pages(kv_page_indices, kv_page_indptr, table_stride, b);
++  for (int fg = group_fastest ? blockIdx.x : blockIdx.z; fg < n_groups; fg += slots)
++    decode90_group(q, k_cache, v_cache, pages, kv_len, ws_o, ws_ml, counters, out, max_groups, num_qo_heads,
++                   num_kv_heads, page_size, page_shift, scale_log2, b, kvh, fg);
++}
++
++// ---------------------------------------------------------------------------------------------------------
++// decode90c_kernel: decode90_kernel's program for a fold group on a cluster of two CTAs (two SMs).
++//
++// A CTA of decode90_kernel is bound by its SM's intake of the group's 256 KB of K and V, linear in the bytes
++// (archive/ceiling_probes/h100_review). Here CTA 0 of the cluster takes K and CTA 1 takes V:
++//   CTA 0: K of the 16 tiles, S, the tile maxima, the running max and the scales, P of every tile; it writes
++//          P, the scales and the group's m into CTA 1's shared memory and arrives at CTA 1's mbarrier;
++//   CTA 1: V of the 16 tiles; once P has arrived the row sums and the d chain, the o chain, and the end of the
++//          group (d90_finish).
++// One hand-off, in one direction. Every element runs decode90_kernel's instruction sequence on the same
++// operands, whichever CTA executes it: the same bits. The cluster barrier at the start of a group orders
++// CTA 1's mbarrier initialisation before CTA 0's arrivals and holds CTA 0's next group back until CTA 1 is
++// done with this one. Every thread of CTA 0 arrives itself, after its own writes (release / acquire at cluster
++// scope; with CTA scope a waiter read stale shared memory: archive/ceiling_probes/h100_decode_cluster).
++// A cluster takes two SMs: the grid is decode90_grid with x doubled (x & 1 = the CTA's rank in the cluster)
++// and `slots` clusters per (request, kv head).
++inline int decode90c_slots(int batch, int num_kv_heads, int max_groups, int sms) {
++  return std::min(max_groups, sms / std::max(2 * batch * num_kv_heads, 1));
++}
++inline dim3 decode90c_grid(int slots, int num_kv_heads, int batch) {
++  dim3 grid = decode_grid(slots, num_kv_heads, batch);
++  grid.x *= 2;
++  return grid;
++}
++constexpr int decode90c_smem_bytes() {
++  return 16 * kTile * kHeadDim * 2                    // 16 tile slots: K (CTA 0) or V (CTA 1)
++         + kGroupTiles * 16 * (kTile + 8) * 2         // P of every tile (CTA 1's is written by CTA 0)
++         + kGroupTiles * (kDecodeWarps + 4) * 16 * 4  // per tile: maxima per S n-tile, max, m, scale, row sum of P
++         + 2 * 16 * 4                                 // d and m of the group
++         + 16;                                        // CTA 1's mbarrier: P has arrived
++}
++
++__device__ __forceinline__ void d90c_mbarrier_init(void* bar, int count) {
++  asm volatile("mbarrier.init.shared::cta.b64 [%0], %1;\n"
++               "fence.mbarrier_init.release.cluster;" ::"r"(smem_u32(bar)), "r"(count));
++}
++// Arrive at the mbarrier at `bar`'s offset in the shared memory of the cluster's CTA `rank`: releases this
++// thread's earlier writes to that CTA's shared memory to the waiter.
++__device__ __forceinline__ void d90c_mbarrier_arrive_remote(void* bar, int rank) {
++  asm volatile("{\n"
++               ".reg .b32 remAddr32;\n"
++               "mapa.shared::cluster.u32 remAddr32, %0, %1;\n"
++               "mbarrier.arrive.release.cluster.shared::cluster.b64 _, [remAddr32];\n"
++               "}" ::"r"(smem_u32(bar)), "r"(rank));
++}
++__device__ __forceinline__ bool d90c_mbarrier_try_wait(void* bar, int phase) {
++  uint32_t done;
++  asm volatile("{\n"
++               ".reg .pred P1;\n"
++               "mbarrier.try_wait.parity.acquire.cluster.shared::cta.b64 P1, [%1], %2;\n"
++               "selp.u32 %0, 1, 0, P1;\n"
++               "}"
++               : "=r"(done)
++               : "r"(smem_u32(bar)), "r"(phase));
++  return done != 0;
++}
++
++// Fold group fg of (request b, kv head kvh), by all the threads of the cluster's CTA `rank`. `phase`: the
++// parity of the number of groups this cluster has run; `first`: its first group.
++template <bool WARP_ARRIVE>
++__device__ __forceinline__ void decode90c_group(
++    const __nv_bfloat16* __restrict__ q, const __nv_bfloat16* __restrict__ k_cache,
++    const __nv_bfloat16* __restrict__ v_cache, const int32_t* __restrict__ pages, int kv_len, float* __restrict__ ws_o,
++    float2* __restrict__ ws_ml, int* __restrict__ counters, __nv_bfloat16* __restrict__ out, int max_groups,
++    int num_qo_heads, int num_kv_heads, int page_size, int page_shift, float scale_log2, int b, int kvh, int fg,
++    int rank, int phase, bool first) {
++  static_assert(kTileNS == 4 && kGroupTiles == 16 && kD90Warps == 16 && kNTilesO == 2 * kD90OWarps && kDecodeWarps == 4,
++                "4 S n-tiles per tile, 4 tiles at once, two O n-tiles per warp, 4 quarters");
++  constexpr int kPStride = kTile + 8, kPTile = 16 * kPStride, kTileElems = kTile * kHeadDim;
++  extern __shared__ __align__(16) __nv_bfloat16 smem[];
++  __nv_bfloat16* sT = smem;                              // [16][kTile][128], swz per tile: K(lt) or V(lt) in slot lt
++  __nv_bfloat16* sP = sT + 16 * kTileElems;              // [16 tiles][16 rows][kPStride] (used in CTA 1)
++  float* sMax = reinterpret_cast<float*>(sP + kGroupTiles * kPTile);  // [16 tiles][4 n-tiles][16 rows]
++  float* sTMax = sMax + kGroupTiles * 4 * 16;            // [16 tiles][16 rows] tile max
++  float* sMM = sTMax + kGroupTiles * 16;                 // ... running max after the tile (0 if -inf)
++  float* sScale = sMM + kGroupTiles * 16;                // ... scale (used in CTA 1)
++  float* sLS = sScale + kGroupTiles * 16;                // ... row sum of P
++  float* sL = sLS + kGroupTiles * 16;                    // [16 rows] d of the group
++  float* sMF = sL + 16;                                  // [16 rows] m of the group (used in CTA 1)
++  uint64_t* sBar = reinterpret_cast<uint64_t*>(sMF + 16);
++  cooperative_groups::cluster_group cluster = cooperative_groups::this_cluster();
++  const int pos = kv_len - 1;
++  const int n_tiles = (kv_len + kTile - 1) / kTile;
++  const int n_groups = (n_tiles + kGroupTiles - 1) / kGroupTiles;
++  const int tid = threadIdx.x, warp = tid >> 5, lane = tid & 31;
++  const int g = lane >> 2, t4 = lane & 3, mat = lane >> 3, r8 = lane & 7;
++  const int set = warp >> 2, wi = warp & 3;  // S / copies: tiles = set mod 4, S n-tile wi
++  const bool ow = warp < kD90OWarps, dw = set == kD90DWarp / 4;
++  const int ctid = tid & 127;                // issue_tile's thread index within the set
++  const int group = num_qo_heads / num_kv_heads;
++  const int t_begin = fg * kGroupTiles;
++  const int nt = min(n_tiles - t_begin, kGroupTiles);  // tiles of this group
++
++  if (rank == 0) {
++    // K of the warp set's 4 tiles, one cp.async group.
++    QFrag qf;
++    {
++#pragma unroll
++      for (int i = 0; i < 4; ++i) {
++        const int lt = set + 4 * i;
++        if (lt < nt)
++          issue_tile(sT + lt * kTileElems, k_cache,
++                     tile_row(pages, page_size, page_shift, t_begin + lt, kv_len, num_kv_heads, kvh, ctid), ctid);
++      }
++      cp_async_commit();
++      const int64_t q_stride = (int64_t)num_qo_heads * kHeadDim;
++      load_q(qf, [&](int r) -> const __nv_bfloat16* {
++               return r < group ? q + b * q_stride + (kvh * group + r) * kHeadDim : nullptr;
++             }, lane);
+     }
+-    if (g + 8 < group) {
+-      *reinterpret_cast<__nv_bfloat162*>(o1 + col) = __halves2bfloat162(finish(O0[2], l1), finish(O0[3], l1));
+-      *reinterpret_cast<__nv_bfloat162*>(o1 + col + 8) = __halves2bfloat162(finish(O1[2], l1), finish(O1[3], l1));
++    cluster.sync();  // CTA 1: mbarrier set, done with the cluster's previous group
++    __nv_bfloat16* rP = cluster.map_shared_rank(sP, 1);
++    float* rScale = cluster.map_shared_rank(sScale, 1);
++    float* rMF = cluster.map_shared_rank(sMF, 1);
++    // S of the warp's 4 tiles and the maxima of its 8 keys: decode90_group's code.
++    float s[4][4];
++    cp_async_wait<0>();
++    __syncthreads();
++    {
++#pragma unroll
++      for (int i = 0; i < 4; ++i) s[i][0] = s[i][1] = s[i][2] = s[i][3] = 0.f;
++#pragma unroll
++      for (int ks = 0; ks < kKStepsQK; ++ks)
++#pragma unroll
++        for (int i = 0; i < 4; ++i) {
++          const int lt = set + 4 * i;
++          if (lt < nt) {
++            uint32_t bk[4];
++            ldmatrix_x4(bk, sT + lt * kTileElems + swz(wi * 8 + r8, ks * 2 + (mat & 1)));
++            mma_bf16(s[i], qf.a[ks], bk[0], bk[1]);
++          }
++        }
++#pragma unroll
++      for (int i = 0; i < 4; ++i) {
++        const int lt = set + 4 * i;
++        if (lt < nt) {
++          float mx[2] = {-INFINITY, -INFINITY};
++#pragma unroll
++          for (int e = 0; e < 4; ++e) {
++            const int row = g + (e >> 1) * 8, key = (t_begin + lt) * kTile + wi * 8 + t4 * 2 + (e & 1);
++            s[i][e] = (row < group && key <= pos) ? mul(s[i][e], scale_log2) : -INFINITY;
++            mx[e >> 1] = fmaxf(mx[e >> 1], s[i][e]);
++          }
++#pragma unroll
++          for (int r = 0; r < 2; ++r) {
++            mx[r] = fmaxf(mx[r], __shfl_xor_sync(0xffffffffu, mx[r], 1));
++            mx[r] = fmaxf(mx[r], __shfl_xor_sync(0xffffffffu, mx[r], 2));
++          }
++          if (t4 == 0) {
++            sMax[(lt * 4 + wi) * 16 + g] = mx[0];
++            sMax[(lt * 4 + wi) * 16 + g + 8] = mx[1];
++          }
++        }
++      }
+     }
+-    return;
+-  }
+-  // A quarter of the head dim (two warps) plays decode_kernel's warp: its dims of the partial, its copy of
+-  // (m, l), its arrival counter, and the last arrival folds it.
+-  if (ow) {
+-    const int64_t slot0 = ((int64_t)b * max_groups + fg) * num_qo_heads + head0 + g;
+-    const int64_t slot1 = slot0 + 8;
+-    const int col = warp * 16 + t4 * 2;
+-    if (g < group) {
+-      *reinterpret_cast<float2*>(ws_o + slot0 * kHeadDim + col) = make_float2(O0[0], O0[1]);
+-      *reinterpret_cast<float2*>(ws_o + slot0 * kHeadDim + col + 8) = make_float2(O1[0], O1[1]);
++    __syncthreads();  // maxima published
++    if (dw && t4 == 0) {  // exact tile maxima: warp 8 + a takes the tiles = a mod 4
++#pragma unroll
++      for (int i = 0; i < 4; ++i) {
++        const int lt = wi + 4 * i;
++        if (lt < nt) {
++#pragma unroll
++          for (int r = 0; r < 2; ++r) {
++            float tmax = -INFINITY;
++#pragma unroll
++            for (int n = 0; n < 4; ++n) tmax = fmaxf(tmax, sMax[(lt * 4 + n) * 16 + g + r * 8]);
++            sTMax[lt * 16 + g + r * 8] = tmax;
++          }
++        }
++      }
+     }
+-    if (g + 8 < group) {
+-      *reinterpret_cast<float2*>(ws_o + slot1 * kHeadDim + col) = make_float2(O0[2], O0[3]);
+-      *reinterpret_cast<float2*>(ws_o + slot1 * kHeadDim + col + 8) = make_float2(O1[2], O1[3]);
++    __syncthreads();
++    if (warp == kD90DWarp && t4 == 0) {  // the running max of every tile; its scale and the group's m to CTA 1
++      float M[2] = {-INFINITY, -INFINITY};
++      for (int lt = 0; lt < nt; ++lt)
++#pragma unroll
++        for (int r = 0; r < 2; ++r) {
++          const float mn = fmaxf(M[r], sTMax[lt * 16 + g + r * 8]);
++          const float mm = mn == -INFINITY ? 0.f : mn;
++          sMM[lt * 16 + g + r * 8] = mm;
++          rScale[lt * 16 + g + r * 8] = ex2(sub(M[r], mm));
++          M[r] = mn;
++        }
++      rMF[g] = M[0], rMF[g + 8] = M[1];
+     }
+-    if ((warp & 1) == 0 && t4 == 0) {
+-      if (g < group) ws_ml[slot0 * kDecodeWarps + quarter] = make_float2(sMF[g], l0);
+-      if (g + 8 < group) ws_ml[slot1 * kDecodeWarps + quarter] = make_float2(sMF[g + 8], l1);
++    __syncthreads();
++    {  // P of the warp's own tiles, as decode_kernel forms it (rows >= group: m = -inf, P = +0), to CTA 1
++#pragma unroll
++      for (int i = 0; i < 4; ++i) {
++        const int lt = set + 4 * i;
++        if (lt < nt) {
++          const float mm[2] = {sMM[lt * 16 + g], sMM[lt * 16 + g + 8]};
++          float p[4];  // rounded to bf16 by the pack below: the bits decode_kernel stores
++#pragma unroll
++          for (int e = 0; e < 4; ++e) p[e] = ex2(sub(s[i][e], mm[e >> 1]));
++          const int key = wi * 8 + t4 * 2;
++          *reinterpret_cast<uint32_t*>(rP + lt * kPTile + g * kPStride + key) = pack_bf16(p[0], p[1]);
++          *reinterpret_cast<uint32_t*>(rP + lt * kPTile + (g + 8) * kPStride + key) = pack_bf16(p[2], p[3]);
++        }
++      }
+     }
+-    __threadfence();  // this lane's part of the partial visible device-wide before the arrival
++    if (!WARP_ARRIVE || lane == 0) d90c_mbarrier_arrive_remote(sBar, 1);
++    return;
+   }
+-  __syncthreads();  // ... and every lane's
+-  if (!ow || (warp & 1)) return;
+-  int last = 0;
+-  if (lane == 0) {
+-    int* cnt = counters + ((int64_t)b * num_kv_heads + kvh) * kDecodeWarps + quarter;
+-    last = atomicAdd(cnt, 1) == n_groups - 1;
+-    if (last) *cnt = 0;  // ready for the next launch
++
++  // CTA 1. V of the warp set's 4 tiles in two cp.async groups (tiles 0-7, tiles 8-15).
++  {
++#pragma unroll
++    for (int i = 0; i < 4; ++i) {
++      const int lt = set + 4 * i;
++      if (lt < nt)
++        issue_tile(sT + lt * kTileElems, v_cache,
++                   tile_row(pages, page_size, page_shift, t_begin + lt, kv_len, num_kv_heads, kvh, ctid), ctid);
++      if (i == 1) cp_async_commit();
++    }
++    cp_async_commit();
+   }
+-  if (!__shfl_sync(0xffffffffu, last, 0)) return;
+-  __threadfence();
+-  constexpr int kFoldAhead = 8;
+-  for (int p = lane; p < group * 8; p += 32) {
+-    const int h = p >> 3, d0 = quarter * 32 + (p & 7) * 4;
+-    float Mf = -INFINITY, L = 0.f, Of[4] = {0.f, 0.f, 0.f, 0.f};
+-    const int64_t slot_h = (int64_t)b * max_groups * num_qo_heads + head0 + h;
+-    for (int c0 = 0; c0 < n_groups; c0 += kFoldAhead) {
+-      float2 ml[kFoldAhead];
+-      float4 oc[kFoldAhead];
++  if (first && tid == 0) d90c_mbarrier_init(sBar, WARP_ARRIVE ? kD90Warps : kD90Warps * 32);
++  cluster.sync();
++  while (!d90c_mbarrier_try_wait(sBar, phase)) {}  // P, the scales and m of the group are here
++  cp_async_wait<1>();  // V of tiles 0-7
++  __syncthreads();
++
++  // Warps 8-11: row sums of P of the tiles = warp mod 4 in exactly online_step's order (own keys n = 0..,
++  // then lane xor 1, xor 2), while the o chain runs.
++  if (dw) {
+ #pragma unroll
+-      for (int i = 0; i < kFoldAhead; ++i) {
+-        if (c0 + i >= n_groups) break;
+-        const int64_t slot = slot_h + (int64_t)(c0 + i) * num_qo_heads;
+-        ml[i] = __ldcg(ws_ml + slot * kDecodeWarps + quarter);
+-        oc[i] = __ldcg(reinterpret_cast<const float4*>(ws_o + slot * kHeadDim + d0));
++    for (int i = 0; i < 4; ++i) {
++      const int lt = wi + 4 * i;
++      if (lt < nt) {
++        const __nv_bfloat16* pt = sP + lt * kPTile;
++        float ls[2] = {0.f, 0.f};
++#pragma unroll
++        for (int n = 0; n < kTileNS; ++n) {
++          const __nv_bfloat162 p0 = *reinterpret_cast<const __nv_bfloat162*>(pt + g * kPStride + n * 8 + t4 * 2);
++          const __nv_bfloat162 p1 = *reinterpret_cast<const __nv_bfloat162*>(pt + (g + 8) * kPStride + n * 8 + t4 * 2);
++          ls[0] = add(ls[0], __low2float(p0));
++          ls[0] = add(ls[0], __high2float(p0));
++          ls[1] = add(ls[1], __low2float(p1));
++          ls[1] = add(ls[1], __high2float(p1));
++        }
++#pragma unroll
++        for (int r = 0; r < 2; ++r) {
++          ls[r] = add(ls[r], __shfl_xor_sync(0xffffffffu, ls[r], 1));
++          ls[r] = add(ls[r], __shfl_xor_sync(0xffffffffu, ls[r], 2));
++        }
++        if (t4 == 0) {
++          sLS[lt * 16 + g] = ls[0];
++          sLS[lt * 16 + g + 8] = ls[1];
++        }
+       }
++    }
++  }
++  // The o chain on warps 0-7, two O n-tiles each: decode90_group's code.
++  float O0[4] = {0.f, 0.f, 0.f, 0.f}, O1[4] = {0.f, 0.f, 0.f, 0.f};
+ #pragma unroll
+-      for (int i = 0; i < kFoldAhead; ++i) {
+-        if (c0 + i >= n_groups) break;
+-        const FoldScalars f = fold_scalars(Mf, L, ml[i].x, ml[i].y);
+-        Of[0] = fold_elem(Of[0], oc[i].x, f);
+-        Of[1] = fold_elem(Of[1], oc[i].y, f);
+-        Of[2] = fold_elem(Of[2], oc[i].z, f);
+-        Of[3] = fold_elem(Of[3], oc[i].w, f);
++  for (int lt = 0; lt < kGroupTiles; ++lt) {
++    if (lt == 8) {
++      cp_async_wait<0>();  // V of tiles 8-15
++      __syncthreads();     // ... for all threads; row sums published
++    }
++    if (ow && lt < nt) {
++      const float sc0 = sScale[lt * 16 + g], sc1 = sScale[lt * 16 + g + 8];
++      O0[0] = __fmaf_rn(O0[0], sc0, 0.f), O0[1] = __fmaf_rn(O0[1], sc0, 0.f);
++      O0[2] = __fmaf_rn(O0[2], sc1, 0.f), O0[3] = __fmaf_rn(O0[3], sc1, 0.f);
++      O1[0] = __fmaf_rn(O1[0], sc0, 0.f), O1[1] = __fmaf_rn(O1[1], sc0, 0.f);
++      O1[2] = __fmaf_rn(O1[2], sc1, 0.f), O1[3] = __fmaf_rn(O1[3], sc1, 0.f);
++      const __nv_bfloat16* pt = sP + lt * kPTile + ((mat & 1) * 8 + r8) * kPStride + (mat >> 1) * 8;
++      const __nv_bfloat16* vt = sT + lt * kTileElems;
++#pragma unroll
++      for (int j = 0; j < kTileKS; ++j) {
++        uint32_t pa[4], bv[4];
++        ldmatrix_x4(pa, pt + j * 16);
++        ldmatrix_x4_trans(bv, vt + swz(j * 16 + (mat & 1) * 8 + r8, warp * 2 + (mat >> 1)));
++        mma_bf16(O0, pa, bv[0], bv[1]);
++        mma_bf16(O1, pa, bv[2], bv[3]);
+       }
+     }
+-    __nv_bfloat16* o = out + ((int64_t)b * num_qo_heads + head0 + h) * kHeadDim + d0;
+-    reinterpret_cast<__nv_bfloat162*>(o)[0] = __halves2bfloat162(finish(Of[0], L), finish(Of[1], L));
+-    reinterpret_cast<__nv_bfloat162*>(o)[1] = __halves2bfloat162(finish(Of[2], L), finish(Of[3], L));
+   }
++  if (warp == kD90DWarp && t4 == 0) {  // d = fma(d, scale, row sum), tiles in order
++    float Dg = 0.f, Dh = 0.f;
++    for (int lt = 0; lt < nt; ++lt) {
++      Dg = __fmaf_rn(Dg, sScale[lt * 16 + g], sLS[lt * 16 + g]);
++      Dh = __fmaf_rn(Dh, sScale[lt * 16 + g + 8], sLS[lt * 16 + g + 8]);
++    }
++    sL[g] = Dg, sL[g + 8] = Dh;
++  }
++  __syncthreads();
++  d90_finish(O0, O1, sL, sMF, ws_o, ws_ml, counters, out, max_groups, num_qo_heads, num_kv_heads, n_groups, b, kvh, fg);
+ }
+ 
+-// grid = decode90_grid(slots, num_kv_heads, batch): decode_grid with `slots` CTAs per (request, kv head).
++// grid = decode90c_grid(slots, num_kv_heads, batch), clusters of (2, 1, 1). WARP_ARRIVE (measurements only):
++// one arrival per warp of CTA 0 instead of one per thread.
++template <bool WARP_ARRIVE = false>
+ __global__ void __launch_bounds__(kD90Warps * 32)
+-    decode90_kernel(const __nv_bfloat16* __restrict__ q, const __nv_bfloat16* __restrict__ k_cache,
+-                    const __nv_bfloat16* __restrict__ v_cache, const int32_t* __restrict__ kv_page_indptr,
+-                    const int32_t* __restrict__ kv_page_indices, int64_t table_stride,
+-                    const int32_t* __restrict__ kv_lens, float* __restrict__ ws_o, float2* __restrict__ ws_ml,
+-                    int* __restrict__ counters, __nv_bfloat16* __restrict__ out, int max_groups,
+-                    int num_qo_heads, int num_kv_heads, int page_size, int page_shift, float scale_log2,
+-                    bool group_fastest, int slots) {
+-  const int kvh = group_fastest ? blockIdx.y : blockIdx.x, b = group_fastest ? 0 : blockIdx.y;
++    decode90c_kernel(const __nv_bfloat16* __restrict__ q, const __nv_bfloat16* __restrict__ k_cache,
++                     const __nv_bfloat16* __restrict__ v_cache, const int32_t* __restrict__ kv_page_indptr,
++                     const int32_t* __restrict__ kv_page_indices, int64_t table_stride,
++                     const int32_t* __restrict__ kv_lens, float* __restrict__ ws_o, float2* __restrict__ ws_ml,
++                     int* __restrict__ counters, __nv_bfloat16* __restrict__ out, int max_groups,
++                     int num_qo_heads, int num_kv_heads, int page_size, int page_shift, float scale_log2,
++                     bool group_fastest, int slots) {
++  const int rank = blockIdx.x & 1, x = blockIdx.x >> 1;
++  const int kvh = group_fastest ? blockIdx.y : x, b = group_fastest ? 0 : blockIdx.y;
+   const int kv_len = kv_lens[b];
+   const int n_groups = (kv_len + kGroupKeys - 1) / kGroupKeys;
+   const int32_t* pages = request_pages(kv_page_indices, kv_page_indptr, table_stride, b);
+-  for (int fg = group_fastest ? blockIdx.x : blockIdx.z; fg < n_groups; fg += slots)
+-    decode90_group(q, k_cache, v_cache, pages, kv_len, ws_o, ws_ml, counters, out, max_groups, num_qo_heads,
+-                   num_kv_heads, page_size, page_shift, scale_log2, b, kvh, fg);
++  const int fg0 = group_fastest ? x : blockIdx.z;
++  int phase = 0;
++  for (int fg = fg0; fg < n_groups; fg += slots, phase ^= 1)
++    decode90c_group<WARP_ARRIVE>(q, k_cache, v_cache, pages, kv_len, ws_o, ws_ml, counters, out, max_groups,
++                                 num_qo_heads, num_kv_heads, page_size, page_shift, scale_log2, b, kvh, fg, rank,
++                                 phase, fg == fg0);
++}
++
++// Launches decode90c_kernel (a cluster launch needs cudaLaunchKernelEx).
++template <bool WARP_ARRIVE = false>
++inline cudaError_t decode90c_launch(cudaStream_t stream, int slots, int batch, const __nv_bfloat16* q,
++                                    const __nv_bfloat16* k_cache, const __nv_bfloat16* v_cache,
++                                    const int32_t* kv_page_indptr, const int32_t* kv_page_indices,
++                                    int64_t table_stride, const int32_t* kv_lens, float* ws_o, float2* ws_ml,
++                                    int* counters, __nv_bfloat16* out, int max_groups, int num_qo_heads,
++                                    int num_kv_heads, int page_size, int page_shift, float scale_log2) {
++  const auto kernel = decode90c_kernel<WARP_ARRIVE>;
++  const cudaError_t err =
++      cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, decode90c_smem_bytes());
++  if (err != cudaSuccess) return err;
++  cudaLaunchConfig_t cfg = {};
++  cfg.gridDim = decode90c_grid(slots, num_kv_heads, batch);
++  cfg.blockDim = dim3(kD90Warps * 32);
++  cfg.dynamicSmemBytes = decode90c_smem_bytes();
++  cfg.stream = stream;
++  cudaLaunchAttribute attr[1];
++  attr[0].id = cudaLaunchAttributeClusterDimension;
++  attr[0].val.clusterDim.x = 2;
++  attr[0].val.clusterDim.y = 1;
++  attr[0].val.clusterDim.z = 1;
++  cfg.attrs = attr;
++  cfg.numAttrs = 1;
++  return cudaLaunchKernelEx(&cfg, kernel, q, k_cache, v_cache, kv_page_indptr, kv_page_indices, table_stride,
++                            kv_lens, ws_o, ws_ml, counters, out, max_groups, num_qo_heads, num_kv_heads, page_size,
++                            page_shift, scale_log2, decode_group_fastest(batch), slots);
+ }
+ 
+ }  // namespace pi_attn
+diff --git a/llm_infer_rust/src/kernels/pi/pi_launch.cu b/llm_infer_rust/src/kernels/pi/pi_launch.cu
+index fa7400b..455e9cf 100644
+--- a/llm_infer_rust/src/kernels/pi/pi_launch.cu
++++ b/llm_infer_rust/src/kernels/pi/pi_launch.cu
+@@ -94,35 +94,71 @@ void pi_set_device(int device) {
+ // Workspace: ws_o [batch * max_groups, Hq, 128] f32 and ws_ml [.., Hq, 8] f32 (one
+ // (m, l) pair per decode warp) with max_groups = pi_attn_decode_groups(table_stride
+ // * page_size), and counters [ws_rows, Hq, 4] int32, zero before the first call;
+-// every call leaves them zero. The kernel (decode90_plan) and the grid depend
+-// only on (batch, table_stride), so they are fixed per CUDA-graph bucket.
++// every call leaves them zero. max_kv_len: an upper bound of seqlens known on the
++// host (0 = unknown: the table's capacity). The kernel (decode_plan) depends only on
++// (batch, table_stride, max_kv_len) and the grid on (batch, table_stride), so a CUDA
++// graph is fixed per batch and per kernel: pi_attn_decode_plan tells which bounds
++// share one.
+ static_assert(kDecodeWarps == 4, "pi.rs sizes the decode ml and counter workspaces for 4 warps");
+ int pi_attn_decode_groups(int64_t max_kv_len) {
+   return (int)((max_kv_len + kGroupKeys - 1) / kGroupKeys);
+ }
+ 
++// The kernel pi_attn_decode runs for a batch whose longest request has max_kv_len keys, with a page table of
++// `capacity` keys per request (1 = decode_kernel, 2 = decode90_kernel, 3 = decode90c_kernel; the same bits).
++// *same_until: the largest bound >= max_kv_len (at most the capacity) up to which every bound gives this kernel.
++int pi_attn_decode_plan(int batch, int num_kv_heads, int64_t capacity, int64_t max_kv_len, int64_t* same_until) {
++  const DeviceInfo info = device_info();
++  const int max_groups = pi_attn_decode_groups(capacity);
++  auto plan = [&](int64_t bound) {
++    return info.decode90 ? decode_plan(info.cc_major, info.cc_minor, batch, max_groups, num_kv_heads, info.sms, bound)
++                         : 1;
++  };
++  max_kv_len = std::min(std::max<int64_t>(max_kv_len, 1), std::max<int64_t>(capacity, 1));
++  const int kernel = plan(max_kv_len);
++  if (same_until) {
++    int64_t end = max_kv_len;
++    while (end < capacity && plan(end + 1) == kernel) ++end;
++    *same_until = end;
++  }
++  return kernel;
++}
++
+ const char* pi_attn_decode(const void* q, const void* k_cache, const void* v_cache,
+                            const int32_t* page_table, int64_t table_stride, const int32_t* seqlens,
+                            float* ws_o, float* ws_ml, int* counters, int64_t ws_rows, void* out, int batch,
+                            int num_qo_heads, int num_kv_heads, int page_size, double sm_scale,
+-                           void* stream) {
++                           int64_t max_kv_len, void* stream) {
+   if (num_kv_heads <= 0 || num_qo_heads % num_kv_heads || num_qo_heads / num_kv_heads > 16)
+     return fail("PI attention needs num_qo_heads = g * num_kv_heads with g <= 16");
+   if (batch == 0) return nullptr;
+-  const int max_groups = pi_attn_decode_groups(table_stride * page_size);
++  const int64_t capacity = table_stride * page_size;
++  const int max_groups = pi_attn_decode_groups(capacity);
+   if (ws_rows < (int64_t)batch * max_groups)
+     return fail("PI decode workspace smaller than batch * fold groups per request");
+   auto st = (cudaStream_t)stream;
++  const float scale_log2 = (float)(sm_scale * 1.4426950408889634);
+ #ifdef PI_SM90A
+   const DeviceInfo info = device_info();
+-  if (info.decode90 && decode90_plan(info.cc_major, info.cc_minor, batch, max_groups, num_kv_heads, info.sms)) {
++  const int kernel = pi_attn_decode_plan(batch, num_kv_heads, capacity, max_kv_len > 0 ? max_kv_len : capacity,
++                                         nullptr);
++  if (kernel == 3) {
++    const cudaError_t err = decode90c_launch<false>(
++        st, decode90c_slots(batch, num_kv_heads, max_groups, info.sms), batch, (const __nv_bfloat16*)q,
++        (const __nv_bfloat16*)k_cache, (const __nv_bfloat16*)v_cache, nullptr, page_table, table_stride, seqlens,
++        ws_o, (float2*)ws_ml, counters, (__nv_bfloat16*)out, max_groups, num_qo_heads, num_kv_heads, page_size,
++        page_shift_of(page_size), scale_log2);
++    if (err != cudaSuccess) return fail(std::string("pi decode: ") + cudaGetErrorString(err));
++    return check_launch("pi decode");
++  }
++  if (kernel == 2) {
+     const int slots = decode90_slots(batch, num_kv_heads, max_groups, info.sms);
+     set_smem(decode90_kernel, decode90_smem_bytes());
+     decode90_kernel<<<decode90_grid(slots, num_kv_heads, batch), kD90Warps * 32, decode90_smem_bytes(), st>>>(
+         (const __nv_bfloat16*)q, (const __nv_bfloat16*)k_cache, (const __nv_bfloat16*)v_cache,
+         nullptr, page_table, table_stride, seqlens, ws_o, (float2*)ws_ml, counters, (__nv_bfloat16*)out,
+-        max_groups, num_qo_heads, num_kv_heads, page_size, page_shift_of(page_size),
+-        (float)(sm_scale * 1.4426950408889634), decode_group_fastest(batch), slots);
++        max_groups, num_qo_heads, num_kv_heads, page_size, page_shift_of(page_size), scale_log2,
++        decode_group_fastest(batch), slots);
+     return check_launch("pi decode");
+   }
+ #endif
+@@ -130,8 +166,8 @@ const char* pi_attn_decode(const void* q, const void* k_cache, const void* v_cac
+   decode_kernel<<<decode_grid(max_groups, num_kv_heads, batch), kDecodeWarps * 32, decode_smem_bytes(), st>>>(
+       (const __nv_bfloat16*)q, (const __nv_bfloat16*)k_cache, (const __nv_bfloat16*)v_cache,
+       nullptr, page_table, table_stride, seqlens, ws_o, (float2*)ws_ml, counters, (__nv_bfloat16*)out,
+-      max_groups, num_qo_heads, num_kv_heads, page_size, page_shift_of(page_size),
+-      (float)(sm_scale * 1.4426950408889634), decode_group_fastest(batch));
++      max_groups, num_qo_heads, num_kv_heads, page_size, page_shift_of(page_size), scale_log2,
++      decode_group_fastest(batch));
+   return check_launch("pi decode");
+ }
+ 
+diff --git a/llm_infer_rust/src/models/attention/backend.rs b/llm_infer_rust/src/models/attention/backend.rs
+index b471049..2c648bf 100644
+--- a/llm_infer_rust/src/models/attention/backend.rs
++++ b/llm_infer_rust/src/models/attention/backend.rs
+@@ -189,6 +189,16 @@ impl Attention {
+         )
+     }
+ 
++    /// See `ModelExecutor::decode_graph_plans`.
++    pub fn decode_graph_plans(&self, metadata: &AttentionMetadata) -> Result<Vec<(usize, u32)>> {
++        self.backend.decode_graph_plans(
++            metadata,
++            self.spec,
++            self.page_size
++                .ok_or_else(|| model_error("graph requires a bound KV cache"))?,
++        )
++    }
++
+     pub fn prepare<'a>(
+         &'a self,
+         metadata: Option<&'a AttentionMetadata>,
+@@ -312,6 +322,15 @@ trait AttentionBackend {
+         Ok(None)
+     }
+ 
++    fn decode_graph_plans(
++        &self,
++        _metadata: &AttentionMetadata,
++        _spec: AttentionSpec,
++        _page_size: i64,
++    ) -> Result<Vec<(usize, u32)>> {
++        Ok(Vec::new())
++    }
++
+     fn prepare(
+         &self,
+         _metadata: Option<&AttentionMetadata>,
+@@ -417,6 +436,25 @@ impl AttentionBackend for PiAttentionBackend {
+         })))
+     }
+ 
++    /// The decode kernel depends on the longest request of the step, which only the
++    /// host knows: one captured graph per kernel, chosen at replay by that length.
++    fn decode_graph_plans(
++        &self,
++        metadata: &AttentionMetadata,
++        spec: AttentionSpec,
++        page_size: i64,
++    ) -> Result<Vec<(usize, u32)>> {
++        let table = metadata
++            .block_table
++            .as_ref()
++            .ok_or_else(|| model_error("PI decode requires block_table"))?;
++        Ok(crate::kernels::pi::decode_plans(
++            table.size()[0],
++            spec.num_kv_heads,
++            table.stride()[0].max(table.size()[1]) * page_size,
++        ))
++    }
++
+     fn prepare(
+         &self,
+         metadata: Option<&AttentionMetadata>,
+@@ -481,8 +519,10 @@ fn pi_forward(
+                 .cache_seqlens
+                 .as_ref()
+                 .ok_or_else(|| model_error("PI decode requires cache_seqlens"))?;
++            // The step's longest request selects the decode kernel (never a value).
++            let max_kv_len = metadata.max_seqlen.unwrap_or(0) as i64;
+             crate::kernels::pi::decode(
+-                &q, k_cache, v_cache, table, lengths, workspace, num_kv_heads, out,
++                &q, k_cache, v_cache, table, lengths, workspace, num_kv_heads, max_kv_len, out,
+             )
+         }
+         BackendPlan::PiPrefill(plan) => {
+diff --git a/llm_infer_rust/src/models/qwen3/model.rs b/llm_infer_rust/src/models/qwen3/model.rs
+index d3f786f..54b195c 100644
+--- a/llm_infer_rust/src/models/qwen3/model.rs
++++ b/llm_infer_rust/src/models/qwen3/model.rs
+@@ -324,6 +324,10 @@ impl ModelExecutor for Qwen3ForCausalLM {
+         self.attention.prepare_decode_graph(metadata)
+     }
+ 
++    fn decode_graph_plans(&self, metadata: &AttentionMetadata) -> Result<Vec<(usize, u32)>> {
++        self.attention.decode_graph_plans(metadata)
++    }
++
+     fn forward(
+         &self,
+         batch: &crate::engine::ForwardBatch<'_>,
