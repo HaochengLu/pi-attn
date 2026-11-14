@@ -24,3 +24,10 @@ best split is 64x64 tiles with 768 columns in flight, 3.1 MB device-wide); M >= 
 Files: each run's kernel state is its `.diff` against 61ff596 (`probe90.cu` is the probe extension as of run C,
 `probe90_d.cu` and `probe_common.py` as of run D; run B called `linear90(x, w, id, probe)` and listed its tiles as
 4-tuples).
+
+End to end (`engine.sh`, `engine.log`; attention kernels of 61ff596; FlashInfer mode and `--deterministic`
+alternating twice in one sandbox, 2 repeats each): 64 rollouts identical to the H100 reference (14442/14442
+log-probabilities); the tuner picks ids 103..112 in every M bucket up to 640 and at 2304. Output tok/s of
+`--deterministic` against FlashInfer mode, before (critic's `abl.log`) -> after: 64/32 c1 -1.7 -> +4.8%, c8 -4.9 ->
++5.0%, c32 -3.6 -> +2.4%; 512/256 c8 -10.8 -> -5.6%, c64 -3.3 -> -0.2%, c128 -7.6 -> -5.7%, c256 -10.4 -> -9.0%;
+1024/512 c32 -4.3 -> -0.7%; 2048/128 c8 -7.6 -> -2.7%, c64 -8.0 -> -5.7%.

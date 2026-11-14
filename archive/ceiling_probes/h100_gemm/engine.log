@@ -1,0 +1,35 @@
+[run_gpu] workstream gemm: $3.02 of $7.00
+[run_gpu] start H100 gemm:engine: ledger $16.30, gateway $13.45, budget $40.00
+apt exit=0
+patch applied
+model sha256 OK
+cargo build exit=0 (393s)
+flashinfer round 1 up after 8s
+flashinfer round 1 loadgen exit=0 (87s)
+deterministic round 1 up after 27s
+64 rollouts: 64 with identical token ids; 14442/14442 log-probabilities bitwise equal
+ROLLOUTS IDENTICAL TO REFERENCE: True
+xgpu_rollout exit=0
+deterministic round 1 loadgen exit=0 (112s)
+flashinfer round 2 up after 8s
+flashinfer round 2 loadgen exit=0 (86s)
+deterministic round 2 up after 26s
+deterministic round 2 loadgen exit=0 (107s)
+2026-11-14T08:22:03.505180Z | llm-infer-rust | INFO | PI GEMM tile choice n=2048 k=2048 choice="1:103 2:103 4:103 8:103 16:103 32:103 64:103 128:104 192:105 256:105 320:107 384:109 448:105 512:106 640:107 768:91 896:91 1024:93 1280:112 1536:108 1792:91 2048:90 2304:111"
+2026-11-14T08:22:03.536360Z | llm-infer-rust | INFO | PI GEMM tile choice n=2048 k=6144 choice="1:103 2:103 4:103 8:103 16:103 32:103 64:103 128:104 192:105 256:106 320:107 384:106 448:91 512:107 640:107 768:107 896:91 1024:91 1280:108 1536:108 1792:90 2048:90 2304:111"
+2026-11-14T08:22:03.556496Z | llm-infer-rust | INFO | PI GEMM tile choice n=4096 k=2048 choice="1:104 2:104 4:104 8:104 16:104 32:104 64:104 128:105 192:109 256:106 320:93 384:107 448:93 512:91 640:108 768:112 896:90 1024:90 1280:108 1536:112 1792:90 2048:90 2304:108"
+2026-11-14T08:22:03.604645Z | llm-infer-rust | INFO | PI GEMM tile choice n=12288 k=2048 choice="1:104 2:104 4:104 8:104 16:104 32:104 64:104 128:107 192:110 256:108 320:111 384:111 448:108 512:108 640:90 768:108 896:108 1024:90 1280:108 1536:108 1792:108 2048:108 2304:112"
+2026-11-14T08:22:10.107339Z | llm-infer-rust | INFO | PI GEMM tile choice n=151936 k=2048 choice="1:105 2:104 4:105 8:105 16:105 32:105 64:105 128:106 192:112 256:108 320:111 384:108 448:90 512:108 640:108 768:111 896:90 1024:108 1280:90 1536:111 1792:108 2048:111 2304:90"
+ENG 64/32/c1: FI 435 tok/s tpot 2.225 ttft 4.5 | deterministic 456 tok/s (+4.8%) tpot -119us ttft +0.3ms | all FI [434.5, 435.6, 435.5, 435.4] PI [456.0, 457.3, 457.0, 455.6]
+ENG 64/32/c8: FI 2804 tok/s tpot 2.473 ttft 13.2 | deterministic 2943 tok/s (+5.0%) tpot -102us ttft -0.2ms | all FI [2778.3, 2792.5, 2815.2, 2862.1] PI [2964.5, 2946.6, 2939.8, 2848.7]
+ENG 64/32/c32: FI 8210 tok/s tpot 2.871 ttft 22.7 | deterministic 8407 tok/s (+2.4%) tpot -111us ttft -0.5ms | all FI [8112.7, 8201.7, 8218.4, 8346.3] PI [8219.7, 8644.7, 8383.4, 8431.0]
+ENG 512/256/c8: FI 2984 tok/s tpot 2.580 ttft 27.8 | deterministic 2817 tok/s (-5.6%) tpot +149us ttft +2.3ms | all FI [2973.8, 2988.9, 2978.8, 2993.9] PI [2817.6, 2822.5, 2816.7, 2813.8]
+ENG 2048/128/c8: FI 2008 tok/s tpot 3.527 ttft 60.3 | deterministic 1952 tok/s (-2.7%) tpot +54us ttft +8.0ms | all FI [2043.1, 1978.1, 2037.1, 1977.9] PI [1966.4, 1910.9, 1994.5, 1938.4]
+ENG 1024/512/c32: FI 6937 tok/s tpot 4.372 ttft 107.0 | deterministic 6885 tok/s (-0.7%) tpot +6us ttft +12.7ms | all FI [6929.5, 6921.3, 6943.6, 6945.8] PI [6876.5, 6874.9, 6905.4, 6894.2]
+ENG 512/256/c64: FI 12242 tok/s tpot 4.745 ttft 96.7 | deterministic 12215 tok/s (-0.2%) tpot -56us ttft +16.7ms | all FI [12211.3, 12151.7, 12273.7, 12296.4] PI [12181.4, 12139.8, 12287.5, 12249.5]
+ENG 512/256/c128: FI 15951 tok/s tpot 7.138 ttft 155.5 | deterministic 15042 tok/s (-5.7%) tpot +409us ttft +23.7ms | all FI [15972.9, 15909.9, 16007.6, 15928.4] PI [14635.4, 14781.1, 15303.3, 15302.4]
+ENG 512/256/c256: FI 17048 tok/s tpot 12.987 ttft 348.8 | deterministic 15512 tok/s (-9.0%) tpot +1188us ttft +52.3ms | all FI [17131.9, 16695.5, 17330.8, 16964.1] PI [15277.7, 15257.7, 16109.3, 15746.2]
+ENG 2048/128/c64: FI 3787 tok/s tpot 13.456 ttft 358.4 | deterministic 3570 tok/s (-5.7%) tpot +750us ttft +43.5ms | all FI [3792.7, 3770.7, 3823.9, 3781.5] PI [3530.4, 3509.4, 3618.5, 3609.7]
+total 803s
+
+[run_gpu] H100 gemm:engine: exit=0 wall=837s cost~$1.385 ledger=$18.54
