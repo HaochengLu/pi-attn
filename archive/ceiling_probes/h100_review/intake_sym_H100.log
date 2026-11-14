@@ -1,0 +1,63 @@
+[run_gpu] workstream rev: $0.05 of $4.00
+[run_gpu] start H100 rev:intake_sym: ledger $30.20, gateway $27.00, budget $40.00
+NVIDIA H100 80GB HBM3
+SYM trial 0: 0 of 1280000 elements differ (A/B swapped); max rel err vs f64 5.07e-05
+SYM trial 1: 0 of 1280000 elements differ (A/B swapped); max rel err vs f64 2.68e-04
+SYM trial 2: 0 of 1280000 elements differ (A/B swapped); max rel err vs f64 1.13e-02
+SYM trial 3: 0 of 1280000 elements differ (A/B swapped); max rel err vs f64 2.42e-03
+SYM trial 4: 0 of 1280000 elements differ (A/B swapped); max rel err vs f64 3.31e-03
+SYM TOTAL: 0 of 6400000 differ
+CHECK depth 1: TMA page boxes == cp.async: True [4380295600645, 4381277639588]
+CHECK depth 4: TMA page boxes == cp.async: True [4380295600645, 4381277639588]
+CHECK depth 16: TMA page boxes == cp.async: True [4380295600645, 4381277639588]
+--- 1 CTAs, DRAM, 32 tile loads (256 KB per CTA): empty launch 1.10 us; below launch subtracted
+COPY   1 DRAM t32 cp.async 16 B (shipped mapping)  perm0: w4d1  17.1 | w4d2  12.9 | w4d4  10.1 | w4d8   9.0 | w4d16   8.4 | w16d1  18.9 | w16d2  13.4 | w16d4  10.1 | w16d8   8.9 | w16d16   8.3
+COPY   1 DRAM t32 cp.async 16 B (shipped mapping)  perm1: w4d1  18.7 | w4d2  14.4 | w4d4  12.3 | w4d8  11.2 | w4d16  10.6 | w16d1  21.2 | w16d2  14.2 | w16d4  10.8 | w16d8   9.6 | w16d16   9.0
+COPY   1 DRAM t32 bulk 8 KB contiguous             perm0: w4d1  13.0 | w4d2   8.9 | w4d4   6.9 | w4d8   5.8 | w4d16   5.3
+COPY   1 DRAM t32 TMA box page 16 keys             perm0: w4d1  15.6 | w4d2  11.6 | w4d4   9.7 | w4d8   8.7 | w4d16   8.2
+COPY   1 DRAM t32 TMA box page 16 keys             perm1: w4d1  21.0 | w4d2  17.1 | w4d4  15.1 | w4d8  14.1 | w4d16  13.7
+COPY   1 DRAM t32 TMA box 32 keys                  perm0: w4d1  13.8 | w4d2   9.7 | w4d4   7.6 | w4d8   6.6 | w4d16   6.0
+--- 1 CTAs, DRAM, 16 tile loads (128 KB per CTA): empty launch 1.07 us; below launch subtracted
+COPY   1 DRAM t16 cp.async 16 B (shipped mapping)  perm0: w4d1   8.1 | w4d2   5.9 | w4d4   4.8 | w4d8   4.3 | w4d16   4.0 | w16d1   9.1 | w16d2   6.5 | w16d4   5.1 | w16d8   4.5 | w16d16   4.2
+COPY   1 DRAM t16 cp.async 16 B (shipped mapping)  perm1: w4d1   9.3 | w4d2   7.2 | w4d4   6.1 | w4d8   5.6 | w4d16   5.3 | w16d1  10.6 | w16d2   7.1 | w16d4   5.4 | w16d8   4.9 | w16d16   4.6
+COPY   1 DRAM t16 bulk 8 KB contiguous             perm0: w4d1   6.5 | w4d2   4.5 | w4d4   3.5 | w4d8   3.0 | w4d16   2.7
+COPY   1 DRAM t16 TMA box page 16 keys             perm0: w4d1   7.8 | w4d2   5.8 | w4d4   4.9 | w4d8   4.4 | w4d16   4.1
+COPY   1 DRAM t16 TMA box page 16 keys             perm1: w4d1  10.5 | w4d2   8.6 | w4d4   7.6 | w4d8   7.1 | w4d16   6.8
+COPY   1 DRAM t16 TMA box 32 keys                  perm0: w4d1   6.9 | w4d2   4.9 | w4d4   3.9 | w4d8   3.3 | w4d16   3.1
+--- 16 CTAs, DRAM, 32 tile loads (256 KB per CTA): empty launch 1.11 us; below launch subtracted
+COPY  16 DRAM t32 cp.async 16 B (shipped mapping)  perm0: w4d1  26.9 | w4d2  17.4 | w4d4  12.6 | w4d8  10.1 | w4d16   8.8 | w16d1  28.8 | w16d2  18.5 | w16d4  12.8 | w16d8  10.3 | w16d16   9.1
+COPY  16 DRAM t32 cp.async 16 B (shipped mapping)  perm1: w4d1  30.6 | w4d2  20.4 | w4d4  15.4 | w4d8  12.8 | w4d16  11.5 | w16d1  33.0 | w16d2  20.1 | w16d4  13.9 | w16d8  11.2 | w16d16   9.8
+COPY  16 DRAM t32 bulk 8 KB contiguous             perm0: w4d1  22.8 | w4d2  14.3 | w4d4   9.4 | w4d8   7.2 | w4d16   6.1
+COPY  16 DRAM t32 TMA box page 16 keys             perm0: w4d1  25.6 | w4d2  16.9 | w4d4  12.4 | w4d8  10.1 | w4d16   9.0
+COPY  16 DRAM t32 TMA box page 16 keys             perm1: w4d1  31.4 | w4d2  22.5 | w4d4  18.0 | w4d8  15.5 | w4d16  14.4
+COPY  16 DRAM t32 TMA box 32 keys                  perm0: w4d1  24.1 | w4d2  15.2 | w4d4  10.4 | w4d8   8.1 | w4d16   6.9
+--- 16 CTAs, DRAM, 16 tile loads (128 KB per CTA): empty launch 1.11 us; below launch subtracted
+COPY  16 DRAM t16 cp.async 16 B (shipped mapping)  perm0: w4d1  13.6 | w4d2   8.8 | w4d4   6.4 | w4d8   5.1 | w4d16   4.5 | w16d1  14.6 | w16d2   9.4 | w16d4   6.6 | w16d8   5.3 | w16d16   4.6
+COPY  16 DRAM t16 cp.async 16 B (shipped mapping)  perm1: w4d1  15.5 | w4d2  10.4 | w4d4   7.8 | w4d8   6.5 | w4d16   5.8 | w16d1  16.7 | w16d2  10.2 | w16d4   7.1 | w16d8   5.7 | w16d16   5.0
+COPY  16 DRAM t16 bulk 8 KB contiguous             perm0: w4d1  11.5 | w4d2   7.3 | w4d4   4.8 | w4d8   3.7 | w4d16   3.1
+COPY  16 DRAM t16 TMA box page 16 keys             perm0: w4d1  13.0 | w4d2   8.6 | w4d4   6.3 | w4d8   5.2 | w4d16   4.6
+COPY  16 DRAM t16 TMA box page 16 keys             perm1: w4d1  16.0 | w4d2  11.5 | w4d4   9.1 | w4d8   7.9 | w4d16   7.3
+COPY  16 DRAM t16 TMA box 32 keys                  perm0: w4d1  12.3 | w4d2   7.8 | w4d4   5.4 | w4d8   4.2 | w4d16   3.5
+--- 16 CTAs, L2, 32 tile loads (256 KB per CTA): empty launch 1.10 us; below launch subtracted
+COPY  16 L2   t32 cp.async 16 B (shipped mapping)  perm0: w4d1  16.1 | w4d2  11.8 | w4d4   9.6 | w4d8   8.5 | w4d16   7.9 | w16d1  18.1 | w16d2  12.9 | w16d4  10.1 | w16d8   9.0 | w16d16   8.4
+COPY  16 L2   t32 cp.async 16 B (shipped mapping)  perm1: w4d1  18.7 | w4d2  14.3 | w4d4  12.2 | w4d8  11.1 | w4d16  10.6 | w16d1  21.2 | w16d2  14.2 | w16d4  10.8 | w16d8   9.6 | w16d16   9.0
+COPY  16 L2   t32 bulk 8 KB contiguous             perm0: w4d1  13.1 | w4d2   9.0 | w4d4   6.9 | w4d8   5.8 | w4d16   5.3
+COPY  16 L2   t32 TMA box page 16 keys             perm0: w4d1  15.6 | w4d2  11.6 | w4d4   9.6 | w4d8   8.7 | w4d16   8.2
+COPY  16 L2   t32 TMA box page 16 keys             perm1: w4d1  21.0 | w4d2  17.0 | w4d4  15.1 | w4d8  14.1 | w4d16  13.6
+COPY  16 L2   t32 TMA box 32 keys                  perm0: w4d1  13.9 | w4d2   9.8 | w4d4   7.7 | w4d8   6.6 | w4d16   6.1
+--- 64 CTAs, DRAM, 32 tile loads (256 KB per CTA): empty launch 1.22 us; below launch subtracted
+COPY  64 DRAM t32 cp.async 16 B (shipped mapping)  perm0: w4d1  27.5 | w4d2  18.0 | w4d4  12.9 | w4d8  10.3 | w4d16   9.0 | w16d1  29.5 | w16d2  19.0 | w16d4  13.4 | w16d8  10.7 | w16d16   9.2
+COPY  64 DRAM t32 cp.async 16 B (shipped mapping)  perm1: w4d1  31.3 | w4d2  21.0 | w4d4  15.8 | w4d8  13.1 | w4d16  11.7 | w16d1  33.7 | w16d2  21.0 | w16d4  14.8 | w16d8  11.9 | w16d16  10.2
+COPY  64 DRAM t32 bulk 8 KB contiguous             perm0: w4d1  23.9 | w4d2  15.4 | w4d4  10.8 | w4d8   8.3 | w4d16   6.9
+COPY  64 DRAM t32 TMA box page 16 keys             perm0: w4d1  26.2 | w4d2  17.5 | w4d4  12.8 | w4d8  10.4 | w4d16   9.1
+COPY  64 DRAM t32 TMA box page 16 keys             perm1: w4d1  32.0 | w4d2  22.8 | w4d4  18.1 | w4d8  15.7 | w4d16  14.5
+COPY  64 DRAM t32 TMA box 32 keys                  perm0: w4d1  24.8 | w4d2  15.9 | w4d4  11.4 | w4d8   8.9 | w4d16   7.5
+--- 128 CTAs, DRAM, 32 tile loads (256 KB per CTA): empty launch 1.26 us; below launch subtracted
+COPY 128 DRAM t32 cp.async 16 B (shipped mapping)  perm0: w4d1  28.9 | w4d2  20.3 | w4d4  16.4 | w4d8  14.1 | w4d16  12.8 | w16d1  30.9 | w16d2  21.4 | w16d4  17.1 | w16d8  14.4 | w16d16  13.0
+COPY 128 DRAM t32 cp.async 16 B (shipped mapping)  perm1: w4d1  32.6 | w4d2  23.4 | w4d4  19.0 | w4d8  15.9 | w4d16  13.8 | w16d1  34.7 | w16d2  23.7 | w16d4  18.7 | w16d8  15.8 | w16d16  13.9
+COPY 128 DRAM t32 bulk 8 KB contiguous             perm0: w4d1  25.6 | w4d2  17.9 | w4d4  14.6 | w4d8  12.8 | w4d16  11.9
+COPY 128 DRAM t32 TMA box page 16 keys             perm0: w4d1  28.0 | w4d2  20.0 | w4d4  15.9 | w4d8  13.7 | w4d16  12.6
+COPY 128 DRAM t32 TMA box page 16 keys             perm1: w4d1  33.5 | w4d2  24.5 | w4d4  19.8 | w4d8  17.0 | w4d16  15.4
+COPY 128 DRAM t32 TMA box 32 keys                  perm0: w4d1  26.3 | w4d2  18.7 | w4d4  15.1 | w4d8  13.4 | w4d16  12.4
+
+[run_gpu] H100 rev:intake_sym: exit=0 wall=100s cost~$0.165 ledger=$30.37
