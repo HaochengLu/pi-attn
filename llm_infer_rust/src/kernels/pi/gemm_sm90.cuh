@@ -14,13 +14,25 @@
 //    contract); the producer streams the next tile's K stages while the consumers run the epilogue, which
 //    writes the rounded tile to shared memory and hands it to one asynchronous TMA store. The walk goes in
 //    blocks `swz` n tiles wide so that one wave of CTAs shares its X rows and W columns in L2.
-// One CTA = 1 producer warp group + BM / 64 consumer warp groups (64 rows x BN columns each).
+// One CTA = 1 producer warp group + BM / 64 consumer warp groups (64 rows x BN columns each), BM = 64, 128 or 192.
 // Decode (M below one row tile): the X stage loads are issued with a TMA box of exactly M rows. A box that
 // crosses the tensor's last row costs about 3 ns per out-of-bounds row on H100 (measured: a 64 x 16 tile over
 // K = 6144 took 35 us at M = 1 against 16 us at M = 64), which made every tile here slower as M shrank. The
 // stage rows past M then hold stale shared memory; wgmma computes on them, row by row independently of the
 // real rows, and the TMA store drops them. Ids 98..102 are tiles for this regime: N tiles narrow enough that a
 // 2048-column weight still gives every SM a CTA to stream through, each element's chain still the whole K.
+// What bounds a launch below M ~ 1024 (H100, Qwen3-1.7B, 28 weight copies streamed from DRAM in one graph) is the
+// weight bytes it keeps in flight, N x (K columns the stages of one CTA hold) x 2: down (2048 x 6144) at M = 64
+// takes 18.5 us with 2.1 MB in flight (id 99), 16.5 us with 3.1 MB, 13.4 us with 4.2 MB (id 103; cuBLAS 14.8 us).
+// It is not the K chain: 384 dependent wgmma k16 steps on register-resident operands take 8.0 us (20.8 ns per
+// step for one warp group at n <= 64; an SM saturates at 3.6e12 multiply-adds per second). Ids 103..112 are
+// tiles for this bound and for the SM count: stages 1024 columns deep for M <= 128 (103, 104), the deepest
+// that fit beside the X stages for M = 192..512 (105..110), each sized so that one wave of CTAs covers the
+// output (128 or 129 tiles on 132 SMs for the Qwen3-1.7B projections), and 192-row tiles (three consumer warp
+// groups) that keep a 2048-token chunk plus up to 256 decode rows in one wave (111, 112: 132 tiles of 192 x 192
+// at M = 2304, N = 2048, where 128 x 256 needs 144). The X stages cannot be given a shallower pipeline of their
+// own: TMA loads of one CTA complete in issue order, so an X load issued behind deep W loads waits for DRAM
+// (archive/ceiling_probes/h100_gemm, run D).
 // A launch refuses (cudaErrorInvalidValue, before launching) x, w, y that are not 16-byte aligned, row
 // strides that are not multiples of 8 elements (TMA), a K remainder, and a segment count its kind does not run.
 #pragma once
@@ -44,19 +56,21 @@ namespace pi_gemm90 {
 // SEG: S > 1 kernels keep the segment totals in a second register fragment (BN <= 128). BK: K columns per stage.
 template <int BM, int BN, int ST, bool SEG, typename OutT, int BK = 64>
 struct Sm90Gemm {
-  static_assert(BM == 64 || BM == 128, "one or two consumer warp groups");
+  static_assert(BM == 64 || BM == 128 || BM == 192, "one to three consumer warp groups");
   static_assert(BK % 64 == 0, "whole 64-column (128-byte swizzled) K slabs");
   static constexpr int kBK = BK;
   using TileShape = cute::Shape<cute::Int<BM>, cute::Int<BN>, cute::Int<kBK>>;
   using ClusterShape = cute::Shape<cute::_1, cute::_1, cute::_1>;
-  using Schedule = std::conditional_t<BM == 128, cutlass::gemm::KernelTmaWarpSpecializedCooperative,
-                                      cutlass::gemm::KernelTmaWarpSpecialized>;
+  using Schedule = std::conditional_t<BM == 64, cutlass::gemm::KernelTmaWarpSpecialized,
+                                      cutlass::gemm::KernelTmaWarpSpecializedCooperative>;
   using Mainloop = typename cutlass::gemm::collective::CollectiveBuilder<
       cutlass::arch::Sm90, cutlass::arch::OpClassTensorOp,
       cutlass::bfloat16_t, cutlass::layout::RowMajor, 8,     // A = X [M, K], K contiguous
       cutlass::bfloat16_t, cutlass::layout::ColumnMajor, 8,  // B = W^T [K, N] column-major = W [N, K] row-major
       float, TileShape, ClusterShape, cutlass::gemm::collective::StageCount<ST>, Schedule>::CollectiveOp;
-  using TiledMma = typename Mainloop::TiledMma;
+  // BM / 64 warp groups of the collective's wgmma atom (the builder itself tiles one or two).
+  using TiledMma = decltype(cute::make_tiled_mma(typename Mainloop::TiledMma::Atom{},
+                                                 cute::Layout<cute::Shape<cute::Int<BM / 64>, cute::_1, cute::_1>>{}));
   using Pipeline = typename Mainloop::MainloopPipeline;
   using PipelineState = typename Mainloop::PipelineState;
   struct SharedStorage {
@@ -283,9 +297,12 @@ cudaError_t Sm90Gemm<BM, BN, ST, SEG, OutT, BK>::run(const void* x, int64_t ldx,
 // Ids 90..94: S = 1 tiles 128x256, 128x128, 64x128, 64x256, 64x64; 95..97: S > 1 tiles 128x128, 64x128, 64x64;
 // 98..102: S = 1 decode tiles 64x32, 64x16 with 64-column stages and 64x64, 64x32, 64x16 with 128-column stages.
 // Stage counts leave room for the epilogue tile (2 bytes per element for bf16 output, 4 for fp32).
-constexpr int kSm90First = 90, kSm90Last = 102;
+// 103..112: S = 1, bf16 output only (an fp32 launch is refused): 64x16, 64x32 (8 stages) and 64x64 (6 stages) with
+// 128-column stages; 128x64 (8 stages), 128x96 (6), 128x192 (4), 192x32 (7), 192x96 (4), 192x192 (3), 192x128 (4)
+// with 64-column stages.
+constexpr int kSm90First = 90, kSm90Last = 112;
 inline bool is_sm90_kernel(int k) { return k >= kSm90First && k <= kSm90Last; }
-inline int sm90_kernel_bk(int k) { return k >= 100 ? 128 : 64; }
+inline int sm90_kernel_bk(int k) { return k >= 100 && k <= 105 ? 128 : 64; }
 template <typename OutT, typename SetSmem>
 cudaError_t run_gemm_sm90(int k, const void* x, int64_t ldx, const void* w, OutT* y, int64_t ldy, int M, int N, int K,
                           int segs, int sms, SetSmem&& ss, cudaStream_t st) {
@@ -304,8 +321,24 @@ cudaError_t run_gemm_sm90(int k, const void* x, int64_t ldx, const void* w, OutT
     case 100: return Sm90Gemm<64, 64, 3, false, OutT, 128>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
     case 101: return Sm90Gemm<64, 32, 4, false, OutT, 128>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
     case 102: return Sm90Gemm<64, 16, 4, false, OutT, 128>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
-    default: return cudaErrorInvalidValue;
+    default: break;
   }
+  if constexpr (h) {
+    switch (k) {
+      case 103: return Sm90Gemm<64, 16, 8, false, OutT, 128>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
+      case 104: return Sm90Gemm<64, 32, 8, false, OutT, 128>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
+      case 105: return Sm90Gemm<64, 64, 6, false, OutT, 128>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
+      case 106: return Sm90Gemm<128, 64, 8, false, OutT>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
+      case 107: return Sm90Gemm<128, 96, 6, false, OutT>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
+      case 108: return Sm90Gemm<128, 192, 4, false, OutT>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
+      case 109: return Sm90Gemm<192, 32, 7, false, OutT>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
+      case 110: return Sm90Gemm<192, 96, 4, false, OutT>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
+      case 111: return Sm90Gemm<192, 192, 3, false, OutT>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
+      case 112: return Sm90Gemm<192, 128, 4, false, OutT>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
+      default: break;
+    }
+  }
+  return cudaErrorInvalidValue;
 }
 
 }  // namespace pi_gemm90

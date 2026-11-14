@@ -89,8 +89,9 @@ SLOT = {17, 18, 19}  # SegmentedKernel with L2 slots: S > 1 only
 SEGSPLIT = {54: (128, 3), 55: (64, 6)}  # S > 1 shapes only: (BK, stages), one cp.async ring per segment
 SEG_WS = {30, 31, 32, 33, *WARP_SK}  # S > 1: S * M * N partials in g_seg_ws
 SM90 = {90: False, 91: False, 92: False, 93: False, 94: False, 95: True, 96: True, 97: True,
-        98: False, 99: False, 100: False, 101: False, 102: False}  # wgmma ids: runs S > 1
-SM90_BK = {100: 128, 101: 128, 102: 128}  # K columns per stage (default 64)
+        98: False, 99: False, 100: False, 101: False, 102: False,
+        **{k: False for k in range(103, 113)}}  # wgmma ids: runs S > 1
+SM90_BK = {100: 128, 101: 128, 102: 128, 103: 128, 104: 128, 105: 128}  # K columns per stage (default 64)
 assert (arch == "90a") == all(k in KERNELS for k in SM90) and (arch == "90a" or not any(k in KERNELS for k in SM90))
 
 
