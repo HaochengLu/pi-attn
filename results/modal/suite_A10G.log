@@ -1,8 +1,8 @@
 NVIDIA A10, 610.57.04
 torch 2.13.0+cu126 flashinfer 0.6.18 cc (8, 6)
-attn ext build exit=0 (58s)
-gemm ext build exit=0 (196s)
-xgpu_hashes exit=0 (248s)
+attn ext build exit=0 (62s)
+gemm ext build exit=0 (202s)
+xgpu_hashes exit=0 (255s)
 === HASHES_JSON_BEGIN
 {
  "device": "NVIDIA A10",
@@ -466,13 +466,13 @@ xgpu_hashes exit=0 (248s)
 === HASHES_JSON_END
 GEMM candidate ids: [1, 2, 4, 7, 20, 21, 22, 24, 25, 30, 31, 32, 33, 40, 41, 42, 43, 51, 53, 54, 55, 60, 61, 62, 63, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 44, 45, 46, 47, 48, 49, 50, 64, 65, 66, 67, 68, 69, 70, 71, 72]
 sm90 ids registered: [] | prefill variants: [1, 2, 3] | WGMMA build: False
-test_invariance exit=0 (271s)
+test_invariance exit=0 (279s)
 checks failed: 0 []
-test_directed exit=0 (275s)
+test_directed exit=0 (283s)
 DIRECTED FAILURES: 0
-test_matrix exit=0 (338s)
+test_matrix exit=0 (344s)
 TOTAL FAILURES: 0
-test_gemm exit=0 (442s)
+test_gemm exit=0 (445s)
 INVARIANCE FAILURES: 0 []
 test_mutants exit=0 (620s)
 mutant merge_reversed: 47 failed checks, kinds ['heads', 'split']
@@ -498,7 +498,7 @@ long ctx 32768/20001: failures 0 []
 TOTAL FAILURES: 0
 [test_gemm]
 3.5-4B down   N=  2560 K= 9216: max|err| pi(fp32 out) 1.39e-04 pi(bf16) 3.11e-02 cublas(bf16) 4.67e-02
-[W1114 02:07:53.925915862 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 5085593600 bytes (free: 4583129088, total: 23684186112).
+[W1114 03:33:04.989426705 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 5085593600 bytes (free: 4581556224, total: 23684186112).
 3.5-4B lm_head N=248320 K= 2560: max|err| pi(fp32 out) 2.61e-05 pi(bf16) 1.56e-02 cublas(bf16) 1.56e-02
 INVARIANCE FAILURES: 0 []
 [test_mutants]
@@ -509,4 +509,4 @@ UNCAUGHT MUTANTS: 0 []
 test_gemm progress lines: 71
 total 620s
 
-[run_gpu] A10G r4hopper:suite_A10G: exit=0 wall=649s cost~$0.406 ledger=$22.69
+[run_gpu] A10G r5hopper:suite_A10G: exit=0 wall=648s cost~$0.405 ledger=$32.59

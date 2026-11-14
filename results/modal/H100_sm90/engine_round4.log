@@ -1,0 +1,62 @@
+rust: rustc 1.95.0 (59807616e 2026-04-14)  g++: g++-13 (Ubuntu 13.4.0-6ubuntu1~22~ppa2) 13.4.0
+model sha256 OK
+  Downloaded serde_path_to_error v0.1.20
+  Downloaded thiserror-impl v2.0.20
+  Downloaded thiserror v1.0.69
+  Downloaded thiserror-impl v1.0.69
+  Downloaded proc-macro-error3 v3.1.1
+cargo build exit=0 (359s)
+warning: sglang-rust@0.1.0: 
+warning: sglang-rust@0.1.0: ptxas info    : (C7511) Potential Performance Loss: wgmma.mma_async instructions are serialized due to insufficient register resources for the wgmma pipeline in the function '_ZN7pi_attn16prefill90_kernelEPK13__nv_bfloat16PS0_S2_S2_PKiS5_S5_lS5_S5_iiiifiPfP6float2i'
+    Finished `release` profile [optimized] target(s) in 5m 05s
+server up after 379s
+binary imports cuTensorMapEncodeTiled: 1
+--- sm90 branch vs the pre-change engine's H100 rollouts
+64 rollouts: 64 with identical token ids; 14442/14442 log-probabilities bitwise equal
+ROLLOUTS IDENTICAL TO REFERENCE: True
+xgpu_rollout(sm90 branch vs pre-change H100) exit=0
+MM tile choice n=2048 k=2048 choice="1:51 2:61 4:61 8:61 16:14 32:14 64:14 128:14 192:70 256:70 320:94 384:94 448:91 512:91 640:93 768:91 896:91 1024:91 1280:90"
+MM tile choice n=2048 k=6144 choice="1:51 2:51 4:61 8:61 16:64 32:64 64:64 128:14 192:70 256:70 320:94 384:91 448:91 512:91 640:91 768:91 896:91 1024:91 1280:90"
+MM tile choice n=4096 k=2048 choice="1:62 2:14 4:14 8:14 16:14 32:14 64:14 128:70 192:94 256:91 320:91 384:91 448:93 512:91 640:90 768:90 896:90 1024:90 1280:91"
+MM tile choice n=12288 k=2048 choice="1:14 2:14 4:14 8:14 16:14 32:14 64:14 128:91 192:90 256:90 320:93 384:91 448:93 512:91 640:90 768:91 896:90 1024:90 1280:90"
+MM tile choice n=151936 k=2048 choice="1:14 2:14 4:14 8:14 16:14 32:14 64:70 128:91 192:90 256:91 320:93 384:91 448:90 512:90 640:90 768:90 896:90 1024:90 1280:90"
+server.log error|panic|warn lines: 2072
+detcheck exit=0
+batch  [{"concurrency": 4, "requests": 16, "mismatched": 0, "first_divergence_tokens": []}, {"concurrency": 16, "requests": 16, "mismatched": 0, "first_divergence_tokens": []}]
+prefix {"full_hit": 0, "partial_hit": 0, "requests": 8}
+shared {"requests": 32, "prefix_tokens": 2616, "mismatched": 0, "first_divergence_tokens": []}
+path   {"requests": 24, "mismatched": 0, "first_divergence_tokens": []}
+spath  {"requests": 24, "mismatched": 0, "first_divergence_tokens": []}
+repeat {"samples": 200, "unique_completions": 1}
+sample {"rows": [{"concurrency": 4, "requests": 16, "mismatched": 0, "first_divergence_tokens": []}, {"concurrency": 16, "requests": 16, "mismatched": 0, "first_divergence_tokens": []}], "distinct_reference_samples": 16}
+DETERMINISTIC
+score exit=0
+pi alone              : 14442/14442 tokens bitwise equal to the engine | |dlogp| mean 0.00e+00 max 0.00e+00 | ratio [1.0000, 1.0000], 0.00% of tokens off by > 1%
+pi packing 0          : 14442/14442 tokens bitwise equal to the engine | |dlogp| mean 0.00e+00 max 0.00e+00 | ratio [1.0000, 1.0000], 0.00% of tokens off by > 1%
+pi packing 1          : 14442/14442 tokens bitwise equal to the engine | |dlogp| mean 0.00e+00 max 0.00e+00 | ratio [1.0000, 1.0000], 0.00% of tokens off by > 1%
+hf alone              : 5367/14442 tokens bitwise equal to the engine | |dlogp| mean 8.92e-03 max 9.03e-01 | ratio [0.4055, 1.6201], 11.44% of tokens off by > 1%
+hf batch 8            : 5364/14442 tokens bitwise equal to the engine | |dlogp| mean 8.87e-03 max 6.60e-01 | ratio [0.5362, 1.9354], 11.64% of tokens off by > 1%
+PI TRAINER == ENGINE: True
+e2e flashinfer exit=0
+e2e pi exit=0
+e2e flashinfer exit=0
+e2e pi exit=0
+E2E 64/32/c1: out tok/s FI 443.0 PI 424.6 (-4.1%) | TTFT FI 4.0 PI 4.8 (+19.3%)
+E2E 64/32/c8: out tok/s FI 2894.4 PI 2672.9 (-7.7%) | TTFT FI 11.5 PI 13.5 (+17.5%)
+E2E 64/32/c32: out tok/s FI 8474.7 PI 7498.2 (-11.5%) | TTFT FI 21.2 PI 24.7 (+16.5%)
+E2E 512/256/c8: out tok/s FI 2995.9 PI 2524.5 (-15.7%) | TTFT FI 27.9 PI 33.1 (+18.4%)
+E2E 2048/128/c8: out tok/s FI 2008.7 PI 1795.3 (-10.6%) | TTFT FI 60.7 PI 72.7 (+19.7%)
+E2E 1024/512/c32: out tok/s FI 6997.6 PI 6243.9 (-10.8%) | TTFT FI 103.5 PI 116.3 (+12.4%)
+--- e2e PI server tile choices
+MM tile choice n=2048 k=2048 choice="1:51 2:61 4:61 8:61 16:14 32:14 64:14 128:14 192:70 256:70 320:94 384:94 448:91 512:91 640:91 768:93 896:93 1024:91 1280:90 1536:90 1792:90 2048:91 2304:91"
+MM tile choice n=2048 k=6144 choice="1:51 2:51 4:61 8:61 16:64 32:64 64:64 128:14 192:70 256:70 320:94 384:91 448:91 512:91 640:91 768:91 896:91 1024:91 1280:90 1536:90 1792:90 2048:90 2304:91"
+MM tile choice n=4096 k=2048 choice="1:61 2:62 4:14 8:14 16:14 32:14 64:14 128:70 192:94 256:91 320:93 384:91 448:93 512:93 640:91 768:90 896:90 1024:91 1280:91 1536:91 1792:90 2048:90 2304:91"
+MM tile choice n=12288 k=2048 choice="1:14 2:14 4:14 8:14 16:14 32:14 64:14 128:91 192:90 256:90 320:93 384:91 448:93 512:91 640:90 768:91 896:90 1024:90 1280:90 1536:91 1792:91 2048:90 2304:90"
+MM tile choice n=151936 k=2048 choice="1:14 2:14 4:14 8:14 16:14 32:14 64:70 128:91 192:93 256:91 320:90 384:90 448:90 512:90 640:90 768:90 896:90 1024:90 1280:90 1536:90 1792:90 2048:90 2304:90"
+RAW e2e_flashinfer.3104.json [('64/32/c1', 443.1, 4.1), ('64/32/c8', 2884.9, 11.5), ('64/32/c32', 8504.3, 22.7), ('512/256/c8', 2998.7, 27.9), ('2048/128/c8', 2009.7, 60.7), ('1024/512/c32', 7000.3, 101.4)]
+RAW e2e_flashinfer.6114.json [('64/32/c1', 442.9, 4.0), ('64/32/c8', 2903.9, 11.5), ('64/32/c32', 8445.2, 19.7), ('512/256/c8', 2993.1, 28.0), ('2048/128/c8', 2007.6, 60.8), ('1024/512/c32', 6995.0, 105.5)]
+RAW e2e_pi.21876.json [('64/32/c1', 424.7, 4.8), ('64/32/c8', 2702.8, 12.9), ('64/32/c32', 7446.2, 23.3), ('512/256/c8', 2523.7, 33.1), ('2048/128/c8', 1795.9, 72.8), ('1024/512/c32', 6245.0, 116.3)]
+RAW e2e_pi.22152.json [('64/32/c1', 424.5, 4.8), ('64/32/c8', 2643.0, 14.2), ('64/32/c32', 7550.3, 26.0), ('512/256/c8', 2525.3, 33.1), ('2048/128/c8', 1794.7, 72.7), ('1024/512/c32', 6242.8, 116.3)]
+total 1143s
+
+[run_gpu] H100 r4hopper:engine_H100_2: exit=0 wall=1178s cost~$1.949 ledger=$27.45

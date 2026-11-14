@@ -1,0 +1,534 @@
+NVIDIA H100 80GB HBM3, 610.57.04
+torch 2.13.0+cu126 flashinfer 0.6.18 cc (9, 0)
+attn ext build exit=0 (70s)
+gemm ext build exit=0 (202s)
+xgpu_hashes exit=0 (293s)
+=== HASHES_JSON_BEGIN
+{
+ "device": "NVIDIA H100 80GB HBM3",
+ "gemm": {
+  "0.6B qkv M=1": {
+   "pi": "b99a13dff0ebcc70",
+   "cublas": "b99a13dff0ebcc70"
+  },
+  "0.6B qkv M=8": {
+   "pi": "61fcdbb9c94b1666",
+   "cublas": "61fcdbb9c94b1666"
+  },
+  "0.6B qkv M=128": {
+   "pi": "d91bd3c5890eabbf",
+   "cublas": "d91bd3c5890eabbf"
+  },
+  "0.6B qkv M=1024": {
+   "pi": "38b359d5e8651710",
+   "cublas": "38b359d5e8651710"
+  },
+  "0.6B o M=1": {
+   "pi": "8950820e79222da9",
+   "cublas": "7b28423e8da217cb"
+  },
+  "0.6B o M=8": {
+   "pi": "b5acc914864d6901",
+   "cublas": "6166f0093df65720"
+  },
+  "0.6B o M=128": {
+   "pi": "91a8d7f5ae3fc5a6",
+   "cublas": "ac24f8671879dcfc"
+  },
+  "0.6B o M=1024": {
+   "pi": "7932148d13b55204",
+   "cublas": "433572636b307c57"
+  },
+  "0.6B gateup M=1": {
+   "pi": "9d0fec5939ea77d9",
+   "cublas": "9d0fec5939ea77d9"
+  },
+  "0.6B gateup M=8": {
+   "pi": "e7f5782c8776b4e9",
+   "cublas": "e7f5782c8776b4e9"
+  },
+  "0.6B gateup M=128": {
+   "pi": "40402b60d6e5cf2a",
+   "cublas": "40402b60d6e5cf2a"
+  },
+  "0.6B gateup M=1024": {
+   "pi": "47134955bffd1c40",
+   "cublas": "47134955bffd1c40"
+  },
+  "0.6B down M=1": {
+   "pi": "f55dee0981a8b9c2",
+   "cublas": "f55dee0981a8b9c2"
+  },
+  "0.6B down M=8": {
+   "pi": "712a3720d2d0fe3c",
+   "cublas": "712a3720d2d0fe3c"
+  },
+  "0.6B down M=128": {
+   "pi": "85d05881c6dfa4cb",
+   "cublas": "8c646d59e58864be"
+  },
+  "0.6B down M=1024": {
+   "pi": "630db087b42d4165",
+   "cublas": "2854b06f3cb758b4"
+  },
+  "0.6B lm_head M=1": {
+   "pi": "fe0c50a288294e25",
+   "cublas": "fe0c50a288294e25"
+  },
+  "0.6B lm_head M=8": {
+   "pi": "eb0f2fabf013d226",
+   "cublas": "eb0f2fabf013d226"
+  },
+  "0.6B lm_head M=128": {
+   "pi": "ea1e46c79f2448c2",
+   "cublas": "ea1e46c79f2448c2"
+  },
+  "0.6B lm_head M=1024": {
+   "pi": "455a197cfef623ee",
+   "cublas": "455a197cfef623ee"
+  },
+  "1.7B qkv M=1": {
+   "pi": "9d9320b1d5a92fbc",
+   "cublas": "9d9320b1d5a92fbc"
+  },
+  "1.7B qkv M=8": {
+   "pi": "0133eb15ad240080",
+   "cublas": "0133eb15ad240080"
+  },
+  "1.7B qkv M=128": {
+   "pi": "8c8f4b4e1d1bae84",
+   "cublas": "8c8f4b4e1d1bae84"
+  },
+  "1.7B qkv M=1024": {
+   "pi": "251e2da333f494ae",
+   "cublas": "251e2da333f494ae"
+  },
+  "1.7B o M=1": {
+   "pi": "70689b61fac87532",
+   "cublas": "70689b61fac87532"
+  },
+  "1.7B o M=8": {
+   "pi": "7d6d14001846b2a5",
+   "cublas": "7d6d14001846b2a5"
+  },
+  "1.7B o M=128": {
+   "pi": "288ee670f5c02e82",
+   "cublas": "288ee670f5c02e82"
+  },
+  "1.7B o M=1024": {
+   "pi": "27f512a1518cf2cc",
+   "cublas": "27f512a1518cf2cc"
+  },
+  "1.7B gateup M=1": {
+   "pi": "ee248441223e2bfd",
+   "cublas": "ee248441223e2bfd"
+  },
+  "1.7B gateup M=8": {
+   "pi": "883da75b4193b4b2",
+   "cublas": "883da75b4193b4b2"
+  },
+  "1.7B gateup M=128": {
+   "pi": "3342dc85b623bdb6",
+   "cublas": "3342dc85b623bdb6"
+  },
+  "1.7B gateup M=1024": {
+   "pi": "7f950b34d32901c0",
+   "cublas": "7f950b34d32901c0"
+  },
+  "1.7B down M=1": {
+   "pi": "1dbb6e1f93aca7a7",
+   "cublas": "adbc6c7bd1793629"
+  },
+  "1.7B down M=8": {
+   "pi": "3bd525711138fb21",
+   "cublas": "b22d7e7c84109bf6"
+  },
+  "1.7B down M=128": {
+   "pi": "98818aa2b1d2e983",
+   "cublas": "98818aa2b1d2e983"
+  },
+  "1.7B down M=1024": {
+   "pi": "3eef048a7075fd4b",
+   "cublas": "3eef048a7075fd4b"
+  },
+  "1.7B lm_head M=1": {
+   "pi": "4ecfcb89d7f4241d",
+   "cublas": "4ecfcb89d7f4241d"
+  },
+  "1.7B lm_head M=8": {
+   "pi": "dcb388994ca241d3",
+   "cublas": "dcb388994ca241d3"
+  },
+  "1.7B lm_head M=128": {
+   "pi": "deeaa7a8bafd30ed",
+   "cublas": "deeaa7a8bafd30ed"
+  },
+  "1.7B lm_head M=1024": {
+   "pi": "705e15fe67254c09",
+   "cublas": "705e15fe67254c09"
+  },
+  "4B qkv M=1": {
+   "pi": "c19518f99e083455",
+   "cublas": "c19518f99e083455"
+  },
+  "4B qkv M=8": {
+   "pi": "71a7f6458337164e",
+   "cublas": "71a7f6458337164e"
+  },
+  "4B qkv M=128": {
+   "pi": "209caa75b54c423a",
+   "cublas": "209caa75b54c423a"
+  },
+  "4B qkv M=1024": {
+   "pi": "a72de3c939e327d1",
+   "cublas": "a72de3c939e327d1"
+  },
+  "4B o M=1": {
+   "pi": "3d85ec8b13fb4880",
+   "cublas": "6b1a17ee4ff5bfe9"
+  },
+  "4B o M=8": {
+   "pi": "407fa6c864cb85f0",
+   "cublas": "6f69229d80deffac"
+  },
+  "4B o M=128": {
+   "pi": "f48fa20b9303d0ec",
+   "cublas": "f48fa20b9303d0ec"
+  },
+  "4B o M=1024": {
+   "pi": "732777bc3bfa454c",
+   "cublas": "732777bc3bfa454c"
+  },
+  "4B gateup M=1": {
+   "pi": "21baf0e159e2e78d",
+   "cublas": "21baf0e159e2e78d"
+  },
+  "4B gateup M=8": {
+   "pi": "87a53772ad800d09",
+   "cublas": "87a53772ad800d09"
+  },
+  "4B gateup M=128": {
+   "pi": "423b016f015d34cc",
+   "cublas": "423b016f015d34cc"
+  },
+  "4B gateup M=1024": {
+   "pi": "b0429ebc2d8581cb",
+   "cublas": "b0429ebc2d8581cb"
+  },
+  "4B down M=1": {
+   "pi": "6cb264c61f102207",
+   "cublas": "83a979b51609c223"
+  },
+  "4B down M=8": {
+   "pi": "d906706906551312",
+   "cublas": "bca3d46199609039"
+  },
+  "4B down M=128": {
+   "pi": "8c56a69677da377d",
+   "cublas": "8c56a69677da377d"
+  },
+  "4B down M=1024": {
+   "pi": "b7a222968b250205",
+   "cublas": "b7a222968b250205"
+  },
+  "4B lm_head M=1": {
+   "pi": "1d6693163681d92a",
+   "cublas": "1d6693163681d92a"
+  },
+  "4B lm_head M=8": {
+   "pi": "58d847ddfcd03462",
+   "cublas": "58d847ddfcd03462"
+  },
+  "4B lm_head M=128": {
+   "pi": "eaf4ff48a782c3f0",
+   "cublas": "eaf4ff48a782c3f0"
+  },
+  "4B lm_head M=1024": {
+   "pi": "1fbfa04ce9d7236f",
+   "cublas": "1fbfa04ce9d7236f"
+  },
+  "8B qkv M=1": {
+   "pi": "bf86b69f5b5125fb",
+   "cublas": "bf86b69f5b5125fb"
+  },
+  "8B qkv M=8": {
+   "pi": "2a8f592bd01170bb",
+   "cublas": "2a8f592bd01170bb"
+  },
+  "8B qkv M=128": {
+   "pi": "aa37ae333d8dfd18",
+   "cublas": "aa37ae333d8dfd18"
+  },
+  "8B qkv M=1024": {
+   "pi": "8f1eb5004d04188b",
+   "cublas": "8f1eb5004d04188b"
+  },
+  "8B o M=1": {
+   "pi": "a606730c1e6afff4",
+   "cublas": "f586360c7e08428c"
+  },
+  "8B o M=8": {
+   "pi": "951ad599b39d7eba",
+   "cublas": "5a05d6fbbb75d00e"
+  },
+  "8B o M=128": {
+   "pi": "e1fc9e407e35f483",
+   "cublas": "e1fc9e407e35f483"
+  },
+  "8B o M=1024": {
+   "pi": "a4eb9f0b38363b7a",
+   "cublas": "a4eb9f0b38363b7a"
+  },
+  "8B gateup M=1": {
+   "pi": "6dc924c704ecc463",
+   "cublas": "6dc924c704ecc463"
+  },
+  "8B gateup M=8": {
+   "pi": "0c34b47a7924b387",
+   "cublas": "0c34b47a7924b387"
+  },
+  "8B gateup M=128": {
+   "pi": "c8cf7b277484252f",
+   "cublas": "c8cf7b277484252f"
+  },
+  "8B gateup M=1024": {
+   "pi": "114a0b2f4dd94493",
+   "cublas": "114a0b2f4dd94493"
+  },
+  "8B down M=1": {
+   "pi": "ec8786c7d2b5e779",
+   "cublas": "e5adc673926d6af1"
+  },
+  "8B down M=8": {
+   "pi": "1b286ebe0f5fbbdc",
+   "cublas": "fd2747a230ea1437"
+  },
+  "8B down M=128": {
+   "pi": "9fcbd74cc6737254",
+   "cublas": "9fcbd74cc6737254"
+  },
+  "8B down M=1024": {
+   "pi": "016954e023cd3e8b",
+   "cublas": "016954e023cd3e8b"
+  },
+  "8B lm_head M=1": {
+   "pi": "5f695a9a0f06381e",
+   "cublas": "5f695a9a0f06381e"
+  },
+  "8B lm_head M=8": {
+   "pi": "a275c3786119967d",
+   "cublas": "a275c3786119967d"
+  },
+  "8B lm_head M=128": {
+   "pi": "8fefbdcc6c182a6a",
+   "cublas": "8fefbdcc6c182a6a"
+  },
+  "8B lm_head M=1024": {
+   "pi": "7709ec689e24674a",
+   "cublas": "7709ec689e24674a"
+  },
+  "3.5-4B qkvz M=1": {
+   "pi": "4bcc44912c2c556d",
+   "cublas": "4bcc44912c2c556d"
+  },
+  "3.5-4B qkvz M=8": {
+   "pi": "9cc61e499caaf0c7",
+   "cublas": "9cc61e499caaf0c7"
+  },
+  "3.5-4B qkvz M=128": {
+   "pi": "f87298580d83f0b7",
+   "cublas": "f87298580d83f0b7"
+  },
+  "3.5-4B qkvz M=1024": {
+   "pi": "89232f412336925d",
+   "cublas": "89232f412336925d"
+  },
+  "3.5-4B ba M=1": {
+   "pi": "19f75eb34c9c0a40",
+   "cublas": "19f75eb34c9c0a40"
+  },
+  "3.5-4B ba M=8": {
+   "pi": "cd0b24dac6f8549a",
+   "cublas": "f49050a4a8a3b8fe"
+  },
+  "3.5-4B ba M=128": {
+   "pi": "713e2701e1a97299",
+   "cublas": "af67c4088c6ee449"
+  },
+  "3.5-4B ba M=1024": {
+   "pi": "2a7f944632e7a637",
+   "cublas": "76ee08dfd4a332d9"
+  },
+  "3.5-4B gdn out M=1": {
+   "pi": "2579546916d0fdb5",
+   "cublas": "960c6cab1189bfb2"
+  },
+  "3.5-4B gdn out M=8": {
+   "pi": "c483d15a8721541e",
+   "cublas": "664b4efa8bf4035e"
+  },
+  "3.5-4B gdn out M=128": {
+   "pi": "2826a894c322f1fe",
+   "cublas": "2826a894c322f1fe"
+  },
+  "3.5-4B gdn out M=1024": {
+   "pi": "9a2a2d50aee413b6",
+   "cublas": "9a2a2d50aee413b6"
+  },
+  "3.5-4B attn qkv M=1": {
+   "pi": "8a37fc42cdc1eff6",
+   "cublas": "8a37fc42cdc1eff6"
+  },
+  "3.5-4B attn qkv M=8": {
+   "pi": "d45b138afa5718f2",
+   "cublas": "d45b138afa5718f2"
+  },
+  "3.5-4B attn qkv M=128": {
+   "pi": "fcb77710fde6bf3b",
+   "cublas": "fcb77710fde6bf3b"
+  },
+  "3.5-4B attn qkv M=1024": {
+   "pi": "af5911d30a57ad95",
+   "cublas": "af5911d30a57ad95"
+  },
+  "3.5-4B gateup M=1": {
+   "pi": "d3bc78b86df47ce6",
+   "cublas": "d3bc78b86df47ce6"
+  },
+  "3.5-4B gateup M=8": {
+   "pi": "3ac5ca35d7466d6e",
+   "cublas": "3ac5ca35d7466d6e"
+  },
+  "3.5-4B gateup M=128": {
+   "pi": "99866becbf766614",
+   "cublas": "99866becbf766614"
+  },
+  "3.5-4B gateup M=1024": {
+   "pi": "8b358d328e87d04d",
+   "cublas": "8b358d328e87d04d"
+  },
+  "3.5-4B down M=1": {
+   "pi": "b4af22effd5017c5",
+   "cublas": "14bce0c1fc55e2bb"
+  },
+  "3.5-4B down M=8": {
+   "pi": "49cff487c1406120",
+   "cublas": "3bd338a0acc67338"
+  },
+  "3.5-4B down M=128": {
+   "pi": "2d667f28b4a1c586",
+   "cublas": "2d667f28b4a1c586"
+  },
+  "3.5-4B down M=1024": {
+   "pi": "34cdaee0e120280f",
+   "cublas": "34cdaee0e120280f"
+  },
+  "3.5-4B lm_head M=1": {
+   "pi": "e7efa930170c964e",
+   "cublas": "e7efa930170c964e"
+  },
+  "3.5-4B lm_head M=8": {
+   "pi": "2e0c3e7b3d5e7849",
+   "cublas": "2e0c3e7b3d5e7849"
+  },
+  "3.5-4B lm_head M=128": {
+   "pi": "c4bf8e32746128df",
+   "cublas": "c4bf8e32746128df"
+  },
+  "3.5-4B lm_head M=1024": {
+   "pi": "a311469a2036bc70",
+   "cublas": "a311469a2036bc70"
+  }
+ },
+ "attention": {
+  "prefill b1 q512": {
+   "pi": "f0edc5bce36ef0f1",
+   "flashinfer": "5b1689166dbaa61e"
+  },
+  "prefill b4 q2048": {
+   "pi": "f60713f799b36d27",
+   "flashinfer": "33d49840b54139d6"
+  },
+  "extend b1 q128 prefix 4096": {
+   "pi": "876ab4d2eac19ca6",
+   "flashinfer": "ef14660bbd9fa530"
+  },
+  "decode b8 kv 2048": {
+   "pi": "c46fe141743f0c65",
+   "flashinfer": "dabde945739665fa"
+  },
+  "decode b1 kv 32768": {
+   "pi": "16a1ede29cc1ab6c",
+   "flashinfer": "83c7523f5b812261"
+  }
+ }
+}
+=== HASHES_JSON_END
+GEMM candidate ids: [1, 2, 4, 7, 20, 21, 22, 24, 25, 30, 31, 32, 33, 40, 41, 42, 43, 51, 53, 54, 55, 60, 61, 62, 63, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 44, 45, 46, 47, 48, 49, 50, 64, 65, 66, 67, 68, 69, 70, 71, 72, 90, 91, 92, 93, 94, 95, 96, 97]
+sm90 ids registered: [90, 91, 92, 93, 94, 95, 96, 97] | prefill variants: [1, 2, 3, 4, 5] | WGMMA build: True
+test_directed exit=0 (303s)
+DIRECTED FAILURES: 0
+test_gemm exit=0 (332s)
+INVARIANCE FAILURES: 0 []
+test_invariance exit=0 (367s)
+checks failed: 0 []
+test_matrix exit=0 (417s)
+TOTAL FAILURES: 0
+test_mutants exit=0 (505s)
+mutant merge_reversed: 75 failed checks, kinds ['heads', 'split']
+mutant decode_fold_unfused: 70 failed checks, kinds ['path']
+mutant prefill_group_256: 6511 failed checks, kinds ['heads', 'path', 'split']
+cuBLAS M-invariance control: 8/27 projections vary with M
+wrong segment count control: S=1 result equals the S=2 fold: False
+UNCAUGHT MUTANTS: 0 []
+--- test log tails
+[test_invariance]
+L=517 hq=16 hkv=8: PI err mean 5.772e-04 max 8.920e-03 | FlashInfer err mean 5.904e-04 max 8.674e-03 | bf16(exact) err mean 5.142e-04
+L=2049 hq=16 hkv=8: PI err mean 4.427e-04 max 8.383e-03 | FlashInfer err mean 4.617e-04 max 9.142e-03 | bf16(exact) err mean 4.002e-04
+checks failed: 0 []
+[test_directed]
+page 1: fails=0 [] nan_or_negzero=False
+hq=16 hkv=1 (group 16): fails=0 [] nan_or_negzero=False
+group 32 rejected: GQA group size must be <= 16 (one 16-row MMA group per kv head)
+DIRECTED FAILURES: 0
+[test_matrix]
+L=4096 hq=32 hkv=4: PI err mean 7.455e-04 max 1.540e-02 | FlashInfer err mean 7.737e-04 max 1.540e-02 | bf16(exact) err mean 7.249e-04
+hq=32 hkv=4 qscale=6.0: failures 0 | err vs fp64 mean 7.46e-04 max 1.54e-02 []
+long ctx 32768/20001: failures 0 []
+TOTAL FAILURES: 0
+[test_gemm]
+3.5-4B gateup N= 18432 K= 2560: max|err| pi(fp32 out) 1.93e-05 pi(bf16) 1.56e-02 cublas(bf16) 1.56e-02
+3.5-4B down   N=  2560 K= 9216: max|err| pi(fp32 out) 9.59e-05 pi(bf16) 3.00e-02 cublas(bf16) 3.00e-02
+3.5-4B lm_head N=248320 K= 2560: max|err| pi(fp32 out) 1.95e-05 pi(bf16) 1.56e-02 cublas(bf16) 1.56e-02
+INVARIANCE FAILURES: 0 []
+[test_mutants]
+mutant prefill_group_256: 6511 failed checks, kinds ['heads', 'path', 'split']
+cuBLAS M-invariance control: 8/27 projections vary with M
+wrong segment count control: S=1 result equals the S=2 fold: False
+UNCAUGHT MUTANTS: 0 []
+test_gemm progress lines: 71
+prefill hq=16 b=1 q=512 prefix=0: fi     15.5 | mma.sync v1     21.4 (1.38) | wgmma v0     21.7 (1.40) | v1/v0 0.99x
+prefill hq=16 b=1 q=2048 prefix=0: fi     63.1 | mma.sync v1    154.4 (2.45) | wgmma v0    143.3 (2.27) | v1/v0 1.08x
+prefill hq=16 b=8 q=1024 prefix=0: fi    116.4 | mma.sync v1    240.8 (2.07) | wgmma v0    223.1 (1.92) | v1/v0 1.08x
+prefill hq=16 b=8 q=2048 prefix=0: fi    335.5 | mma.sync v1    797.1 (2.38) | wgmma v0    724.0 (2.16) | v1/v0 1.10x
+prefill hq=16 b=1 q=512 prefix=2048: fi     44.0 | mma.sync v1     82.0 (1.86) | wgmma v0     77.3 (1.76) | v1/v0 1.06x
+prefill hq=16 b=1 q=2048 prefix=2048: fi    127.3 | mma.sync v1    371.9 (2.92) | wgmma v0    343.3 (2.70) | v1/v0 1.08x
+prefill hq=16 b=1 q=128 prefix=4096: fi     65.4 | mma.sync v1     37.4 (0.57) | wgmma v0     36.3 (0.56) | v1/v0 1.03x
+prefill hq=16 b=1 q=128 prefix=16384: fi    234.7 | mma.sync v1    122.5 (0.52) | wgmma v0    116.4 (0.50) | v1/v0 1.05x
+prefill hq=16 b=1 q=512 prefix=8192: fi    128.8 | mma.sync v1    248.5 (1.93) | wgmma v0    239.0 (1.86) | v1/v0 1.04x
+prefill hq=16 b=8 q=64 prefix=1024: fi     26.4 | mma.sync v1     42.3 (1.60) | wgmma v0     43.4 (1.64) | v1/v0 0.97x
+prefill hq=16 b=1 q=16 prefix=2048: fi     35.6 | mma.sync v1     23.3 (0.65) | wgmma v0     23.6 (0.66) | v1/v0 0.99x
+prefill hq=32 b=1 q=512 prefix=0: fi     16.0 | mma.sync v1     26.8 (1.68) | wgmma v0     24.5 (1.53) | v1/v0 1.09x
+prefill hq=32 b=1 q=2048 prefix=0: fi     98.1 | mma.sync v1    293.2 (2.99) | wgmma v0    269.2 (2.74) | v1/v0 1.09x
+prefill hq=32 b=8 q=1024 prefix=0: fi    209.8 | mma.sync v1    468.6 (2.23) | wgmma v0    414.0 (1.97) | v1/v0 1.13x
+prefill hq=32 b=8 q=2048 prefix=0: fi    686.4 | mma.sync v1   1532.0 (2.23) | wgmma v0   1381.0 (2.01) | v1/v0 1.11x
+prefill hq=32 b=1 q=512 prefix=2048: fi     45.7 | mma.sync v1    112.0 (2.45) | wgmma v0     97.6 (2.14) | v1/v0 1.15x
+prefill hq=32 b=1 q=2048 prefix=2048: fi    219.2 | mma.sync v1    593.3 (2.71) | wgmma v0    537.4 (2.45) | v1/v0 1.10x
+prefill hq=32 b=1 q=128 prefix=4096: fi     66.6 | mma.sync v1     66.7 (1.00) | wgmma v0     63.9 (0.96) | v1/v0 1.04x
+prefill hq=32 b=1 q=128 prefix=16384: fi    238.8 | mma.sync v1    242.5 (1.02) | wgmma v0    228.2 (0.96) | v1/v0 1.06x
+prefill hq=32 b=1 q=512 prefix=8192: fi    134.3 | mma.sync v1    384.7 (2.86) | wgmma v0    316.1 (2.35) | v1/v0 1.22x
+prefill hq=32 b=8 q=64 prefix=1024: fi     43.4 | mma.sync v1     54.4 (1.25) | wgmma v0     50.7 (1.17) | v1/v0 1.07x
+prefill hq=32 b=1 q=16 prefix=2048: fi     36.5 | mma.sync v1     24.2 (0.66) | wgmma v0     24.9 (0.68) | v1/v0 0.97x
+total 515s
+
+[run_gpu] H100 r4hopper:suite_H100: exit=0 wall=539s cost~$0.892 ledger=$22.28

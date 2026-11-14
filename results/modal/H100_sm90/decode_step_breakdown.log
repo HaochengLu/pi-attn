@@ -1,0 +1,24 @@
+attn ext 81s
+gemm ext 237s
+GEMM M= 1 us/launch: qkv cublas 8.91 pi k62:9.28 k61:9.39 k42:9.53 (1.04) | o cublas 6.31 pi k51:7.23 k61:7.61 k43:7.77 (1.15) | gate_up cublas 19.49 pi k14:19.69 k21:19.97 k30:20.30 (1.01) | down cublas 12.55 pi k51:14.86 k61:16.85 k43:16.87 (1.18) | lm_head cublas 218.30 pi k14:213.18 k70:214.43 k15:216.16 (0.98)
+GEMM M= 1 step (28 layers + head): cuBLAS 1542 us, PI best-per-shape 1643 us, PI - cuBLAS +101 us
+GEMM M= 8 us/launch: qkv cublas 8.58 pi k62:10.95 k61:11.03 k14:11.10 (1.28) | o cublas 6.34 pi k61:8.52 k62:8.52 k51:8.65 (1.34) | gate_up cublas 19.49 pi k14:20.07 k70:20.71 k30:21.10 (1.03) | down cublas 12.73 pi k61:18.01 k62:19.32 k51:20.05 (1.41) | lm_head cublas 220.61 pi k14:216.19 k70:218.62 k15:219.84 (0.98)
+GEMM M= 8 step (28 layers + head): cuBLAS 1541 us, PI best-per-shape 1827 us, PI - cuBLAS +287 us
+GEMM M=32 us/launch: qkv cublas 8.82 pi k14:11.45 k64:11.65 k70:12.11 (1.30) | o cublas 6.49 pi k14:9.84 k64:9.89 k44:10.70 (1.51) | gate_up cublas 20.15 pi k14:20.42 k70:21.19 k45:21.62 (1.01) | down cublas 13.28 pi k64:22.41 k14:23.58 k44:24.63 (1.69) | lm_head cublas 225.66 pi k14:222.08 k70:225.09 k15:226.18 (0.98)
+GEMM M=32 step (28 layers + head): cuBLAS 1591 us, PI best-per-shape 2017 us, PI - cuBLAS +427 us
+ATTN decode b= 1 kv=  96 us/layer: fi=4.5 fi_tc=5.7 fi_det_fixed2048=5.7 pi=5.3 | step x28: fi 126 pi 148 PI - FI +22 us
+ATTN decode b= 1 kv= 640 us/layer: fi=9.2 fi_tc=8.9 fi_det_fixed2048=12.2 pi=22.1 | step x28: fi 258 pi 619 PI - FI +361 us
+ATTN decode b= 1 kv=1280 us/layer: fi=9.6 fi_tc=9.8 fi_det_fixed2048=20.0 pi=21.9 | step x28: fi 269 pi 613 PI - FI +344 us
+ATTN decode b= 1 kv=2176 us/layer: fi=10.4 fi_tc=12.7 fi_det_fixed2048=31.3 pi=22.1 | step x28: fi 291 pi 619 PI - FI +328 us
+ATTN decode b= 8 kv=  96 us/layer: fi=6.0 fi_tc=6.8 fi_det_fixed2048=6.8 pi=6.3 | step x28: fi 168 pi 176 PI - FI +8 us
+ATTN decode b= 8 kv= 640 us/layer: fi=12.6 fi_tc=16.9 fi_det_fixed2048=16.1 pi=22.7 | step x28: fi 353 pi 636 PI - FI +283 us
+ATTN decode b= 8 kv=1280 us/layer: fi=20.2 fi_tc=24.4 fi_det_fixed2048=28.0 pi=26.0 | step x28: fi 566 pi 728 PI - FI +162 us
+ATTN decode b= 8 kv=2176 us/layer: fi=30.9 fi_tc=34.6 fi_det_fixed2048=42.7 pi=32.5 | step x28: fi 865 pi 910 PI - FI +45 us
+ATTN decode b=32 kv=  96 us/layer: fi=7.8 fi_tc=11.6 fi_det_fixed2048=11.6 pi=8.5 | step x28: fi 218 pi 238 PI - FI +20 us
+ATTN decode b=32 kv= 640 us/layer: fi=34.5 fi_tc=35.3 fi_det_fixed2048=35.3 pi=36.5 | step x28: fi 966 pi 1022 PI - FI +56 us
+ATTN decode b=32 kv=1280 us/layer: fi=61.4 fi_tc=61.9 fi_det_fixed2048=61.9 pi=63.4 | step x28: fi 1719 pi 1775 PI - FI +56 us
+ATTN decode b=32 kv=2176 us/layer: fi=98.2 fi_tc=98.9 fi_det_fixed2048=98.9 pi=102.9 | step x28: fi 2750 pi 2881 PI - FI +132 us
+OTHER: not measured: RuntimeError Error building extension 'engine_ops_sm90': [1/4] /usr/local/cuda/bin/nvcc -MD -MF fused_ops.cuda.o.d -DTORCH_EXTENSION_NAME=engine_ops_sm90 -DTORCH_API_INCLUDE_EXTENSION_H -I/pi/kernels -I/pi/llm_inf
+total 331s
+
+[run_gpu] H100 r5hopper:step1: exit=0 wall=396s cost~$0.655 ledger=$28.11

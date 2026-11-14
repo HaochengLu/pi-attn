@@ -1,8 +1,8 @@
 NVIDIA H100 80GB HBM3, 610.57.04
 torch 2.13.0+cu126 flashinfer 0.6.18 cc (9, 0)
-attn ext build exit=0 (70s)
-gemm ext build exit=0 (202s)
-xgpu_hashes exit=0 (293s)
+attn ext build exit=0 (69s)
+gemm ext build exit=0 (225s)
+xgpu_hashes exit=0 (319s)
 === HASHES_JSON_BEGIN
 {
  "device": "NVIDIA H100 80GB HBM3",
@@ -464,20 +464,20 @@ xgpu_hashes exit=0 (293s)
  }
 }
 === HASHES_JSON_END
-GEMM candidate ids: [1, 2, 4, 7, 20, 21, 22, 24, 25, 30, 31, 32, 33, 40, 41, 42, 43, 51, 53, 54, 55, 60, 61, 62, 63, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 44, 45, 46, 47, 48, 49, 50, 64, 65, 66, 67, 68, 69, 70, 71, 72, 90, 91, 92, 93, 94, 95, 96, 97]
+GEMM candidate ids: [1, 2, 4, 7, 20, 21, 22, 24, 25, 30, 31, 32, 33, 40, 41, 42, 43, 51, 53, 54, 55, 60, 61, 62, 63, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 44, 45, 46, 47, 48, 49, 50, 64, 65, 66, 67, 68, 69, 70, 71, 72, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102]
 sm90 ids registered: [90, 91, 92, 93, 94, 95, 96, 97] | prefill variants: [1, 2, 3, 4, 5] | WGMMA build: True
-test_directed exit=0 (303s)
+test_directed exit=0 (329s)
 DIRECTED FAILURES: 0
-test_gemm exit=0 (332s)
+test_gemm exit=0 (360s)
 INVARIANCE FAILURES: 0 []
-test_invariance exit=0 (367s)
+test_invariance exit=0 (388s)
 checks failed: 0 []
-test_matrix exit=0 (417s)
+test_matrix exit=0 (440s)
 TOTAL FAILURES: 0
-test_mutants exit=0 (505s)
-mutant merge_reversed: 75 failed checks, kinds ['heads', 'split']
+test_mutants exit=0 (531s)
+mutant merge_reversed: 30 failed checks, kinds ['split']
 mutant decode_fold_unfused: 70 failed checks, kinds ['path']
-mutant prefill_group_256: 6511 failed checks, kinds ['heads', 'path', 'split']
+mutant prefill_group_256: 6439 failed checks, kinds ['heads', 'path', 'split']
 cuBLAS M-invariance control: 8/27 projections vary with M
 wrong segment count control: S=1 result equals the S=2 fold: False
 UNCAUGHT MUTANTS: 0 []
@@ -502,33 +502,30 @@ TOTAL FAILURES: 0
 3.5-4B lm_head N=248320 K= 2560: max|err| pi(fp32 out) 1.95e-05 pi(bf16) 1.56e-02 cublas(bf16) 1.56e-02
 INVARIANCE FAILURES: 0 []
 [test_mutants]
-mutant prefill_group_256: 6511 failed checks, kinds ['heads', 'path', 'split']
+mutant prefill_group_256: 6439 failed checks, kinds ['heads', 'path', 'split']
 cuBLAS M-invariance control: 8/27 projections vary with M
 wrong segment count control: S=1 result equals the S=2 fold: False
 UNCAUGHT MUTANTS: 0 []
 test_gemm progress lines: 71
-prefill hq=16 b=1 q=512 prefix=0: fi     15.5 | mma.sync v1     21.4 (1.38) | wgmma v0     21.7 (1.40) | v1/v0 0.99x
-prefill hq=16 b=1 q=2048 prefix=0: fi     63.1 | mma.sync v1    154.4 (2.45) | wgmma v0    143.3 (2.27) | v1/v0 1.08x
-prefill hq=16 b=8 q=1024 prefix=0: fi    116.4 | mma.sync v1    240.8 (2.07) | wgmma v0    223.1 (1.92) | v1/v0 1.08x
-prefill hq=16 b=8 q=2048 prefix=0: fi    335.5 | mma.sync v1    797.1 (2.38) | wgmma v0    724.0 (2.16) | v1/v0 1.10x
-prefill hq=16 b=1 q=512 prefix=2048: fi     44.0 | mma.sync v1     82.0 (1.86) | wgmma v0     77.3 (1.76) | v1/v0 1.06x
-prefill hq=16 b=1 q=2048 prefix=2048: fi    127.3 | mma.sync v1    371.9 (2.92) | wgmma v0    343.3 (2.70) | v1/v0 1.08x
-prefill hq=16 b=1 q=128 prefix=4096: fi     65.4 | mma.sync v1     37.4 (0.57) | wgmma v0     36.3 (0.56) | v1/v0 1.03x
-prefill hq=16 b=1 q=128 prefix=16384: fi    234.7 | mma.sync v1    122.5 (0.52) | wgmma v0    116.4 (0.50) | v1/v0 1.05x
-prefill hq=16 b=1 q=512 prefix=8192: fi    128.8 | mma.sync v1    248.5 (1.93) | wgmma v0    239.0 (1.86) | v1/v0 1.04x
-prefill hq=16 b=8 q=64 prefix=1024: fi     26.4 | mma.sync v1     42.3 (1.60) | wgmma v0     43.4 (1.64) | v1/v0 0.97x
-prefill hq=16 b=1 q=16 prefix=2048: fi     35.6 | mma.sync v1     23.3 (0.65) | wgmma v0     23.6 (0.66) | v1/v0 0.99x
-prefill hq=32 b=1 q=512 prefix=0: fi     16.0 | mma.sync v1     26.8 (1.68) | wgmma v0     24.5 (1.53) | v1/v0 1.09x
-prefill hq=32 b=1 q=2048 prefix=0: fi     98.1 | mma.sync v1    293.2 (2.99) | wgmma v0    269.2 (2.74) | v1/v0 1.09x
-prefill hq=32 b=8 q=1024 prefix=0: fi    209.8 | mma.sync v1    468.6 (2.23) | wgmma v0    414.0 (1.97) | v1/v0 1.13x
-prefill hq=32 b=8 q=2048 prefix=0: fi    686.4 | mma.sync v1   1532.0 (2.23) | wgmma v0   1381.0 (2.01) | v1/v0 1.11x
-prefill hq=32 b=1 q=512 prefix=2048: fi     45.7 | mma.sync v1    112.0 (2.45) | wgmma v0     97.6 (2.14) | v1/v0 1.15x
-prefill hq=32 b=1 q=2048 prefix=2048: fi    219.2 | mma.sync v1    593.3 (2.71) | wgmma v0    537.4 (2.45) | v1/v0 1.10x
-prefill hq=32 b=1 q=128 prefix=4096: fi     66.6 | mma.sync v1     66.7 (1.00) | wgmma v0     63.9 (0.96) | v1/v0 1.04x
-prefill hq=32 b=1 q=128 prefix=16384: fi    238.8 | mma.sync v1    242.5 (1.02) | wgmma v0    228.2 (0.96) | v1/v0 1.06x
-prefill hq=32 b=1 q=512 prefix=8192: fi    134.3 | mma.sync v1    384.7 (2.86) | wgmma v0    316.1 (2.35) | v1/v0 1.22x
-prefill hq=32 b=8 q=64 prefix=1024: fi     43.4 | mma.sync v1     54.4 (1.25) | wgmma v0     50.7 (1.17) | v1/v0 1.07x
-prefill hq=32 b=1 q=16 prefix=2048: fi     36.5 | mma.sync v1     24.2 (0.66) | wgmma v0     24.9 (0.68) | v1/v0 0.97x
-total 515s
+GEMM M= 1 us/launch: qkv cublas 8.58 pi k99:9.21 k102:9.37 k62:9.39 (1.07) | o cublas 6.30 pi k99:7.23 k51:7.28 k102:7.55 (1.15) | gate_up cublas 19.82 pi k100:20.10 k14:20.12 k101:20.47 (1.01) | down cublas 12.77 pi k51:14.71 k99:16.10 k61:16.68 (1.15) | lm_head cublas 229.92 pi k100:216.64 k101:216.70 k14:218.62 (0.94)
+GEMM M= 1 step (28 layers + head): cuBLAS 1559 us, PI best-per-shape 1651 us, PI - cuBLAS +93 us
+GEMM M= 8 us/launch: qkv cublas 8.61 pi k99:9.28 k102:9.42 k101:9.64 (1.08) | o cublas 6.32 pi k99:7.36 k102:7.59 k101:7.82 (1.16) | gate_up cublas 19.87 pi k100:20.36 k14:20.41 k101:20.78 (1.02) | down cublas 12.91 pi k99:16.08 k102:17.19 k101:17.76 (1.25) | lm_head cublas 232.61 pi k100:220.03 k101:220.64 k14:222.11 (0.95)
+GEMM M= 8 step (28 layers + head): cuBLAS 1568 us, PI best-per-shape 1706 us, PI - cuBLAS +138 us
+GEMM M=32 us/launch: qkv cublas 8.88 pi k99:9.52 k102:9.79 k101:9.91 (1.07) | o cublas 6.52 pi k99:7.44 k102:7.74 k101:8.03 (1.14) | gate_up cublas 21.39 pi k100:20.87 k14:20.88 k101:21.38 (0.98) | down cublas 13.46 pi k99:16.42 k102:17.68 k101:18.24 (1.22) | lm_head cublas 236.67 pi k100:227.49 k101:228.83 k14:228.99 (0.96)
+GEMM M=32 step (28 layers + head): cuBLAS 1644 us, PI best-per-shape 1746 us, PI - cuBLAS +103 us
+ATTN decode b= 1 kv=  96 us/layer: fi=4.5 fi_tc=5.6 fi_det_fixed2048=5.6 pi=5.3 | step x28: fi 126 pi 148 PI - FI +22 us
+ATTN decode b= 1 kv= 640 us/layer: fi=9.1 fi_tc=8.7 fi_det_fixed2048=12.1 pi=21.9 | step x28: fi 255 pi 613 PI - FI +358 us
+ATTN decode b= 1 kv=1280 us/layer: fi=9.6 fi_tc=9.8 fi_det_fixed2048=20.3 pi=22.1 | step x28: fi 269 pi 619 PI - FI +350 us
+ATTN decode b= 1 kv=2176 us/layer: fi=10.2 fi_tc=12.6 fi_det_fixed2048=31.4 pi=22.0 | step x28: fi 286 pi 616 PI - FI +330 us
+ATTN decode b= 8 kv=  96 us/layer: fi=6.0 fi_tc=6.7 fi_det_fixed2048=6.7 pi=6.3 | step x28: fi 168 pi 176 PI - FI +8 us
+ATTN decode b= 8 kv= 640 us/layer: fi=12.8 fi_tc=17.0 fi_det_fixed2048=16.3 pi=22.7 | step x28: fi 358 pi 636 PI - FI +277 us
+ATTN decode b= 8 kv=1280 us/layer: fi=20.3 fi_tc=24.7 fi_det_fixed2048=28.4 pi=26.0 | step x28: fi 568 pi 728 PI - FI +160 us
+ATTN decode b= 8 kv=2176 us/layer: fi=31.2 fi_tc=34.9 fi_det_fixed2048=43.1 pi=33.0 | step x28: fi 874 pi 924 PI - FI +50 us
+ATTN decode b=32 kv=  96 us/layer: fi=7.8 fi_tc=11.5 fi_det_fixed2048=11.5 pi=8.4 | step x28: fi 218 pi 235 PI - FI +17 us
+ATTN decode b=32 kv= 640 us/layer: fi=35.1 fi_tc=35.7 fi_det_fixed2048=35.7 pi=37.6 | step x28: fi 983 pi 1053 PI - FI +70 us
+ATTN decode b=32 kv=1280 us/layer: fi=62.6 fi_tc=63.3 fi_det_fixed2048=63.3 pi=65.6 | step x28: fi 1753 pi 1837 PI - FI +84 us
+ATTN decode b=32 kv=2176 us/layer: fi=101.1 fi_tc=101.7 fi_det_fixed2048=101.7 pi=106.1 | step x28: fi 2831 pi 2971 PI - FI +140 us
+OTHER: not measured: AssertionError skipped
+total 557s
 
-[run_gpu] H100 r4hopper:suite_H100: exit=0 wall=539s cost~$0.892 ledger=$22.28
+[run_gpu] H100 r5hopper:suite_H100: exit=0 wall=601s cost~$0.994 ledger=$32.18
