@@ -1,0 +1,99 @@
+[run_gpu] workstream dec: $4.38 of $11.00
+[run_gpu] start H100 dec:validate: ledger $17.16, gateway $13.57, budget $40.00
+patch applied
+NVIDIA H100 80GB HBM3, 610.57.04
+test_invariance exit=0 (163s)
+L=517 hq=16 hkv=8: PI err mean 5.772e-04 max 8.920e-03 | FlashInfer err mean 5.904e-04 max 8.674e-03 | bf16(exact) err mean 5.142e-04
+L=2049 hq=16 hkv=8: PI err mean 4.427e-04 max 8.383e-03 | FlashInfer err mean 4.617e-04 max 9.142e-03 | bf16(exact) err mean 4.002e-04
+checks failed: 0 []
+xgpu_hashes exit=0 (521s)
+HASHES attention: 5/5 PI entries equal to results/modal/H100_sm90/hashes_H100.json
+HASHES gemm: 108/108 PI entries equal to results/modal/H100_sm90/hashes_H100.json
+   prefill b1 q512 f0edc5bce36ef0f1 ref f0edc5bce36ef0f1 EQUAL
+   prefill b4 q2048 f60713f799b36d27 ref f60713f799b36d27 EQUAL
+   extend b1 q128 prefix 4096 876ab4d2eac19ca6 ref 876ab4d2eac19ca6 EQUAL
+   decode b8 kv 2048 c46fe141743f0c65 ref c46fe141743f0c65 EQUAL
+   decode b1 kv 32768 16a1ede29cc1ab6c ref 16a1ede29cc1ab6c EQUAL
+EQ decode90_kernel vs decode_kernel: 180 comparisons, 0 mismatches
+PLANNER DEC b= 1 kv=  96 us/layer: fi    4.5 fi_tc    5.6 v1    5.3 v0    6.1 | best v1 / fi 1.18
+PLANNER DEC b= 1 kv= 320 us/layer: fi    8.6 fi_tc    8.1 v1   13.4 v0    9.8 | best v0 / fi 1.14
+PLANNER DEC b= 1 kv= 640 us/layer: fi    9.2 fi_tc    8.8 v1   22.1 v0   14.3 | best v0 / fi 1.55
+PLANNER DEC b= 1 kv=1280 us/layer: fi    9.6 fi_tc    9.8 v1   22.0 v0   14.6 | best v0 / fi 1.52
+PLANNER DEC b= 1 kv=2176 us/layer: fi   10.5 fi_tc   12.9 v1   22.2 v0   15.3 | best v0 / fi 1.46
+PLANNER DEC b= 1 kv=4200 us/layer: fi   12.4 fi_tc   15.9 v1   23.2 v0   18.0 | best v0 / fi 1.45
+PLANNER DEC b= 4 kv=  96 us/layer: fi    5.8 fi_tc    6.2 v1    6.2 v0    6.2 | best v1 / fi 1.07
+PLANNER DEC b= 4 kv= 320 us/layer: fi    9.6 fi_tc    9.7 v1   14.1 v0   14.1 | best v1 / fi 1.47
+PLANNER DEC b= 4 kv= 640 us/layer: fi   10.6 fi_tc   13.3 v1   22.2 v0   22.2 | best v1 / fi 2.09
+PLANNER DEC b= 4 kv=1280 us/layer: fi   13.1 fi_tc   17.1 v1   22.6 v0   22.6 | best v1 / fi 1.73
+PLANNER DEC b= 4 kv=2176 us/layer: fi   18.6 fi_tc   23.3 v1   25.1 v0   25.1 | best v1 / fi 1.35
+PLANNER DEC b= 4 kv=4200 us/layer: fi   30.4 fi_tc   34.7 v1   32.9 v0   32.9 | best v1 / fi 1.08
+PLANNER DEC b= 8 kv=  96 us/layer: fi    6.0 fi_tc    6.8 v1    6.4 v0    6.4 | best v1 / fi 1.07
+PLANNER DEC b= 8 kv= 320 us/layer: fi   10.7 fi_tc   13.1 v1   14.4 v0   14.4 | best v1 / fi 1.35
+PLANNER DEC b= 8 kv= 640 us/layer: fi   13.0 fi_tc   17.1 v1   22.7 v0   22.7 | best v1 / fi 1.75
+PLANNER DEC b= 8 kv=1280 us/layer: fi   20.5 fi_tc   24.7 v1   26.2 v0   26.2 | best v1 / fi 1.28
+PLANNER DEC b= 8 kv=2176 us/layer: fi   31.4 fi_tc   35.1 v1   33.4 v0   33.3 | best v0 / fi 1.06
+PLANNER DEC b= 8 kv=4200 us/layer: fi   53.5 fi_tc   56.7 v1   54.3 v0   54.4 | best v1 / fi 1.01
+PLANNER DEC b=16 kv=  96 us/layer: fi    6.6 fi_tc    7.9 v1    7.0 v0    7.1 | best v1 / fi 1.06
+PLANNER DEC b=16 kv= 320 us/layer: fi   13.6 fi_tc   17.6 v1   15.5 v0   15.5 | best v1 / fi 1.14
+PLANNER DEC b=16 kv= 640 us/layer: fi   20.9 fi_tc   25.0 v1   26.7 v0   26.7 | best v1 / fi 1.28
+PLANNER DEC b=16 kv=1280 us/layer: fi   35.7 fi_tc   38.9 v1   36.9 v0   36.9 | best v1 / fi 1.03
+PLANNER DEC b=16 kv=2176 us/layer: fi   55.9 fi_tc   58.4 v1   56.0 v0   56.0 | best v1 / fi 1.00
+PLANNER DEC b=16 kv=4200 us/layer: fi   98.7 fi_tc  102.6 v1  104.2 v0  104.2 | best v1 / fi 1.06
+PLANNER DEC b=32 kv=  96 us/layer: fi    8.0 fi_tc   11.7 v1    8.7 v0    8.7 | best v1 / fi 1.09
+PLANNER DEC b=32 kv= 320 us/layer: fi   21.8 fi_tc   22.3 v1   20.5 v0   20.4 | best v0 / fi 0.94
+PLANNER DEC b=32 kv= 640 us/layer: fi   35.7 fi_tc   36.1 v1   38.0 v0   38.1 | best v1 / fi 1.06
+PLANNER DEC b=32 kv=1280 us/layer: fi   63.1 fi_tc   63.8 v1   66.2 v0   66.1 | best v0 / fi 1.05
+PLANNER DEC b=32 kv=2176 us/layer: fi  102.1 fi_tc  102.0 v1  107.1 v0  107.2 | best v1 / fi 1.05
+PLANNER DEC b=32 kv=4200 us/layer: fi  189.5 fi_tc  189.5 v1  201.4 v0  201.3 | best v0 / fi 1.06
+PLANNER DEC b=64 kv=  96 us/layer: fi   11.7 fi_tc   20.8 v1   12.2 v0   12.2 | best v1 / fi 1.04
+PLANNER DEC b=64 kv= 320 us/layer: fi   36.4 fi_tc   40.6 v1   33.3 v0   33.2 | best v0 / fi 0.91
+PLANNER DEC b=64 kv= 640 us/layer: fi   63.7 fi_tc   65.4 v1   66.9 v0   66.9 | best v1 / fi 1.05
+PLANNER DEC b=64 kv=1280 us/layer: fi  119.1 fi_tc  120.3 v1  123.6 v0  123.8 | best v1 / fi 1.04
+PLANNER DEC b=64 kv=2176 us/layer: fi  196.4 fi_tc  196.6 v1  203.1 v0  202.9 | best v0 / fi 1.03
+PLANNER DEC b=64 kv=4200 us/layer: fi  369.7 fi_tc  371.4 v1  391.3 v0  391.3 | best v1 / fi 1.06
+GRID2 DEC b= 1 kv=  96 us/layer: fi    4.5 fi_tc    5.7 v1    5.4 v2    6.2 | best v1 / fi 1.20
+GRID2 DEC b= 1 kv= 192 us/layer: fi    7.6 fi_tc    7.7 v1    8.7 v2    7.9 | best v2 / fi 1.04
+GRID2 DEC b= 1 kv= 320 us/layer: fi    8.6 fi_tc    8.0 v1   13.4 v2    9.8 | best v2 / fi 1.14
+GRID2 DEC b= 1 kv= 640 us/layer: fi    9.3 fi_tc    8.8 v1   22.0 v2   14.4 | best v2 / fi 1.55
+GRID2 DEC b= 1 kv=2176 us/layer: fi   10.6 fi_tc   13.0 v1   22.3 v2   15.5 | best v2 / fi 1.46
+GRID2 DEC b= 1 kv=4200 us/layer: fi   12.6 fi_tc   16.2 v1   23.3 v2   18.1 | best v2 / fi 1.44
+GRID2 DEC b= 1 kv=9000 us/layer: fi   19.8 fi_tc   23.9 v1   27.3 v2   34.4 | best v1 / fi 1.38
+GRID2 DEC b= 2 kv=  96 us/layer: fi    4.5 fi_tc    5.6 v1    5.4 v2    6.1 | best v1 / fi 1.20
+GRID2 DEC b= 2 kv= 192 us/layer: fi    8.9 fi_tc    8.2 v1    9.3 v2    8.0 | best v2 / fi 0.90
+GRID2 DEC b= 2 kv= 320 us/layer: fi    9.1 fi_tc    8.7 v1   14.0 v2   10.0 | best v2 / fi 1.10
+GRID2 DEC b= 2 kv= 640 us/layer: fi    9.5 fi_tc    9.6 v1   21.8 v2   14.6 | best v2 / fi 1.54
+GRID2 DEC b= 2 kv=2176 us/layer: fi   12.6 fi_tc   16.9 v1   22.9 v2   17.5 | best v2 / fi 1.39
+GRID2 DEC b= 2 kv=4200 us/layer: fi   17.9 fi_tc   22.9 v1   25.0 v2   27.5 | best v1 / fi 1.40
+GRID2 DEC b= 2 kv=9000 us/layer: fi   33.3 fi_tc   35.5 v1   34.9 v2   51.9 | best v1 / fi 1.05
+GRID2 DEC b= 3 kv=  96 us/layer: fi    5.2 fi_tc    5.8 v1    5.8 v2    6.1 | best v1 / fi 1.12
+GRID2 DEC b= 3 kv= 192 us/layer: fi    9.1 fi_tc    8.7 v1    9.4 v2    8.3 | best v2 / fi 0.91
+GRID2 DEC b= 3 kv= 320 us/layer: fi    9.3 fi_tc    9.2 v1   14.0 v2   10.2 | best v2 / fi 1.10
+GRID2 DEC b= 3 kv= 640 us/layer: fi    9.9 fi_tc   10.4 v1   22.0 v2   15.1 | best v2 / fi 1.53
+GRID2 DEC b= 3 kv=2176 us/layer: fi   15.1 fi_tc   18.8 v1   23.3 v2   19.8 | best v2 / fi 1.31
+GRID2 DEC b= 3 kv=4200 us/layer: fi   24.3 fi_tc   27.9 v1   28.6 v2   35.9 | best v1 / fi 1.18
+GRID2 DEC b= 3 kv=9000 us/layer: fi   44.7 fi_tc   47.6 v1   45.8 v2   68.6 | best v1 / fi 1.02
+GRID2 DEC b= 4 kv=  96 us/layer: fi    5.8 fi_tc    6.3 v1    6.2 v2    6.5 | best v1 / fi 1.07
+GRID2 DEC b= 4 kv= 192 us/layer: fi    9.3 fi_tc    9.0 v1    9.5 v2    8.5 | best v2 / fi 0.91
+GRID2 DEC b= 4 kv= 320 us/layer: fi    9.6 fi_tc    9.7 v1   14.2 v2   10.5 | best v2 / fi 1.09
+GRID2 DEC b= 4 kv= 640 us/layer: fi   10.7 fi_tc   13.3 v1   22.2 v2   15.6 | best v2 / fi 1.46
+GRID2 DEC b= 4 kv=2176 us/layer: fi   18.5 fi_tc   23.4 v1   25.1 v2   27.5 | best v1 / fi 1.36
+GRID2 DEC b= 4 kv=4200 us/layer: fi   30.6 fi_tc   34.5 v1   32.9 v2   45.2 | best v1 / fi 1.08
+GRID2 DEC b= 4 kv=9000 us/layer: fi   57.2 fi_tc   59.0 v1   59.2 v2   84.7 | best v1 / fi 1.03
+SLACK13 DEC b= 1 kv=  96 us/layer: fi    4.5 fi_tc    5.6 v1    5.3 v0    6.2 | best v1 / fi 1.18
+SLACK13 DEC b= 1 kv= 640 us/layer: fi    9.3 fi_tc    8.8 v1   22.0 v0   14.6 | best v0 / fi 1.57
+SLACK13 DEC b= 1 kv=2176 us/layer: fi   10.5 fi_tc   12.9 v1   22.9 v0   15.5 | best v0 / fi 1.48
+SLACK13 DEC b= 8 kv=  96 us/layer: fi    6.0 fi_tc    6.8 v1    6.4 v0    6.4 | best v1 / fi 1.07
+SLACK13 DEC b= 8 kv= 640 us/layer: fi   13.1 fi_tc   17.1 v1   23.4 v0   23.4 | best v1 / fi 1.79
+SLACK13 DEC b= 8 kv=2176 us/layer: fi   31.5 fi_tc   35.2 v1   34.0 v0   34.0 | best v1 / fi 1.08
+SLACK13 DEC b=32 kv=  96 us/layer: fi    8.0 fi_tc   11.8 v1    8.7 v0    8.7 | best v1 / fi 1.09
+SLACK13 DEC b=32 kv= 640 us/layer: fi   35.4 fi_tc   36.0 v1   38.2 v0   38.0 | best v0 / fi 1.07
+SLACK13 DEC b=32 kv=2176 us/layer: fi  101.3 fi_tc  102.4 v1  107.0 v0  107.1 | best v1 / fi 1.06
+benches done (577s)
+test_mutants exit=0 (753s)
+mutant decode90_d_unfused: 14 failed checks, kinds ['path']
+mutant decode_fold_unfused: 105 failed checks, kinds ['path']
+cuBLAS M-invariance control: 8/27 projections vary with M
+wrong segment count control: S=1 result equals the S=2 fold: False
+UNCAUGHT MUTANTS: 0 []
+
+[run_gpu] H100 dec:validate: exit=0 wall=796s cost~$1.318 ledger=$20.55

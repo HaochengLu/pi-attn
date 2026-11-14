@@ -103,6 +103,11 @@ at::Tensor prefill(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Ten
   return out;
 }
 
+// Decode kernel: 0 = the engine's choice for this device, batch and capacity (decode90_plan), 1 = decode_kernel,
+// 2 = decode90_kernel wherever it can run (sm_90a builds on compute capability 9.0, batch * kv heads <= SMs),
+// else decode_kernel; both give the same bits.
+static int decode_variant = 0;
+
 // q: [batch, Hq, 128]. Workspace ws_o [rows, Hq, 128] f32, ws_ml [rows, Hq,
 // 2 * DECODE_WARPS] f32 with rows >= batch * ceil(max_kv_len / GROUP_KEYS);
 // max_kv_len bounds every request. counters: [rows, Hq, DECODE_WARPS] int32, zero
@@ -125,6 +130,25 @@ at::Tensor decode(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Tens
   const int max_groups = (int)((max_kv_len + kGroupKeys - 1) / kGroupKeys);
   TORCH_CHECK(ws_o.size(0) >= (int64_t)batch * max_groups, "decode workspace below batch * max_groups");
   auto stream = at::cuda::getCurrentCUDAStream();
+  int major = 0, minor = 0;
+  cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, q.get_device());
+  cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, q.get_device());
+#ifdef PI_SM90A
+  const int slots = decode90_slots(batch, hkv, max_groups, sm_count(q));
+  if (decode_variant == 0 ? decode90_plan(major, minor, batch, max_groups, hkv, sm_count(q))
+                          : decode_variant == 2 && major == 9 && minor == 0 && slots >= 1) {
+    cudaFuncSetAttribute(decode90_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, decode90_smem_bytes());
+    decode90_kernel<<<decode90_grid(slots, hkv, batch), kD90Warps * 32, decode90_smem_bytes(), stream>>>(
+        (const __nv_bfloat16*)q.data_ptr(), (const __nv_bfloat16*)k_cache.data_ptr(),
+        (const __nv_bfloat16*)v_cache.data_ptr(), kv_page_indptr.data_ptr<int32_t>(),
+        kv_page_indices.data_ptr<int32_t>(), (int64_t)0, kv_lens.data_ptr<int32_t>(), ws_o.data_ptr<float>(),
+        (float2*)ws_ml.data_ptr<float>(), counters.data_ptr<int32_t>(), (__nv_bfloat16*)out.data_ptr(),
+        max_groups, hq, hkv, page_size, page_shift_of(page_size), (float)(sm_scale * 1.4426950408889634),
+        decode_group_fastest(batch), slots);
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+    return out;
+  }
+#endif
   cudaFuncSetAttribute(decode_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, decode_smem_bytes());
   decode_kernel<<<decode_grid(max_groups, hkv, batch), kDecodeWarps * 32, decode_smem_bytes(), stream>>>(
       (const __nv_bfloat16*)q.data_ptr(), (const __nv_bfloat16*)k_cache.data_ptr(),
@@ -142,6 +166,10 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         py::arg("kv_page_indptr"), py::arg("kv_page_indices"), py::arg("kv_lens"), py::arg("max_q_len"),
         py::arg("max_kv_len"), py::arg("sm_scale"), py::arg("kv_splits"), py::arg("variant") = 0);
   m.def("decode", &decode);
+  m.def("set_decode_variant", [](int64_t v) {
+    TORCH_CHECK(v == 0 || v == 1 || v == 2, "decode variant: 0, 1 or 2");
+    decode_variant = (int)v;
+  });
   // Shared memory a prefill variant (1-4) needs per CTA; tests skip variants the GPU cannot run.
   m.def("prefill_smem_bytes", [](int64_t variant) {
     TORCH_CHECK(variant >= 1 && variant <= 4, "variant: 1 to 4");

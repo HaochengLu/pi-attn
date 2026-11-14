@@ -58,6 +58,16 @@ MUTANTS = {
                           "if (t % (kGroupTiles / 2) == kGroupTiles / 2 - 1 || t == t_last)",
                           {"path"}),
 }
+if T.ext.WGMMA:
+    # decode90_kernel (Hopper, small batches) forms d with two roundings (d * scale, then + row sum) instead of
+    # one fma: a one-ulp fp32 difference in the denominator of a row.
+    MUTANTS["decode90_d_unfused"] = ("pi_attn_sm90.cuh",
+                                     "      D0 = __fmaf_rn(D0, sScale[lt * 16 + g], sLS[lt * 16 + g]);",
+                                     "      D0 = __fadd_rn(__fmul_rn(D0, sScale[lt * 16 + g]), sLS[lt * 16 + g]);",
+                                     {"path"})
+# PI_MUTANTS=name,name runs a subset.
+if os.environ.get("PI_MUTANTS"):
+    MUTANTS = {k: MUTANTS[k] for k in os.environ["PI_MUTANTS"].split(",")}
 
 
 def build_mutant(name, file, old, new):

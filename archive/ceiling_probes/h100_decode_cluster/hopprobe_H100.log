@@ -1,0 +1,40 @@
+[run_gpu] workstream dec: $1.21 of $11.00
+[run_gpu] start H100 dec:hopprobe: ledger $4.75, gateway $3.13, budget $40.00
+RING flag poll                n=2 waiters=  1: 0 rounds   2.08 us, 64 rounds  111.05 us ->  851.3 ns per hand-off (16 clusters:  860.3)
+RING flag poll                n=2 waiters= 32: 0 rounds   1.93 us, 64 rounds  111.25 us ->  854.1 ns per hand-off (16 clusters:  866.8)
+RING flag poll                n=2 waiters=128: 0 rounds   1.92 us, 64 rounds  111.76 us ->  858.1 ns per hand-off (16 clusters:  879.1)
+RING flag poll                n=8 waiters=  1: 0 rounds   1.98 us, 64 rounds  444.27 us ->  863.8 ns per hand-off (16 clusters:  893.9)
+RING flag poll                n=8 waiters= 32: 0 rounds   2.01 us, 64 rounds  444.80 us ->  864.8 ns per hand-off (16 clusters:  893.2)
+RING flag poll                n=8 waiters=128: 0 rounds   1.99 us, 64 rounds  447.40 us ->  869.9 ns per hand-off (16 clusters:  884.8)
+RING mbarrier try_wait        n=2 waiters=  1: 0 rounds   1.93 us, 64 rounds   58.92 us ->  445.2 ns per hand-off (16 clusters:  453.2)
+RING mbarrier try_wait        n=2 waiters= 32: 0 rounds   1.93 us, 64 rounds   59.03 us ->  446.1 ns per hand-off (16 clusters:  454.0)
+RING mbarrier try_wait        n=2 waiters=128: 0 rounds   1.93 us, 64 rounds   59.30 us ->  448.2 ns per hand-off (16 clusters:  456.1)
+RING mbarrier try_wait        n=8 waiters=  1: 0 rounds   1.98 us, 64 rounds  231.74 us ->  448.7 ns per hand-off (16 clusters:  451.3)
+RING mbarrier try_wait        n=8 waiters= 32: 0 rounds   1.99 us, 64 rounds  232.24 us ->  449.7 ns per hand-off (16 clusters:  452.4)
+RING mbarrier try_wait        n=8 waiters=128: 0 rounds   2.08 us, 64 rounds  233.29 us ->  451.6 ns per hand-off (16 clusters:  454.6)
+RING mbarrier test_wait spin  n=2 waiters=  1: 0 rounds   2.00 us, 64 rounds   60.38 us ->  456.1 ns per hand-off (16 clusters:  464.3)
+RING mbarrier test_wait spin  n=2 waiters= 32: 0 rounds   1.95 us, 64 rounds   60.53 us ->  457.7 ns per hand-off (16 clusters:  466.0)
+RING mbarrier test_wait spin  n=2 waiters=128: 0 rounds   1.97 us, 64 rounds   60.53 us ->  457.5 ns per hand-off (16 clusters:  467.9)
+RING mbarrier test_wait spin  n=8 waiters=  1: 0 rounds   2.00 us, 64 rounds  237.69 us ->  460.3 ns per hand-off (16 clusters:  462.6)
+RING mbarrier test_wait spin  n=8 waiters= 32: 0 rounds   2.01 us, 64 rounds  238.19 us ->  461.3 ns per hand-off (16 clusters:  463.5)
+RING mbarrier test_wait spin  n=8 waiters=128: 0 rounds   1.99 us, 64 rounds  238.43 us ->  461.8 ns per hand-off (16 clusters:  470.2)
+PUSH n=2  0 KB from each of 1 CTAs into CTA 0:   2.30 us
+PUSH n=2  4 KB from each of 1 CTAs into CTA 0:   2.43 us
+PUSH n=2 16 KB from each of 1 CTAs into CTA 0:   2.85 us
+PUSH n=2 24 KB from each of 1 CTAs into CTA 0:   3.10 us
+PUSH n=8  0 KB from each of 7 CTAs into CTA 0:   2.34 us
+PUSH n=8  4 KB from each of 7 CTAs into CTA 0:   3.11 us
+PUSH n=8 16 KB from each of 7 CTAs into CTA 0:   5.01 us
+PUSH n=8 24 KB from each of 7 CTAs into CTA 0:   6.06 us
+L2RES b=1 kv=  96 layers=28: fi_dram    4.5 pi_dram    5.3 fi_l2    4.8 pi_l2    5.7
+L2RES b=1 kv= 320 layers=28: fi_dram    8.6 pi_dram   13.5 fi_l2    7.9 pi_l2   13.1
+L2RES b=1 kv= 640 layers=28: fi_dram    9.4 pi_dram   22.2 fi_l2    7.9 pi_l2   20.3
+L2RES b=1 kv=1280 layers=28: fi_dram    9.7 pi_dram   21.9 fi_l2    8.0 pi_l2   20.4
+L2RES b=1 kv=2176 layers=19: fi_dram   10.5 pi_dram   22.1 fi_l2    9.1 pi_l2   20.5
+L2RES b=8 kv=  96 layers=28: fi_dram    6.1 pi_dram    6.4 fi_l2    4.9 pi_l2    5.8
+L2RES b=8 kv= 320 layers=16: fi_dram   10.7 pi_dram   14.4 fi_l2    9.0 pi_l2   13.0
+L2RES b=8 kv= 640 layers= 8: fi_dram   13.0 pi_dram   22.7 fi_l2   10.4 pi_l2   20.5
+L2RES b=8 kv=1280 layers= 4: fi_dram   20.5 pi_dram   26.2 fi_l2   15.7 pi_l2   24.7
+L2RES b=8 kv=2176 layers= 3: fi_dram   31.5 pi_dram   33.2 fi_l2   31.6 pi_l2   33.2
+
+[run_gpu] H100 dec:hopprobe: exit=0 wall=228s cost~$0.377 ledger=$5.58

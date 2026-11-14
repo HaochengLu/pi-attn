@@ -1,0 +1,15 @@
+[run_gpu] workstream dec: $1.71 of $11.00
+[run_gpu] start H100 dec:p5: ledger $6.34, gateway $3.38, budget $40.00
+EQ cluster vs decode_kernel: 312 comparisons, 0 mismatches
+EQ cluster vs decode_kernel: 312 comparisons, 0 mismatches
+DEC b= 1 kv=  96 us/layer: fi    4.5 fi_tc    5.6 v1    5.3 v91    8.4 v92    7.8 v94    6.8 | best v1 / fi 1.18
+DEC b= 1 kv= 640 us/layer: fi    9.2 fi_tc    8.7 v1   21.9 v91   23.2 v92   16.7 v94   14.9 | best v94 / fi 1.62
+DEC b= 1 kv=2176 us/layer: fi   10.2 fi_tc   12.7 v1   22.0 v91   23.9 v92   17.3 v94   18.2 | best v92 / fi 1.70
+DEC b= 8 kv=  96 us/layer: fi    5.9 fi_tc    6.7 v1    6.4 v91    9.0 v92    8.3 v94   11.3 | best v1 / fi 1.08
+DEC b= 8 kv= 640 us/layer: fi   12.7 fi_tc   16.9 v1   22.4 v91   24.5 v92   27.5 v94   28.7 | best v1 / fi 1.76
+DEC b= 8 kv=2176 us/layer: fi   31.3 fi_tc   34.7 v1   33.0 v91   65.7 v92   68.9 v94   69.0 | best v1 / fi 1.05
+DEC b=32 kv=  96 us/layer: fi    7.8 fi_tc   11.4 v1    8.4 v91   17.4 v92   28.1 v94   29.3 | best v1 / fi 1.08
+DEC b=32 kv= 640 us/layer: fi   35.2 fi_tc   35.8 v1   37.4 v91   77.3 v92   91.2 v94   92.5 | best v1 / fi 1.06
+DEC b=32 kv=2176 us/layer: fi  101.3 fi_tc  102.0 v1  106.6 v91  251.7 v92  250.1 v94  243.5 | best v1 / fi 1.05
+
+[run_gpu] H100 dec:p5: exit=0 wall=136s cost~$0.225 ledger=$6.90

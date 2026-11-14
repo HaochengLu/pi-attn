@@ -37,6 +37,9 @@ VARIANT = 0
 VARIANTS = [v for v in (1, 2, 3, 4)
             if ext.prefill_smem_bytes(v) <= torch.cuda.get_device_properties(0).shared_memory_per_block_optin]
 VARIANTS += [5] if ext.WGMMA else []
+# Decode kernels forced one by one after the device's choice: 1 = decode_kernel, 2 = decode90_kernel wherever
+# it can run (sm_90a builds: Hopper; batch * kv heads <= SMs), else decode_kernel.
+DECODE_VARIANTS = [1, 2] if ext.WGMMA else []
 # PI error vs float64 may exceed FlashInfer's by at most this factor (mean, max).
 ACC_SLACK = (1.05, 1.25)
 # Decode arrival counters, shared by every call as in the engine: each call must
@@ -232,6 +235,21 @@ def run_checks():
         for L, p in probes[:8]:  # alone: a single request runs another grid order (decode_grid)
             if not same(decode(pool, [(seqs[L][0][p:p + 1].contiguous(), pages[L], p + 1)])[0][0], alone[L][p]):
                 fails.append(("path alone", L, p))
+    # The same check with each decode kernel forced, in batches of at most 16 requests: one fold group per CTA
+    # for a few requests, several groups in turn per CTA of decode90_kernel for many.
+    for variant in DECODE_VARIANTS:
+        ext.set_decode_variant(variant)
+        probes = [(L, p) for L in lens for p in range(L)]
+        random.shuffle(probes)
+        i = 0
+        while i < len(probes):
+            n = random.randint(1, 16)
+            group, i = probes[i:i + n], i + n
+            reqs = [(seqs[L][0][p:p + 1].contiguous(), pages[L], p + 1) for L, p in group]
+            for (L, p), out in zip(group, decode(pool, reqs)):
+                if not same(out[0], alone[L][p]):
+                    fails.append(("path", "decode variant", variant, L, p))
+    ext.set_decode_variant(0)
 
     check_heads(pool, seqs, pages, alone, fails)
 

@@ -412,6 +412,21 @@ inline dim3 decode_grid(int max_groups, int num_kv_heads, int batch) {
   return decode_group_fastest(batch) ? dim3(max_groups, num_kv_heads, 1) : dim3(num_kv_heads, batch, max_groups);
 }
 constexpr int kDecodeWarps = 4;
+// Whether a launch runs decode90_kernel (pi_attn_sm90.cuh: decode_kernel's program on 16 warps, the same bits)
+// instead of decode_kernel. Scheduling only. decode90_kernel takes one SM per CTA and is faster only while SMs
+// would otherwise idle. On H100 (archive/ceiling_probes/h100_decode_cluster), with a CTA per fold group it
+// measured 9-36% faster than decode_kernel from 192 keys on for 1 to 8 requests and 5-15% slower at 96 keys;
+// once its CTAs run several fold groups in turn it is 10-49% slower, and with 16 requests it does not gain.
+// A launch knows its batch and max_groups (in the engine the page table's capacity, --max-seq-len), not its
+// lengths, so the rule is: every fold group the launch can hold gets a CTA of its own in one wave, with
+// at least two per (request, kv head).
+inline bool decode90_plan(int cc_major, int cc_minor, int batch, int max_groups, int num_kv_heads, int sms) {
+#ifdef PI_SM90A
+  return cc_major == 9 && cc_minor == 0 && (int64_t)batch * num_kv_heads * std::max(max_groups, 2) <= sms;
+#else
+  return false;
+#endif
+}
 constexpr int decode_smem_bytes() { return (2 * kTile * kHeadDim + 16 * (kTile + 8)) * 2 + kDecodeWarps * 16 * 4; }
 
 __global__ void __launch_bounds__(kDecodeWarps * 32)

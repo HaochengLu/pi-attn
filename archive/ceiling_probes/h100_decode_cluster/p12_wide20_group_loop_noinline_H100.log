@@ -1,0 +1,49 @@
+[run_gpu] workstream dec: $3.42 of $11.00
+[run_gpu] start H100 dec:p12: ledger $12.77, gateway $11.63, budget $40.00
+EQ cluster vs decode_kernel: 171 comparisons, 0 mismatches
+EQ cluster vs decode_kernel: 171 comparisons, 0 mismatches
+DEC b= 1 kv=  96 us/layer: fi    4.5 fi_tc    5.6 v1    5.3 v2    8.8 | best v1 / fi 1.18
+DEC b= 1 kv= 320 us/layer: fi    8.6 fi_tc    8.1 v1   13.4 v2   15.1 | best v1 / fi 1.56
+DEC b= 1 kv= 640 us/layer: fi    9.2 fi_tc    8.9 v1   21.7 v2   21.3 | best v2 / fi 2.32
+DEC b= 1 kv=1280 us/layer: fi    9.5 fi_tc    9.7 v1   21.9 v2   21.4 | best v2 / fi 2.25
+DEC b= 1 kv=2176 us/layer: fi   10.3 fi_tc   12.6 v1   22.0 v2   22.2 | best v1 / fi 2.14
+DEC b= 1 kv=4200 us/layer: fi   12.0 fi_tc   15.7 v1   22.9 v2   25.1 | best v1 / fi 1.91
+DEC b= 4 kv=  96 us/layer: fi    5.7 fi_tc    6.1 v1    6.0 v2    9.0 | best v1 / fi 1.05
+DEC b= 4 kv= 320 us/layer: fi    9.3 fi_tc    9.5 v1   13.9 v2   15.7 | best v1 / fi 1.49
+DEC b= 4 kv= 640 us/layer: fi   10.3 fi_tc   13.0 v1   22.0 v2   22.8 | best v1 / fi 2.14
+DEC b= 4 kv=1280 us/layer: fi   12.7 fi_tc   16.7 v1   22.3 v2   26.9 | best v1 / fi 1.76
+DEC b= 4 kv=2176 us/layer: fi   17.8 fi_tc   22.8 v1   24.7 v2   41.6 | best v1 / fi 1.39
+DEC b= 4 kv=4200 us/layer: fi   29.9 fi_tc   33.7 v1   31.9 v2   69.8 | best v1 / fi 1.07
+DEC b= 8 kv=  96 us/layer: fi    5.9 fi_tc    6.6 v1    6.3 v2    9.5 | best v1 / fi 1.07
+DEC b= 8 kv= 320 us/layer: fi   10.4 fi_tc   12.9 v1   14.2 v2   16.9 | best v1 / fi 1.37
+DEC b= 8 kv= 640 us/layer: fi   12.5 fi_tc   16.8 v1   22.5 v2   27.3 | best v1 / fi 1.80
+DEC b= 8 kv=1280 us/layer: fi   20.0 fi_tc   24.4 v1   25.8 v2   46.5 | best v1 / fi 1.29
+DEC b= 8 kv=2176 us/layer: fi   30.7 fi_tc   34.4 v1   32.3 v2   69.5 | best v1 / fi 1.05
+DEC b= 8 kv=4200 us/layer: fi   52.1 fi_tc   55.2 v1   52.1 v2  122.6 | best v1 / fi 1.00
+DEC b=16 kv=  96 us/layer: fi    6.4 fi_tc    7.6 v1    6.8 v2   11.2 | best v1 / fi 1.06
+DEC b=16 kv= 320 us/layer: fi   12.8 fi_tc   16.9 v1   15.0 v2   23.1 | best v1 / fi 1.17
+DEC b=16 kv= 640 us/layer: fi   20.0 fi_tc   24.3 v1   26.2 v2   43.2 | best v1 / fi 1.31
+DEC b=16 kv=1280 us/layer: fi   34.7 fi_tc   37.7 v1   35.7 v2   77.3 | best v1 / fi 1.03
+DEC b=16 kv=2176 us/layer: fi   54.0 fi_tc   56.2 v1   53.7 v2  123.4 | best v1 / fi 0.99
+DEC b=16 kv=4200 us/layer: fi   95.9 fi_tc   98.8 v1   99.7 v2  223.6 | best v1 / fi 1.04
+DEC b=32 kv=  96 us/layer: fi    7.7 fi_tc   11.4 v1    8.3 | best v1 / fi 1.08
+DEC b=32 kv= 320 us/layer: fi   21.1 fi_tc   21.8 v1   19.6 | best v1 / fi 0.93
+DEC b=32 kv= 640 us/layer: fi   34.6 fi_tc   35.0 v1   36.7 | best v1 / fi 1.06
+DEC b=32 kv=1280 us/layer: fi   61.2 fi_tc   61.8 v1   63.1 | best v1 / fi 1.03
+DEC b=32 kv=2176 us/layer: fi   99.0 fi_tc   99.3 v1  102.7 | best v1 / fi 1.04
+DEC b=32 kv=4200 us/layer: fi  183.4 fi_tc  183.8 v1  193.5 | best v1 / fi 1.06
+DEC b=64 kv=  96 us/layer: fi   11.3 fi_tc   20.5 v1   11.8 | best v1 / fi 1.04
+DEC b=64 kv= 320 us/layer: fi   35.8 fi_tc   39.8 v1   31.9 | best v1 / fi 0.89
+DEC b=64 kv= 640 us/layer: fi   62.2 fi_tc   64.3 v1   64.2 | best v1 / fi 1.03
+DEC b=64 kv=1280 us/layer: fi  115.8 fi_tc  116.6 v1  118.9 | best v1 / fi 1.03
+DEC b=64 kv=2176 us/layer: fi  191.2 fi_tc  190.0 v1  195.8 | best v1 / fi 1.02
+DEC b=64 kv=4200 us/layer: fi  359.7 fi_tc  358.6 v1  375.2 | best v1 / fi 1.04
+SLACK13
+DEC b= 1 kv=  96 us/layer: fi    4.5 fi_tc    5.7 v1    5.3 v2    8.9 | best v1 / fi 1.18
+DEC b= 1 kv= 640 us/layer: fi    9.1 fi_tc    8.9 v1   22.2 v2   21.5 | best v2 / fi 2.36
+DEC b= 1 kv=2176 us/layer: fi   10.4 fi_tc   12.8 v1   22.6 v2   22.3 | best v2 / fi 2.14
+DEC b= 8 kv=  96 us/layer: fi    6.0 fi_tc    6.8 v1    6.4 v2    9.7 | best v1 / fi 1.07
+DEC b= 8 kv= 640 us/layer: fi   12.6 fi_tc   17.0 v1   23.2 v2   28.8 | best v1 / fi 1.84
+DEC b= 8 kv=2176 us/layer: fi   30.9 fi_tc   34.5 v1   33.3 v2   69.4 | best v1 / fi 1.08
+
+[run_gpu] H100 dec:p12: exit=0 wall=152s cost~$0.252 ledger=$13.11

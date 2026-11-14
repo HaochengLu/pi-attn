@@ -1,0 +1,81 @@
+[run_gpu] workstream dec: $0.23 of $11.00
+[run_gpu] start H100 dec:clprobe: ledger $0.32, gateway $0.23, budget $40.00
+spin calib 1 CTA             clusters=    1 n= 0 spin=     0 syncs=0 smem=  1024 y=1:    1.05 us
+spin calib 1 CTA             clusters=    1 n= 0 spin=  1000 syncs=0 smem=  1024 y=1:    3.74 us
+spin calib 1 CTA             clusters=    1 n= 0 spin=  4000 syncs=0 smem=  1024 y=1:   11.60 us
+empty                        clusters=    8 n= 0 spin=     0 syncs=0 smem=  1024 y=1:    1.12 us
+empty                        clusters=    8 n= 1 spin=     0 syncs=0 smem=  1024 y=1:    1.11 us
+empty                        clusters=    8 n= 2 spin=     0 syncs=0 smem=  1024 y=1:    1.15 us
+empty                        clusters=    8 n= 4 spin=     0 syncs=0 smem=  1024 y=1:    1.12 us
+empty                        clusters=    8 n= 8 spin=     0 syncs=0 smem=  1024 y=1:    1.18 us
+empty                        clusters=    8 n=16 spin=     0 syncs=0 smem=  1024 y=1:    1.31 us
+empty                        clusters=   16 n= 0 spin=     0 syncs=0 smem=  1024 y=1:    1.13 us
+empty                        clusters=   16 n= 1 spin=     0 syncs=0 smem=  1024 y=1:    1.14 us
+empty                        clusters=   16 n= 2 spin=     0 syncs=0 smem=  1024 y=1:    1.16 us
+empty                        clusters=   16 n= 4 spin=     0 syncs=0 smem=  1024 y=1:    1.18 us
+empty                        clusters=   16 n= 8 spin=     0 syncs=0 smem=  1024 y=1:    1.28 us
+empty                        clusters=   16 n=16 spin=     0 syncs=0 smem=  1024 y=1:    1.33 us
+empty                        clusters=   40 n= 0 spin=     0 syncs=0 smem=  1024 y=1:    1.19 us
+empty                        clusters=   40 n= 1 spin=     0 syncs=0 smem=  1024 y=1:    1.16 us
+empty                        clusters=   40 n= 2 spin=     0 syncs=0 smem=  1024 y=1:    1.20 us
+empty                        clusters=   40 n= 4 spin=     0 syncs=0 smem=  1024 y=1:    1.29 us
+empty                        clusters=   40 n= 8 spin=     0 syncs=0 smem=  1024 y=1:    1.33 us
+empty                        clusters=   40 n=16 spin=     0 syncs=0 smem=  1024 y=1:    1.41 us
+empty                        clusters=  128 n= 0 spin=     0 syncs=0 smem=  1024 y=1:    1.29 us
+empty                        clusters=  128 n= 1 spin=     0 syncs=0 smem=  1024 y=1:    1.33 us
+empty                        clusters=  128 n= 2 spin=     0 syncs=0 smem=  1024 y=1:    1.28 us
+empty                        clusters=  128 n= 4 spin=     0 syncs=0 smem=  1024 y=1:    1.37 us
+empty                        clusters=  128 n= 8 spin=     0 syncs=0 smem=  1024 y=1:    1.59 us
+empty                        clusters=  128 n=16 spin=     0 syncs=0 smem=  1024 y=1:    2.40 us
+empty                        clusters=  320 n= 0 spin=     0 syncs=0 smem=  1024 y=1:    1.28 us
+empty                        clusters=  320 n= 1 spin=     0 syncs=0 smem=  1024 y=1:    1.73 us
+empty                        clusters=  320 n= 2 spin=     0 syncs=0 smem=  1024 y=1:    1.59 us
+empty                        clusters=  320 n= 4 spin=     0 syncs=0 smem=  1024 y=1:    1.83 us
+empty                        clusters=  320 n= 8 spin=     0 syncs=0 smem=  1024 y=1:    2.69 us
+empty                        clusters=  320 n=16 spin=     0 syncs=0 smem=  1024 y=1:    4.28 us
+empty                        clusters= 1280 n= 0 spin=     0 syncs=0 smem=  1024 y=1:    1.61 us
+empty                        clusters= 1280 n= 1 spin=     0 syncs=0 smem=  1024 y=1:    4.04 us
+empty                        clusters= 1280 n= 2 spin=     0 syncs=0 smem=  1024 y=1:    3.22 us
+empty                        clusters= 1280 n= 4 spin=     0 syncs=0 smem=  1024 y=1:    4.77 us
+empty                        clusters= 1280 n= 8 spin=     0 syncs=0 smem=  1024 y=1:    7.78 us
+empty                        clusters= 1280 n=16 spin=     0 syncs=0 smem=  1024 y=1:   14.04 us
+spin                         clusters=   16 n= 0 spin=  4000 syncs=0 smem=  1024 y=1:   10.32 us
+spin big smem                clusters=   16 n= 0 spin=  4000 syncs=0 smem= 60000 y=1:   10.30 us
+spin                         clusters=   16 n= 2 spin=  4000 syncs=0 smem=  1024 y=1:   10.34 us
+spin big smem                clusters=   16 n= 2 spin=  4000 syncs=0 smem= 60000 y=1:   10.34 us
+spin                         clusters=   16 n= 8 spin=  4000 syncs=0 smem=  1024 y=1:   10.60 us
+spin big smem                clusters=   16 n= 8 spin=  4000 syncs=0 smem= 60000 y=1:   10.59 us
+spin                         clusters=   40 n= 0 spin=  4000 syncs=0 smem=  1024 y=1:   10.37 us
+spin big smem                clusters=   40 n= 0 spin=  4000 syncs=0 smem= 60000 y=1:   10.22 us
+spin                         clusters=   40 n= 2 spin=  4000 syncs=0 smem=  1024 y=1:   10.16 us
+spin big smem                clusters=   40 n= 2 spin=  4000 syncs=0 smem= 60000 y=1:   10.16 us
+spin                         clusters=   40 n= 8 spin=  4000 syncs=0 smem=  1024 y=1:   10.98 us
+spin big smem                clusters=   40 n= 8 spin=  4000 syncs=0 smem= 60000 y=1:   10.97 us
+spin                         clusters=  320 n= 0 spin=  4000 syncs=0 smem=  1024 y=1:   10.96 us
+spin big smem                clusters=  320 n= 0 spin=  4000 syncs=0 smem= 60000 y=1:   10.93 us
+spin                         clusters=  320 n= 2 spin=  4000 syncs=0 smem=  1024 y=1:   19.06 us
+spin big smem                clusters=  320 n= 2 spin=  4000 syncs=0 smem= 60000 y=1:   21.22 us
+spin                         clusters=  320 n= 8 spin=  4000 syncs=0 smem=  1024 y=1:   55.44 us
+spin big smem                clusters=  320 n= 8 spin=  4000 syncs=0 smem= 60000 y=1:   81.20 us
+syncs                        clusters=   16 n= 2 spin=     0 syncs=1 smem=  1024 y=1:    1.59 us
+syncs                        clusters=   16 n= 2 spin=     0 syncs=2 smem=  1024 y=1:    2.01 us
+syncs                        clusters=   16 n= 2 spin=     0 syncs=8 smem=  1024 y=1:    4.49 us
+syncs                        clusters=   16 n= 8 spin=     0 syncs=1 smem=  1024 y=1:    1.84 us
+syncs                        clusters=   16 n= 8 spin=     0 syncs=2 smem=  1024 y=1:    2.37 us
+syncs                        clusters=   16 n= 8 spin=     0 syncs=8 smem=  1024 y=1:    5.47 us
+syncs                        clusters=   40 n= 2 spin=     0 syncs=1 smem=  1024 y=1:    1.63 us
+syncs                        clusters=   40 n= 2 spin=     0 syncs=2 smem=  1024 y=1:    2.05 us
+syncs                        clusters=   40 n= 2 spin=     0 syncs=8 smem=  1024 y=1:    4.50 us
+syncs                        clusters=   40 n= 8 spin=     0 syncs=1 smem=  1024 y=1:    2.08 us
+syncs                        clusters=   40 n= 8 spin=     0 syncs=2 smem=  1024 y=1:    2.78 us
+syncs                        clusters=   40 n= 8 spin=     0 syncs=8 smem=  1024 y=1:    6.03 us
+empty ydim8                  clusters=   16 n= 0 spin=     0 syncs=0 smem=  1024 y=8:    1.07 us
+empty ydim8                  clusters=   16 n= 8 spin=     0 syncs=0 smem=  1024 y=8:    1.22 us
+empty ydim8                  clusters=   40 n= 0 spin=     0 syncs=0 smem=  1024 y=8:    1.14 us
+empty ydim8                  clusters=   40 n= 8 spin=     0 syncs=0 smem=  1024 y=8:    1.26 us
+empty ydim8                  clusters=  320 n= 0 spin=     0 syncs=0 smem=  1024 y=8:    1.25 us
+empty ydim8                  clusters=  320 n= 8 spin=     0 syncs=0 smem=  1024 y=8:    2.59 us
+empty same CTAs              clusters= 1024 n= 0 spin=     0 syncs=0 smem=  1024 y=1:    1.43 us
+empty same CTAs              clusters=  128 n= 8 spin=     0 syncs=0 smem=  1024 y=1:    1.55 us
+
+[run_gpu] H100 dec:clprobe: exit=0 wall=67s cost~$0.111 ledger=$0.83

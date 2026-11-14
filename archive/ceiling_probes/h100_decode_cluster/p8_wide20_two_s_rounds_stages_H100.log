@@ -1,0 +1,39 @@
+[run_gpu] workstream dec: $2.45 of $11.00
+[run_gpu] start H100 dec:p8: ledger $8.52, gateway $10.68, budget $40.00
+EQ cluster vs decode_kernel: 104 comparisons, 0 mismatches
+EQ cluster vs decode_kernel: 104 comparisons, 0 mismatches
+DEC b= 1 kv=  96 us/layer: fi    4.5 fi_tc    5.6 v1    5.4 v2    6.2 | best v1 / fi 1.20
+DEC b= 1 kv= 640 us/layer: fi    9.2 fi_tc    8.8 v1   22.0 v2   13.8 | best v2 / fi 1.50
+DEC b= 1 kv=2176 us/layer: fi   10.5 fi_tc   12.9 v1   22.3 v2   15.2 | best v2 / fi 1.45
+DEC b= 8 kv=  96 us/layer: fi    6.1 fi_tc    6.8 v1    6.5 v2    7.1 | best v1 / fi 1.07
+DEC b= 8 kv= 640 us/layer: fi   13.1 fi_tc   17.2 v1   22.8 v2   17.6 | best v2 / fi 1.34
+DEC b= 8 kv=2176 us/layer: fi   31.8 fi_tc   35.3 v1   33.3 v2   45.2 | best v1 / fi 1.05
+DEC b=32 kv=  96 us/layer: fi    8.0 fi_tc   11.8 v1    8.6 v2   15.3 | best v1 / fi 1.07
+DEC b=32 kv= 640 us/layer: fi   35.6 fi_tc   36.2 v1   37.8 v2   55.9 | best v1 / fi 1.06
+DEC b=32 kv=2176 us/layer: fi  101.7 fi_tc  102.8 v1  107.0 v2  144.3 | best v1 / fi 1.05
+stop 1 DEC b= 1 kv=  96 us/layer: fi    4.5 fi_tc    5.7 v2    2.5 | best v2 / fi 0.56
+stop 2 DEC b= 1 kv=  96 us/layer: fi    4.6 fi_tc    5.7 v2    3.7 | best v2 / fi 0.80
+stop 3 DEC b= 1 kv=  96 us/layer: fi    4.6 fi_tc    5.7 v2    4.4 | best v2 / fi 0.96
+stop 4 DEC b= 1 kv=  96 us/layer: fi    4.6 fi_tc    5.7 v2    4.7 | best v2 / fi 1.02
+stop 5 DEC b= 1 kv=  96 us/layer: fi    4.5 fi_tc    5.6 v2    5.4 | best v2 / fi 1.20
+stop 6 DEC b= 1 kv=  96 us/layer: fi    4.5 fi_tc    5.6 v2    5.9 | best v2 / fi 1.31
+stop 7 DEC b= 1 kv=  96 us/layer: fi    4.5 fi_tc    5.6 v2    5.9 | best v2 / fi 1.31
+stop 0 DEC b= 1 kv=  96 us/layer: fi    4.5 fi_tc    5.6 v2    6.2 | best v2 / fi 1.38
+stop 1 DEC b= 1 kv= 512 us/layer: fi    9.2 fi_tc    8.5 v2    4.3 | best v2 / fi 0.47
+stop 2 DEC b= 1 kv= 512 us/layer: fi    9.1 fi_tc    8.5 v2    7.0 | best v2 / fi 0.77
+stop 3 DEC b= 1 kv= 512 us/layer: fi    9.1 fi_tc    8.5 v2    8.9 | best v2 / fi 0.98
+stop 4 DEC b= 1 kv= 512 us/layer: fi    9.1 fi_tc    8.5 v2    9.5 | best v2 / fi 1.04
+stop 5 DEC b= 1 kv= 512 us/layer: fi    9.1 fi_tc    8.5 v2   10.7 | best v2 / fi 1.18
+stop 6 DEC b= 1 kv= 512 us/layer: fi    9.1 fi_tc    8.5 v2   11.6 | best v2 / fi 1.27
+stop 7 DEC b= 1 kv= 512 us/layer: fi    9.1 fi_tc    8.5 v2   11.6 | best v2 / fi 1.27
+stop 0 DEC b= 1 kv= 512 us/layer: fi    9.1 fi_tc    8.5 v2   11.9 | best v2 / fi 1.31
+stop 1 DEC b= 1 kv= 640 us/layer: fi    9.3 fi_tc    8.8 v2    4.6 | best v2 / fi 0.49
+stop 2 DEC b= 1 kv= 640 us/layer: fi    9.2 fi_tc    8.7 v2    7.4 | best v2 / fi 0.80
+stop 3 DEC b= 1 kv= 640 us/layer: fi    9.2 fi_tc    8.8 v2    9.1 | best v2 / fi 0.99
+stop 4 DEC b= 1 kv= 640 us/layer: fi    9.3 fi_tc    8.8 v2    9.8 | best v2 / fi 1.05
+stop 5 DEC b= 1 kv= 640 us/layer: fi    9.3 fi_tc    8.8 v2   10.9 | best v2 / fi 1.17
+stop 6 DEC b= 1 kv= 640 us/layer: fi    9.2 fi_tc    8.8 v2   11.8 | best v2 / fi 1.28
+stop 7 DEC b= 1 kv= 640 us/layer: fi    9.2 fi_tc    8.8 v2   11.9 | best v2 / fi 1.29
+stop 0 DEC b= 1 kv= 640 us/layer: fi    9.2 fi_tc    8.8 v2   13.8 | best v2 / fi 1.50
+
+[run_gpu] H100 dec:p8: exit=0 wall=165s cost~$0.273 ledger=$10.24

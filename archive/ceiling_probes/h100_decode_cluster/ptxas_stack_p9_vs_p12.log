@@ -1,0 +1,18 @@
+[run_gpu] workstream dec: $3.67 of $11.00
+[run_gpu] start L4 dec:regs: ledger $13.11, gateway $13.96, budget $40.00
+=== p9
+Compiling entry function '_ZN7pi_attn15decode90_kernelEPK13__nv_bfloat16S2_S2_PKiS4_lS4_PfP6float2PiPS0_iiiiifb' for 'sm_90a'
+Function properties for _ZN7pi_attn15decode90_kernelEPK13__nv_bfloat16S2_S2_PKiS4_lS4_PfP6float2PiPS0_iiiiifb
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+Compiling entry function '_ZN7pi_attn13decode_kernelEPK13__nv_bfloat16S2_S2_PKiS4_lS4_PfP6float2PiPS0_iiiiifb' for 'sm_90a'
+Function properties for _ZN7pi_attn13decode_kernelEPK13__nv_bfloat16S2_S2_PKiS4_lS4_PfP6float2PiPS0_iiiiifb
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+=== p12
+Compiling entry function '_ZN7pi_attn15decode90_kernelEPK13__nv_bfloat16S2_S2_PKiS4_lS4_PfP6float2PiPS0_iiiiifbi' for 'sm_90a'
+Function properties for _ZN7pi_attn15decode90_kernelEPK13__nv_bfloat16S2_S2_PKiS4_lS4_PfP6float2PiPS0_iiiiifbi
+    200 bytes stack frame, 12 bytes spill stores, 8 bytes spill loads
+Compiling entry function '_ZN7pi_attn13decode_kernelEPK13__nv_bfloat16S2_S2_PKiS4_lS4_PfP6float2PiPS0_iiiiifb' for 'sm_90a'
+Function properties for _ZN7pi_attn13decode_kernelEPK13__nv_bfloat16S2_S2_PKiS4_lS4_PfP6float2PiPS0_iiiiifb
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+
+[run_gpu] L4 dec:regs: exit=0 wall=284s cost~$0.147 ledger=$13.81

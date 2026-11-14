@@ -1,0 +1,15 @@
+[run_gpu] workstream dec: $0.00 of $11.00
+[run_gpu] start H100 dec:p1: ledger $0.08, gateway $0.23, budget $40.00
+NVIDIA H100 80GB HBM3
+EQ cluster vs decode_kernel: 312 comparisons, 0 mismatches
+DEC b= 1 kv=  96 us/layer: fi    4.5 fi_tc    5.7 v1    5.3 v2    7.6 v4    7.1 v8    6.8 | best v1 / fi 1.18
+DEC b= 1 kv= 640 us/layer: fi    9.2 fi_tc    8.8 v1   22.0 v2   18.2 v4   15.8 v8   14.3 | best v8 / fi 1.55
+DEC b= 1 kv=2176 us/layer: fi   10.4 fi_tc   12.8 v1   22.1 v2   18.8 v4   17.9 v8   16.6 | best v8 / fi 1.60
+DEC b= 8 kv=  96 us/layer: fi    6.0 fi_tc    6.7 v1    6.3 v2    8.4 v4   13.4 v8   13.9 | best v1 / fi 1.05
+DEC b= 8 kv= 640 us/layer: fi   12.8 fi_tc   17.0 v1   22.7 v2   28.5 v4   35.6 v8   37.5 | best v1 / fi 1.77
+DEC b= 8 kv=2176 us/layer: fi   31.5 fi_tc   34.9 v1   33.2 v2   80.9 v4   85.2 v8  100.1 | best v1 / fi 1.05
+DEC b=32 kv=  96 us/layer: fi    7.8 fi_tc   11.5 v1    8.4 v2   29.9 v4   34.1 v8   40.7 | best v1 / fi 1.08
+DEC b=32 kv= 640 us/layer: fi   35.1 fi_tc   35.7 v1   37.5 v2  108.8 v4  113.3 v8  135.5 | best v1 / fi 1.07
+DEC b=32 kv=2176 us/layer: fi  101.1 fi_tc  102.0 v1  106.7 v2  309.0 v4  314.9 v8  372.9 | best v1 / fi 1.06
+
+[run_gpu] H100 dec:p1: exit=0 wall=141s cost~$0.233 ledger=$0.32

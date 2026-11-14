@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <climits>
+#include <cstdlib>
 #include <map>
 #include <mutex>
 #include <string>
@@ -37,7 +38,8 @@ const char* check_launch(const char* what) {
 }
 
 struct DeviceInfo {
-  int sms = 0, smem_optin = 0;
+  int sms = 0, smem_optin = 0, cc_major = 0, cc_minor = 0;
+  bool decode90 = true;  // PI_DECODE90=0 in the environment: decode_kernel everywhere (A/B measurements; same bits)
   bool prefill_qreg = false;  // prefill kernel variant (prefill_qreg in pi_attn_kernels.cu)
   bool prefill_tail_splits = false;  // prefill planner (prefill_tail_splits)
   bool prefill_wgmma = false;  // sm_90a build on compute capability 9.0: prefill90_kernel
@@ -57,6 +59,10 @@ DeviceInfo device_info() {
   int major = 0, minor = 0;
   cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, device);
   cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, device);
+  info.cc_major = major;
+  info.cc_minor = minor;
+  const char* decode90 = std::getenv("PI_DECODE90");
+  info.decode90 = !(decode90 && decode90[0] == '0');
   info.prefill_qreg = prefill_qreg(major, minor);
   info.prefill_tail_splits = prefill_tail_splits(major, minor);
   info.prefill_wgmma = prefill_wgmma(major, minor);
@@ -88,8 +94,8 @@ void pi_set_device(int device) {
 // Workspace: ws_o [batch * max_groups, Hq, 128] f32 and ws_ml [.., Hq, 8] f32 (one
 // (m, l) pair per decode warp) with max_groups = pi_attn_decode_groups(table_stride
 // * page_size), and counters [ws_rows, Hq, 4] int32, zero before the first call;
-// every call leaves them zero. The grid depends
-// only on (batch, table_stride), so it is fixed per CUDA-graph bucket.
+// every call leaves them zero. The kernel (decode90_plan) and the grid depend
+// only on (batch, table_stride), so they are fixed per CUDA-graph bucket.
 static_assert(kDecodeWarps == 4, "pi.rs sizes the decode ml and counter workspaces for 4 warps");
 int pi_attn_decode_groups(int64_t max_kv_len) {
   return (int)((max_kv_len + kGroupKeys - 1) / kGroupKeys);
@@ -107,6 +113,19 @@ const char* pi_attn_decode(const void* q, const void* k_cache, const void* v_cac
   if (ws_rows < (int64_t)batch * max_groups)
     return fail("PI decode workspace smaller than batch * fold groups per request");
   auto st = (cudaStream_t)stream;
+#ifdef PI_SM90A
+  const DeviceInfo info = device_info();
+  if (info.decode90 && decode90_plan(info.cc_major, info.cc_minor, batch, max_groups, num_kv_heads, info.sms)) {
+    const int slots = decode90_slots(batch, num_kv_heads, max_groups, info.sms);
+    set_smem(decode90_kernel, decode90_smem_bytes());
+    decode90_kernel<<<decode90_grid(slots, num_kv_heads, batch), kD90Warps * 32, decode90_smem_bytes(), st>>>(
+        (const __nv_bfloat16*)q, (const __nv_bfloat16*)k_cache, (const __nv_bfloat16*)v_cache,
+        nullptr, page_table, table_stride, seqlens, ws_o, (float2*)ws_ml, counters, (__nv_bfloat16*)out,
+        max_groups, num_qo_heads, num_kv_heads, page_size, page_shift_of(page_size),
+        (float)(sm_scale * 1.4426950408889634), decode_group_fastest(batch), slots);
+    return check_launch("pi decode");
+  }
+#endif
   set_smem(decode_kernel, decode_smem_bytes());
   decode_kernel<<<decode_grid(max_groups, num_kv_heads, batch), kDecodeWarps * 32, decode_smem_bytes(), st>>>(
       (const __nv_bfloat16*)q, (const __nv_bfloat16*)k_cache, (const __nv_bfloat16*)v_cache,
