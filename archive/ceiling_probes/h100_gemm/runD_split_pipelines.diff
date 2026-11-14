@@ -1,0 +1,336 @@
+diff --git a/llm_infer_rust/src/kernels/pi/gemm_sm90.cuh b/llm_infer_rust/src/kernels/pi/gemm_sm90.cuh
+index 0b47b57..472447e 100644
+--- a/llm_infer_rust/src/kernels/pi/gemm_sm90.cuh
++++ b/llm_infer_rust/src/kernels/pi/gemm_sm90.cuh
+@@ -14,7 +14,13 @@
+ //    contract); the producer streams the next tile's K stages while the consumers run the epilogue, which
+ //    writes the rounded tile to shared memory and hands it to one asynchronous TMA store. The walk goes in
+ //    blocks `swz` n tiles wide so that one wave of CTAs shares its X rows and W columns in L2.
+-// One CTA = 1 producer warp group + BM / 64 consumer warp groups (64 rows x BN columns each).
++// One CTA = 1 producer warp group + BM / 64 consumer warp groups (64 rows x BN columns each), BM = 64, 128 or 192.
++// Split pipelines (STB > 0): below M ~ 1024 a launch is bound by how many bytes of W it keeps in flight from
++// DRAM, N x (K columns in flight per CTA) x 2 (measured on H100, Qwen3-1.7B down, M = 64: 18.5 us with 2.1 MB in
++// flight, 16.5 us with 3.1 MB, 13.4 us with 4.2 MB; cuBLAS 14.8 us; the register-only wgmma chain is 8.0 us, 20.8 ns
++// per k16 step). With one pipeline the X stages (BM rows, L2 residents) take the shared memory the W stages need,
++// so the split kernels give X its own short pipeline (ST stages) and W a deep one (STB stages); the producer
++// thread issues W stage g and X stage g - (STB - ST) in turn, the consumers wait for one stage of each.
+ // Decode (M below one row tile): the X stage loads are issued with a TMA box of exactly M rows. A box that
+ // crosses the tensor's last row costs about 3 ns per out-of-bounds row on H100 (measured: a 64 x 16 tile over
+ // K = 6144 took 35 us at M = 1 against 16 us at M = 64), which made every tile here slower as M shrank. The
+@@ -42,32 +48,49 @@
+ namespace pi_gemm90 {
+ 
+ // SEG: S > 1 kernels keep the segment totals in a second register fragment (BN <= 128). BK: K columns per stage.
+-template <int BM, int BN, int ST, bool SEG, typename OutT, int BK = 64>
++template <int BM, int BN, int ST, bool SEG, typename OutT, int BK = 64, int STB = 0>
+ struct Sm90Gemm {
+-  static_assert(BM == 64 || BM == 128, "one or two consumer warp groups");
++  static_assert(BM == 64 || BM == 128 || BM == 192, "one to three consumer warp groups");
++  static_assert(STB == 0 || (STB >= ST && ST >= 2 && !SEG), "the W pipeline leads the X pipeline");
++  static constexpr bool kSplit = STB > 0;
+   static_assert(BK % 64 == 0, "whole 64-column (128-byte swizzled) K slabs");
+   static constexpr int kBK = BK;
+   using TileShape = cute::Shape<cute::Int<BM>, cute::Int<BN>, cute::Int<kBK>>;
+   using ClusterShape = cute::Shape<cute::_1, cute::_1, cute::_1>;
+-  using Schedule = std::conditional_t<BM == 128, cutlass::gemm::KernelTmaWarpSpecializedCooperative,
+-                                      cutlass::gemm::KernelTmaWarpSpecialized>;
+-  using Mainloop = typename cutlass::gemm::collective::CollectiveBuilder<
++  using Schedule = std::conditional_t<BM == 64, cutlass::gemm::KernelTmaWarpSpecialized,
++                                      cutlass::gemm::KernelTmaWarpSpecializedCooperative>;
++  template <int Stages>
++  using Collective = typename cutlass::gemm::collective::CollectiveBuilder<
+       cutlass::arch::Sm90, cutlass::arch::OpClassTensorOp,
+       cutlass::bfloat16_t, cutlass::layout::RowMajor, 8,     // A = X [M, K], K contiguous
+       cutlass::bfloat16_t, cutlass::layout::ColumnMajor, 8,  // B = W^T [K, N] column-major = W [N, K] row-major
+-      float, TileShape, ClusterShape, cutlass::gemm::collective::StageCount<ST>, Schedule>::CollectiveOp;
+-  using TiledMma = typename Mainloop::TiledMma;
++      float, TileShape, ClusterShape, cutlass::gemm::collective::StageCount<Stages>, Schedule>::CollectiveOp;
++  using Mainloop = Collective<ST>;                  // the X side; both sides of a kernel with one pipeline
++  using MainloopB = Collective<kSplit ? STB : ST>;  // the W side of a split kernel
++  // BM / 64 warp groups of the collective's wgmma atom (the builder itself tiles one or two).
++  using TiledMma = decltype(cute::make_tiled_mma(typename Mainloop::TiledMma::Atom{},
++                                                 cute::Layout<cute::Shape<cute::Int<BM / 64>, cute::_1, cute::_1>>{}));
+   using Pipeline = typename Mainloop::MainloopPipeline;
+   using PipelineState = typename Mainloop::PipelineState;
++  using PipelineB = typename MainloopB::MainloopPipeline;
++  using PipelineStateB = typename MainloopB::PipelineState;
++  struct SplitStorage {
++    alignas(128) cutlass::bfloat16_t a[cute::cosize_v<typename Mainloop::SmemLayoutA>];
++    alignas(128) cutlass::bfloat16_t b[cute::cosize_v<typename MainloopB::SmemLayoutB>];
++    typename Pipeline::SharedStorage pipeline_a;
++    typename PipelineB::SharedStorage pipeline_b;
++  };
+   struct SharedStorage {
+-    typename Mainloop::SharedStorage main;
++    std::conditional_t<kSplit, SplitStorage, typename Mainloop::SharedStorage> main;
+     alignas(128) OutT epi[BM * BN];  // the output tile, row-major
+   };
++  struct None {};
+   static constexpr int kWG = BM / 64;
+   static constexpr int kThreads = 128 * (1 + kWG);
+ 
+   struct Params {
+     typename Mainloop::Params mainloop;
++    std::conditional_t<kSplit, typename MainloopB::Params, None> mainloop_b;  // split: its W descriptor is the one used
+     int M, N, K, segs, swz;
+     cute::TmaDescriptor tma_y;  // [M][N] of OutT, box BM x BN, no swizzle
+   };
+@@ -92,24 +115,56 @@ struct Sm90Gemm {
+     }
+   }
+ 
++  // Shared-memory views of the two layouts (one pipeline: the collective's own storage).
++  static __device__ __forceinline__ auto& pipeline_storage(SharedStorage& ss) {
++    if constexpr (kSplit) return ss.main.pipeline_a;
++    else return ss.main.pipeline;
++  }
++  static __device__ __forceinline__ auto make_pipeline_b(SharedStorage& ss, typename PipelineB::Params const& ppb) {
++    if constexpr (kSplit) return PipelineB(ss.main.pipeline_b, ppb, ClusterShape{});
++    else return None{};
++  }
++  static __device__ __forceinline__ cutlass::bfloat16_t* smem_a(SharedStorage& ss) {
++    if constexpr (kSplit) return ss.main.a;
++    else return ss.main.tensors.smem_A.data();
++  }
++  static __device__ __forceinline__ cutlass::bfloat16_t* smem_b(SharedStorage& ss) {
++    if constexpr (kSplit) return ss.main.b;
++    else return ss.main.tensors.smem_B.data();
++  }
++
+   static __device__ __forceinline__ void device(Params const& params, char* smem_buf) {
+     using namespace cute;
+     SharedStorage& ss = *reinterpret_cast<SharedStorage*>(smem_buf);
+     const int thread_idx = threadIdx.x, lane_idx = thread_idx % 32;
+     const int warp_idx = cutlass::canonical_warp_idx_sync();
+     const bool producer = cutlass::canonical_warp_group_idx() == 0;
+-    if (warp_idx == 0 && cute::elect_one_sync()) Mainloop::prefetch_tma_descriptors(params.mainloop);
++    if (warp_idx == 0 && cute::elect_one_sync()) {
++      Mainloop::prefetch_tma_descriptors(params.mainloop);
++      if constexpr (kSplit) MainloopB::prefetch_tma_descriptors(params.mainloop_b);
++    }
+ 
++    const int M = params.M, N = params.N, K = params.K;
+     typename Pipeline::Params pp;
+     if (producer && warp_idx == 0) pp.role = Pipeline::ThreadCategory::Producer;
+     if (!producer) pp.role = Pipeline::ThreadCategory::Consumer;
+     pp.is_leader = (thread_idx % 128) == 0;
+     pp.num_consumers = kWG * 128;
+-    pp.transaction_bytes = params.mainloop.tma_transaction_bytes;
+-    Pipeline pipeline(ss.main.pipeline, pp, ClusterShape{});
++    typename PipelineB::Params ppb;
++    if constexpr (kSplit) {  // bytes per stage: the X box (M rows when M < BM, see run) and the W box
++      pp.transaction_bytes = (uint32_t)((M < BM ? M : BM) * kBK * 2);
++      if (producer && warp_idx == 0) ppb.role = PipelineB::ThreadCategory::Producer;
++      if (!producer) ppb.role = PipelineB::ThreadCategory::Consumer;
++      ppb.is_leader = pp.is_leader;
++      ppb.num_consumers = pp.num_consumers;
++      ppb.transaction_bytes = (uint32_t)(BN * kBK * 2);
++    } else {
++      pp.transaction_bytes = params.mainloop.tma_transaction_bytes;
++    }
++    Pipeline pipeline(pipeline_storage(ss), pp, ClusterShape{});
++    auto pipeline_b = make_pipeline_b(ss, ppb);
+     __syncthreads();
+ 
+-    const int M = params.M, N = params.N, K = params.K;
+     Mainloop mainloop;
+     auto load_inputs = mainloop.load_init(make_shape(M, N, K, 1), params.mainloop);
+     Tensor gA_mkl = get<0>(load_inputs);
+@@ -117,9 +172,52 @@ struct Sm90Gemm {
+     const int tiles = tiles_m * tiles_n;
+     auto k_tile_iter = cute::make_coord_iterator(shape<3>(gA_mkl));
+     const int k_tile_count = K / kBK;
++    Tensor sA = make_tensor(make_smem_ptr(smem_a(ss)), typename Mainloop::SmemLayoutA{});
++    Tensor sB = make_tensor(make_smem_ptr(smem_b(ss)), typename MainloopB::SmemLayoutB{});
+ 
+     if (producer) {
+-      if (warp_idx == 0) {  // one stream of K tiles in ascending order per output tile, segments included
++      if constexpr (kSplit) {
++        // One thread feeds both pipelines. Stage g of this CTA's stream (its tiles in walk order, each K stages
++        // long) is issued for W at step g and for X at step g + lead: both acquires then wait for the consumers
++        // to release stage g - STB, which they can (its successor's X and W are already issued), so neither
++        // pipeline starves the other.
++        if (warp_idx == 0 && cute::elect_one_sync()) {
++          MainloopB mainloop_b;
++          Tensor gB_nkl = get<1>(mainloop_b.load_init(make_shape(M, N, K, 1), params.mainloop_b));
++          auto tma_a = params.mainloop.tma_load_a.get_slice(0);
++          auto tma_b = params.mainloop_b.tma_load_b.get_slice(0);
++          Tensor tAsA = tma_a.partition_D(sA);
++          Tensor tBsB = tma_b.partition_D(sB);
++          PipelineState write_a = cutlass::make_producer_start_state<Pipeline>();
++          PipelineStateB write_b = cutlass::make_producer_start_state<PipelineB>();
++          const int lead = STB - ST;
++          int ta = blockIdx.x, ka = 0, tb = blockIdx.x, kb = 0;  // next X and W stage: (tile of the walk, K stage)
++          for (int step = 0; ta < tiles; ++step) {
++            if (tb < tiles) {
++              int mt, nt;
++              tile_of(tb, tiles_m, tiles_n, swz, mt, nt);
++              Tensor tBgB = tma_b.partition_S(gB_nkl(_, _, nt, _, 0));
++              pipeline_b.producer_acquire(write_b);
++              copy(params.mainloop_b.tma_load_b.with(*pipeline_b.producer_get_barrier(write_b), 0), tBgB(_, _, _, kb),
++                   tBsB(_, _, _, write_b.index()));
++              ++write_b;
++              if (++kb == k_tile_count) kb = 0, tb += gridDim.x;
++            }
++            if (step >= lead) {
++              int mt, nt;
++              tile_of(ta, tiles_m, tiles_n, swz, mt, nt);
++              Tensor tAgA = tma_a.partition_S(gA_mkl(_, _, mt, _, 0));
++              pipeline.producer_acquire(write_a);
++              copy(params.mainloop.tma_load_a.with(*pipeline.producer_get_barrier(write_a), 0), tAgA(_, _, _, ka),
++                   tAsA(_, _, _, write_a.index()));
++              ++write_a;
++              if (++ka == k_tile_count) ka = 0, ta += gridDim.x;
++            }
++          }
++          pipeline.producer_tail(write_a);
++          pipeline_b.producer_tail(write_b);
++        }
++      } else if (warp_idx == 0) {  // one stream of K tiles in ascending order per output tile, segments included
+         PipelineState write_state = cutlass::make_producer_start_state<Pipeline>();
+         for (int t = blockIdx.x; t < tiles; t += gridDim.x) {
+           int mt, nt;
+@@ -138,8 +236,6 @@ struct Sm90Gemm {
+     const int mma_thread = thread_idx - 128;
+     TiledMma tiled_mma;  // accumulate_ == ScaleOut::One: every step is D = D + A * B
+     Tensor accum = partition_fragment_C(tiled_mma, take<0, 2>(TileShape{}));
+-    Tensor sA = make_tensor(make_smem_ptr(ss.main.tensors.smem_A.data()), typename Mainloop::SmemLayoutA{});
+-    Tensor sB = make_tensor(make_smem_ptr(ss.main.tensors.smem_B.data()), typename Mainloop::SmemLayoutB{});
+     Layout wg_layout = make_layout(Int<kWG>{}, Int<128>{});
+     const int wg = __shfl_sync(0xFFFFFFFF, mma_thread / 128, 0);
+     auto wg_mma = tiled_mma.get_slice(wg_layout(wg));
+@@ -154,6 +250,7 @@ struct Sm90Gemm {
+     auto thr_mma = tiled_mma.get_thread_slice(mma_thread);
+     Tensor tCcD = thr_mma.partition_C(make_identity_tensor(make_shape(Int<BM>{}, Int<BN>{})));  // tile-relative (m, n)
+     PipelineState read_state, release_state;
++    PipelineStateB read_b, release_b;  // split kernels: the W stage of the same K tile
+     bool stored = false;
+     for (int t = blockIdx.x; t < tiles; t += gridDim.x) {
+       int mt, nt;
+@@ -171,17 +268,28 @@ struct Sm90Gemm {
+           auto barrier_token = pipeline.consumer_try_wait(read_state);
+           pipeline.consumer_wait(read_state, barrier_token);
+           const int read_stage = read_state.index();
++          int read_stage_b = read_stage;
++          if constexpr (kSplit) {
++            auto token_b = pipeline_b.consumer_try_wait(read_b);
++            pipeline_b.consumer_wait(read_b, token_b);
++            read_stage_b = read_b.index();
++            ++read_b;
++          }
+           warpgroup_fence_operand(accum);
+           warpgroup_arrive();
+           CUTE_UNROLL
+           for (int k_block = 0; k_block < size<2>(tCrA); ++k_block)  // ascending k16 steps
+-            cute::gemm(tiled_mma, tCrA(_, _, k_block, read_stage), tCrB(_, _, k_block, read_stage), accum);
++            cute::gemm(tiled_mma, tCrA(_, _, k_block, read_stage), tCrB(_, _, k_block, read_stage_b), accum);
+           warpgroup_commit_batch();
+-          if (pending) {  // the previous stage's steps are done: free its buffer
++          if (pending) {  // the previous stage's steps are done: free its buffers
+             warpgroup_wait<1>();
+             warpgroup_fence_operand(accum);
+             pipeline.consumer_release(release_state);
+             ++release_state;
++            if constexpr (kSplit) {
++              pipeline_b.consumer_release(release_b);
++              ++release_b;
++            }
+           }
+           pending = true;
+           ++read_state;
+@@ -190,6 +298,10 @@ struct Sm90Gemm {
+         warpgroup_fence_operand(accum);
+         pipeline.consumer_release(release_state);
+         ++release_state;
++        if constexpr (kSplit) {
++          pipeline_b.consumer_release(release_b);
++          ++release_b;
++        }
+         if constexpr (SEG) {
+           CUTE_UNROLL
+           for (int i = 0; i < size(accum); ++i) total[i] = __fadd_rn(total[i], accum(i));
+@@ -218,6 +330,16 @@ struct Sm90Gemm {
+     if (mma_thread == 0 && stored) cute::tma_store_wait<0>();
+   }
+ 
++  static auto params_b(const void* x, int64_t ldx, const void* w, int M, int N, int K) {
++    if constexpr (kSplit) {
++      using EA = cutlass::bfloat16_t;
++      typename MainloopB::Arguments margs{(const EA*)x, cute::make_stride(int64_t(ldx), cute::Int<1>{}, int64_t(0)),
++                                          (const EA*)w, cute::make_stride(int64_t(K), cute::Int<1>{}, int64_t(0))};
++      return MainloopB::to_underlying_arguments(cute::make_shape(M, N, K, 1), margs, nullptr);
++    } else {
++      return None{};
++    }
++  }
+   template <typename SetSmem>
+   static cudaError_t run(const void* x, int64_t ldx, const void* w, OutT* y, int64_t ldy, int M, int N, int K,
+                          int segs, int sms, SetSmem&& set_smem, cudaStream_t stream);
+@@ -232,19 +354,20 @@ __global__ void __launch_bounds__(G::kThreads) sm90_gemm_kernel(CUTLASS_GRID_CON
+ }
+ 
+ // set_smem(kernel, bytes): the caller's once-per-device cudaFuncSetAttribute (gemm_dispatch.cuh).
+-template <int BM, int BN, int ST, bool SEG, typename OutT, int BK>
++template <int BM, int BN, int ST, bool SEG, typename OutT, int BK, int STB>
+ template <typename SetSmem>
+-cudaError_t Sm90Gemm<BM, BN, ST, SEG, OutT, BK>::run(const void* x, int64_t ldx, const void* w, OutT* y, int64_t ldy,
++cudaError_t Sm90Gemm<BM, BN, ST, SEG, OutT, BK, STB>::run(const void* x, int64_t ldx, const void* w, OutT* y, int64_t ldy,
+                                                  int M, int N, int K, int segs, int sms, SetSmem&& set_smem,
+                                                  cudaStream_t stream) {
+-  using Self = Sm90Gemm<BM, BN, ST, SEG, OutT, BK>;
++  using Self = Sm90Gemm<BM, BN, ST, SEG, OutT, BK, STB>;
+   if (segs < 1 || K % (kBK * segs) || (!SEG && segs != 1) || (SEG && segs < 2) || N % 8 || ldy % 8 || ldx % 8 ||
+       ((uintptr_t)x & 15) || ((uintptr_t)w & 15) || ((uintptr_t)y & 15) || sms < 1)
+     return cudaErrorInvalidValue;
+   using EA = cutlass::bfloat16_t;
+   typename Mainloop::Arguments margs{(const EA*)x, cute::make_stride(int64_t(ldx), cute::Int<1>{}, int64_t(0)),
+                                      (const EA*)w, cute::make_stride(int64_t(K), cute::Int<1>{}, int64_t(0))};
+-  Params params{Mainloop::to_underlying_arguments(cute::make_shape(M, N, K, 1), margs, nullptr), M, N, K, segs, 1, {}};
++  Params params{Mainloop::to_underlying_arguments(cute::make_shape(M, N, K, 1), margs, nullptr),
++                params_b(x, ldx, w, M, N, K), M, N, K, segs, 1, {}};
+   const int smem = (int)sizeof(SharedStorage);
+   const int tiles_m = (M + BM - 1) / BM, tiles_n = (N + BN - 1) / BN;
+   if (M < BM) {
+@@ -283,9 +406,10 @@ cudaError_t Sm90Gemm<BM, BN, ST, SEG, OutT, BK>::run(const void* x, int64_t ldx,
+ // Ids 90..94: S = 1 tiles 128x256, 128x128, 64x128, 64x256, 64x64; 95..97: S > 1 tiles 128x128, 64x128, 64x64;
+ // 98..102: S = 1 decode tiles 64x32, 64x16 with 64-column stages and 64x64, 64x32, 64x16 with 128-column stages.
+ // Stage counts leave room for the epilogue tile (2 bytes per element for bf16 output, 4 for fp32).
+-constexpr int kSm90First = 90, kSm90Last = 102;
++// EXPERIMENT (run D): 103..: candidates.
++constexpr int kSm90First = 90, kSm90Last = 140;
+ inline bool is_sm90_kernel(int k) { return k >= kSm90First && k <= kSm90Last; }
+-inline int sm90_kernel_bk(int k) { return k >= 100 ? 128 : 64; }
++inline int sm90_kernel_bk(int k) { return (k >= 100 && k <= 102) || (k >= 120 && k <= 122) ? 128 : 64; }
+ template <typename OutT, typename SetSmem>
+ cudaError_t run_gemm_sm90(int k, const void* x, int64_t ldx, const void* w, OutT* y, int64_t ldy, int M, int N, int K,
+                           int segs, int sms, SetSmem&& ss, cudaStream_t st) {
+@@ -304,6 +428,29 @@ cudaError_t run_gemm_sm90(int k, const void* x, int64_t ldx, const void* w, OutT
+     case 100: return Sm90Gemm<64, 64, 3, false, OutT, 128>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
+     case 101: return Sm90Gemm<64, 32, 4, false, OutT, 128>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
+     case 102: return Sm90Gemm<64, 16, 4, false, OutT, 128>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
++    case 107: return Sm90Gemm<128, 192, 4, false, OutT>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
++    case 111: return Sm90Gemm<192, 96, 4, false, OutT>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
++    case 112: return Sm90Gemm<192, 192, 3, false, OutT>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
++    case 113: return Sm90Gemm<192, 128, 4, false, OutT>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
++    case 120: return Sm90Gemm<64, 16, 8, false, OutT, 128>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
++    case 121: return Sm90Gemm<64, 32, 8, false, OutT, 128>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
++    case 122: return Sm90Gemm<64, 64, 6, false, OutT, 128>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
++    case 124: return Sm90Gemm<128, 32, 8, false, OutT>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
++    case 125: return Sm90Gemm<128, 64, 8, false, OutT>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
++    case 126: return Sm90Gemm<128, 96, 6, false, OutT>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
++    case 128: return Sm90Gemm<192, 32, 7, false, OutT>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
++    case 129: return Sm90Gemm<64, 16, 4, false, OutT, 64, 24>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
++    case 130: return Sm90Gemm<64, 16, 4, false, OutT, 64, 48>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
++    case 131: return Sm90Gemm<64, 32, 4, false, OutT, 64, 24>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
++    case 132: return Sm90Gemm<128, 16, 4, false, OutT, 64, 24>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
++    case 133: return Sm90Gemm<128, 32, 4, false, OutT, 64, 24>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
++    case 134: return Sm90Gemm<192, 16, 3, false, OutT, 64, 24>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
++    case 135: return Sm90Gemm<128, 64, 4, false, OutT, 64, 16>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
++    case 136: return Sm90Gemm<192, 32, 3, false, OutT, 64, 16>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
++    case 137: return Sm90Gemm<64, 64, 4, false, OutT, 64, 16>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
++    case 138: return Sm90Gemm<64, 96, 4, false, OutT, 64, 12>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
++    case 139: return Sm90Gemm<192, 64, 3, false, OutT, 64, 12>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
++    case 140: return Sm90Gemm<128, 128, 3, false, OutT, 64, 8>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
+     default: return cudaErrorInvalidValue;
+   }
+ }
