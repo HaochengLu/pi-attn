@@ -1,0 +1,55 @@
+[run_gpu] workstream int: $0.00 of $9.00
+[run_gpu] start H100 int:engine_H100: ledger $25.14, gateway $24.16, budget $40.00
+patch applied
+apt exit=0
+model sha256 OK
+cargo build exit=0 (489s)
+C7511 lines in build: 0
+NVIDIA H100 80GB HBM3, 610.57.04
+64 rollouts: 64 with identical token ids; 14442/14442 log-probabilities bitwise equal
+ROLLOUTS IDENTICAL TO REFERENCE: True
+xgpu_rollout exit=0 (525s)
+detcheck exit=0 (779s)
+batch  [{"concurrency": 4, "requests": 16, "mismatched": 0, "first_divergence_tokens": []}, {"concurrency": 16, "requests": 16, "mismatched": 0, "first_divergence_tokens": []}]
+prefix {"full_hit": 0, "partial_hit": 0, "requests": 8}
+shared {"requests": 32, "prefix_tokens": 2616, "mismatched": 0, "first_divergence_tokens": []}
+path   {"requests": 24, "mismatched": 0, "first_divergence_tokens": []}
+spath  {"requests": 24, "mismatched": 0, "first_divergence_tokens": []}
+repeat {"samples": 200, "unique_completions": 1}
+sample {"rows": [{"concurrency": 4, "requests": 16, "mismatched": 0, "first_divergence_tokens": []}, {"concurrency": 16, "requests": 16, "mismatched": 0, "first_divergence_tokens": []}], "distinct_reference_samples": 16}
+DETERMINISTIC
+PI GEMM tile choice n=2048 k=2048 choice="1:103 2:103 4:103 8:103 16:103 32:103 64:103 128:104 192:105 256:105 320:100 384:109 448:107 512:106 640:107 768:107 896:91 1024:91 1280:108 1536:108 1792:90 2048:91 2304:110"
+PI GEMM tile choice n=2048 k=6144 choice="1:103 2:103 4:103 8:103 16:103 32:103 64:103 128:104 192:105 256:106 320:107 384:106 448:107 512:106 640:107 768:91 896:91 1024:91 1280:108 1536:112 1792:90 2048:90 2304:111"
+PI GEMM tile choice n=4096 k=2048 choice="1:104 2:104 4:104 8:104 16:104 32:104 64:104 128:105 192:109 256:106 320:93 384:107 448:93 512:91 640:108 768:112 896:90 1024:90 1280:108 1536:108 1792:90 2048:90 2304:108"
+PI GEMM tile choice n=12288 k=2048 choice="1:104 2:104 4:104 8:104 16:104 32:104 64:104 128:107 192:110 256:108 320:111 384:111 448:108 512:108 640:90 768:108 896:108 1024:90 1280:108 1536:112 1792:108 2048:90 2304:111"
+PI GEMM tile choice n=151936 k=2048 choice="1:105 2:105 4:105 8:105 16:105 32:105 64:105 128:106 192:112 256:108 320:111 384:91 448:90 512:108 640:108 768:111 896:108 1024:90 1280:90 1536:111 1792:90 2048:111 2304:111"
+flashinfer cfg B round 1: up after 10s, loadgen exit=0/0 (934s)
+deterministic cfg B round 1: up after 28s, loadgen exit=0/0 (1104s)
+flashinfer cfg A round 1: up after 8s, loadgen exit=0/0 (1161s)
+deterministic cfg A round 1: up after 26s, loadgen exit=0/0 (1239s)
+flashinfer cfg B round 2: up after 8s, loadgen exit=0/0 (1390s)
+deterministic cfg B round 2: up after 27s, loadgen exit=0/0 (1558s)
+flashinfer cfg A round 2: up after 8s, loadgen exit=0/0 (1615s)
+deterministic cfg A round 2: up after 26s, loadgen exit=0/0 (1693s)
+ENG T3 64/32/c1: out tok/s FI 432 PI 449 (+3.8%) | TTFT ms FI 4.7 PI 4.9 (+3.8%) | tpot ms FI 2.231 PI 2.140 | all tok/s FI [430.7, 429.8, 434.0, 434.9] PI [447.4, 449.1, 448.3, 449.2] | TTFT per server FI [5.1, 4.4] PI [5.0, 4.9]
+ENG T3 64/32/c8: out tok/s FI 2791 PI 2904 (+4.0%) | TTFT ms FI 14.3 PI 13.8 (-3.5%) | tpot ms FI 2.495 PI 2.384 | all tok/s FI [2770.2, 2812.7, 2637.3, 2834.4] PI [2884.0, 2775.2, 2923.7, 2950.8] | TTFT per server FI [13.0, 15.6] PI [15.0, 12.6]
+ENG T3 64/32/c32: out tok/s FI 7713 PI 8117 (+5.2%) | TTFT ms FI 23.2 PI 24.1 (+3.9%) | tpot ms FI 2.977 PI 2.798 | all tok/s FI [7506.6, 7544.0, 7882.1, 7921.8] PI [7809.4, 8246.4, 8190.5, 8042.6] | TTFT per server FI [23.4, 23.1] PI [25.8, 22.4]
+ENG T3 512/256/c8: out tok/s FI 2952 PI 2786 (-5.6%) | TTFT ms FI 31.1 PI 29.8 (-4.2%) | tpot ms FI 2.592 PI 2.763 | all tok/s FI [2946.6, 2935.2, 2958.4, 2976.1] PI [2772.1, 2787.0, 2795.5, 2784.6] | TTFT per server FI [31.7, 30.6] PI [30.0, 29.7]
+ENG T3 2048/128/c8: out tok/s FI 1963 PI 1947 (-0.8%) | TTFT ms FI 65.4 PI 69.7 (+6.5%) | tpot ms FI 3.585 PI 3.581 | all tok/s FI [1959.6, 1948.7, 1966.7, 1965.5] PI [1943.9, 1940.3, 1950.3, 1951.9] | TTFT per server FI [66.3, 64.5] PI [70.1, 69.2]
+ENG T3 1024/512/c32: out tok/s FI 6905 PI 6870 (-0.5%) | TTFT ms FI 109.0 PI 116.6 (+7.0%) | tpot ms FI 4.381 PI 4.391 | all tok/s FI [6900.7, 6910.0, 6900.3, 6911.2] PI [6857.8, 6861.7, 6878.9, 6883.3] | TTFT per server FI [109.2, 108.9] PI [116.4, 116.9]
+ENG T4 64/256/c1: out tok/s FI 434 PI 453 (+4.6%) | TTFT ms FI 5.2 PI 5.3 (+1.6%) | tpot ms FI 2.295 PI 2.192 | all tok/s FI [433.3, 432.8, 433.1, 433.9, 434.0, 434.2] PI [452.8, 452.4, 452.9, 454.0, 454.5, 454.4] | TTFT per server FI [5.5, 4.8] PI [5.4, 5.1]
+ENG T4 512/256/c8: out tok/s FI 2958 PI 2793 (-5.6%) | TTFT ms FI 29.4 PI 30.5 (+3.7%) | tpot ms FI 2.593 PI 2.747 | all tok/s FI [2966.3, 2948.7, 2912.4, 2968.2, 2979.0, 2948.7] PI [2793.9, 2793.1, 2775.3, 2792.7, 2806.0, 2780.3] | TTFT per server FI [29.6, 29.1] PI [31.4, 29.5]
+ENG T4 512/256/c32: out tok/s FI 8293 PI 8425 (+1.6%) | TTFT ms FI 72.7 PI 75.7 (+4.1%) | tpot ms FI 3.521 PI 3.440 | all tok/s FI [8276.0, 8257.5, 8281.0, 8304.9, 8310.0, 8318.3] PI [8411.1, 8410.8, 8417.7, 8468.4, 8483.3, 8432.2] | TTFT per server FI [73.3, 72.0] PI [79.8, 71.5]
+ENG T4 2048/256/c16: out tok/s FI 3297 PI 3313 (+0.5%) | TTFT ms FI 107.8 PI 114.4 (+6.1%) | tpot ms FI 4.382 PI 4.327 | all tok/s FI [3293.9, 3293.3, 3293.1, 3304.3, 3308.4, 3300.3] PI [3299.4, 3302.9, 3306.6, 3336.7, 3318.5, 3332.2] | TTFT per server FI [107.7, 107.9] PI [116.4, 112.4]
+ENG T4 4096/128/c4: out tok/s FI 953 PI 944 (-1.0%) | TTFT ms FI 77.0 PI 81.7 (+6.0%) | tpot ms FI 3.616 PI 3.621 | all tok/s FI [946.5, 949.9, 952.9, 952.8, 953.4, 956.1] PI [944.0, 943.5, 941.3, 944.9, 943.9, 942.6] | TTFT per server FI [77.9, 76.2] PI [81.7, 81.6]
+ENG HC 512/256/c64: out tok/s FI 12521 PI 12569 (+0.4%) | TTFT ms FI 89.3 PI 93.3 (+4.5%) | tpot ms FI 4.633 PI 4.590 | all tok/s FI [12439.4, 12520.0, 12522.0, 12578.0] PI [12497.7, 12564.9, 12629.7, 12573.1] | TTFT per server FI [95.0, 83.5] PI [99.3, 87.3]
+ENG HC 512/256/c128: out tok/s FI 15553 PI 14717 (-5.4%) | TTFT ms FI 156.1 PI 176.5 (+13.1%) | tpot ms FI 7.290 PI 7.668 | all tok/s FI [15758.1, 15264.0, 15763.8, 15347.4] PI [14912.2, 14416.7, 15000.5, 14522.4] | TTFT per server FI [153.0, 159.2] PI [182.2, 170.9]
+ENG HC 512/256/c256: out tok/s FI 17357 PI 15642 (-9.9%) | TTFT ms FI 384.3 PI 398.2 (+3.6%) | tpot ms FI 12.437 PI 13.968 | all tok/s FI [17301.9, 17412.0, 17300.2, 17418.9] PI [15631.3, 15669.8, 15653.2, 15601.3] | TTFT per server FI [394.2, 374.3] PI [391.1, 405.4]
+ENG HC 2048/128/c64: out tok/s FI 3599 PI 3414 (-5.1%) | TTFT ms FI 379.2 PI 409.4 (+8.0%) | tpot ms FI 14.100 PI 14.825 | all tok/s FI [3610.6, 3584.0, 3610.4, 3587.9] PI [3430.7, 3398.5, 3414.0, 3413.6] | TTFT per server FI [378.1, 380.3] PI [408.5, 410.2]
+deterministic.A.1.server.log: error|panic lines 0
+deterministic.A.2.server.log: error|panic lines 0
+deterministic.B.1.server.log: error|panic lines 0
+deterministic.B.2.server.log: error|panic lines 0
+total 1703s
+
+[run_gpu] H100 int:engine_H100: exit=0 wall=1735s cost~$2.871 ledger=$30.15

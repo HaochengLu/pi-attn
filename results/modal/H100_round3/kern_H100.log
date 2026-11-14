@@ -1,0 +1,137 @@
+[run_gpu] workstream int: $0.00 of $9.00
+[run_gpu] start H100 int:kern_H100: ledger $25.14, gateway $24.16, budget $40.00
+NVIDIA H100 80GB HBM3, 610.57.04
+patch applied (HEAD 61ff596 + merged.diff)
+torch 2.13.0+cu126 flashinfer 0.6.18 cc (9, 0)
+attn ext WGMMA True VARIANTS [1, 2, 3, 4, 5, 6, 7] DECODE_VARIANTS [1, 2]
+attn ext build exit=0 (84s)
+test_invariance exit=0 (149s)
+L=517 hq=16 hkv=8: PI err mean 5.772e-04 max 8.920e-03 | FlashInfer err mean 5.904e-04 max 8.674e-03 | bf16(exact) err mean 5.142e-04
+L=2049 hq=16 hkv=8: PI err mean 4.427e-04 max 8.383e-03 | FlashInfer err mean 4.617e-04 max 9.142e-03 | bf16(exact) err mean 4.002e-04
+checks failed: 0 []
+test_directed exit=0 (153s)
+page 1: fails=0 [] nan_or_negzero=False
+hq=16 hkv=1 (group 16): fails=0 [] nan_or_negzero=False
+group 32 rejected: GQA group size must be <= 16 (one 16-row MMA group per kv head)
+DIRECTED FAILURES: 0
+xgpu_hashes exit=0 (521s)
+device NVIDIA H100 80GB HBM3 vs reference NVIDIA H100 80GB HBM3 /pi/results/modal/H100_sm90/hashes_H100.json
+HASHES gemm: PI identical 108/108; PI and vendor both identical 108/108; cases in new 108
+HASHES attention: PI identical 5/5; PI and vendor both identical 5/5; cases in new 5
+=== HASHES_JSON_BEGIN
+=== HASHES_JSON_END
+test_matrix exit=0 (612s)
+long ctx 32768/20001: failures 0 []
+TOTAL FAILURES: 0
+test_gemm exit=0 (641s)
+INVARIANCE FAILURES: 0 []
+3.5-4B lm_head N=248320 K= 2560: max|err| pi(fp32 out) 1.95e-05 pi(bf16) 1.56e-02 cublas(bf16) 1.56e-02
+INVARIANCE FAILURES: 0 []
+test_mutants exit=0 (946s)
+mutant merge_reversed: 42 failed checks, kinds ['split']
+mutant decode_fold_unfused: 105 failed checks, kinds ['path']
+mutant prefill_group_256: 12654 failed checks, kinds ['chunk+prefix', 'heads', 'path', 'split']
+mutant decode90_d_unfused: 7 failed checks, kinds ['path']
+cuBLAS M-invariance control: 8/27 projections vary with M
+wrong segment count control: S=1 result equals the S=2 fold: False
+UNCAUGHT MUTANTS: 0 []
+HASHX launches per wgmma id: {90: 96, 91: 96, 92: 96, 93: 96, 94: 96, 95: 12, 96: 12, 97: 12, 98: 96, 99: 96, 100: 96, 101: 96, 102: 96, 103: 96, 104: 96, 105: 96, 106: 96, 107: 96, 108: 96, 109: 96, 110: 96, 111: 96, 112: 96}
+HASHX 1956 wgmma launches over 108 cases; hashes differing from hashes_H100.json: 0 []
+TABLE M=    1 us/launch: qkv cublas 8.5 before k99:9.2 (1.07) after k104:8.5 (1.00) | o cublas 6.3 before k51:7.3 (1.16) after k103:6.2 (0.99) | gate_up cublas 19.5 before k100:20.1 (1.03) after k104:19.4 (1.00) | down cublas 12.7 before k51:14.7 (1.15) after k103:12.5 (0.98)
+TABLE M=    1 x28 layers: cuBLAS 1316 us, before 1434 (1.089x), after 1307 (0.993x)
+TABLE M=    8 us/launch: qkv cublas 8.4 before k99:9.1 (1.09) after k104:8.5 (1.02) | o cublas 6.3 before k99:7.2 (1.16) after k103:6.2 (0.99) | gate_up cublas 19.9 before k100:20.4 (1.02) after k104:19.8 (1.00) | down cublas 12.8 before k99:16.0 (1.25) after k103:12.5 (0.98)
+TABLE M=    8 x28 layers: cuBLAS 1326 us, before 1477 (1.114x), after 1318 (0.994x)
+TABLE M=   16 us/launch: qkv cublas 8.5 before k99:9.2 (1.08) after k104:8.5 (1.01) | o cublas 6.3 before k99:7.2 (1.15) after k103:6.2 (0.99) | gate_up cublas 19.9 before k100:20.5 (1.03) after k104:20.0 (1.01) | down cublas 12.8 before k99:16.1 (1.25) after k103:12.6 (0.98)
+TABLE M=   16 x28 layers: cuBLAS 1331 us, before 1485 (1.116x), after 1326 (0.997x)
+TABLE M=   32 us/launch: qkv cublas 8.6 before k99:9.1 (1.07) after k104:8.6 (1.00) | o cublas 6.3 before k99:7.2 (1.14) after k103:6.2 (0.98) | gate_up cublas 21.4 before k100:20.7 (0.97) after k104:20.3 (0.95) | down cublas 13.1 before k99:16.1 (1.22) after k103:12.6 (0.96)
+TABLE M=   32 x28 layers: cuBLAS 1384 us, before 1489 (1.077x), after 1336 (0.966x)
+TABLE M=   64 us/launch: qkv cublas 8.6 before k99:9.3 (1.09) after k104:8.6 (1.01) | o cublas 6.4 before k99:7.3 (1.15) after k103:6.3 (0.98) | gate_up cublas 20.7 before k100:21.2 (1.03) after k104:20.7 (1.00) | down cublas 14.9 before k99:16.4 (1.10) after k103:12.8 (0.86)
+TABLE M=   64 x28 layers: cuBLAS 1414 us, before 1518 (1.073x), after 1355 (0.958x)
+TABLE M=  128 us/launch: qkv cublas 8.7 before k101:10.7 (1.23) after k105:9.5 (1.09) | o cublas 6.5 before k101:8.1 (1.24) after k104:6.8 (1.04) | gate_up cublas 21.9 before k91:23.8 (1.09) after k107:22.7 (1.04) | down cublas 14.2 before k101:19.2 (1.35) after k104:15.0 (1.05)
+TABLE M=  128 x28 layers: cuBLAS 1439 us, before 1729 (1.201x), after 1513 (1.051x)
+TABLE M=  192 us/launch: qkv cublas 9.3 before k94:13.9 (1.49) after k109:11.0 (1.18) | o cublas 8.1 before k98:9.1 (1.14) after k105:7.6 (0.94) | gate_up cublas 23.1 before k90:31.5 (1.36) after k110:25.6 (1.11) | down cublas 14.6 before k101:23.0 (1.58) after k105:18.3 (1.26)
+TABLE M=  192 x28 layers: cuBLAS 1542 us, before 2170 (1.407x), after 1750 (1.135x)
+TABLE M=  256 us/launch: qkv cublas 10.4 before k91:14.3 (1.37) after k106:11.7 (1.12) | o cublas 6.8 before k98:10.4 (1.52) after k105:8.7 (1.27) | gate_up cublas 24.4 before k90:32.2 (1.32) after k108:27.4 (1.12) | down cublas 17.5 before k70:26.8 (1.53) after k106:20.8 (1.19)
+TABLE M=  256 x28 layers: cuBLAS 1657 us, before 2343 (1.414x), after 1922 (1.160x)
+TABLE M=  512 us/launch: qkv cublas 13.5 before k91:16.4 (1.21) after k91:16.4 (1.21) | o cublas 10.3 before k91:14.3 (1.38) after k106:11.2 (1.09) | gate_up cublas 38.2 before k91:45.3 (1.19) after k108:43.4 (1.14) | down cublas 25.1 before k91:33.0 (1.31) after k106:28.7 (1.14)
+TABLE M=  512 x28 layers: cuBLAS 2441 us, before 3051 (1.250x), after 2792 (1.144x)
+TABLE M= 1024 us/launch: qkv cublas 24.5 before k90:27.2 (1.11) after k90:27.2 (1.11) | o cublas 13.4 before k91:15.2 (1.13) after k91:15.2 (1.13) | gate_up cublas 73.4 before k90:78.9 (1.07) after k90:78.9 (1.07) | down cublas 35.8 before k91:37.5 (1.05) after k91:37.5 (1.05)
+TABLE M= 1024 x28 layers: cuBLAS 4118 us, before 4445 (1.079x), after 4445 (1.079x)
+TABLE M= 2048 us/launch: qkv cublas 47.3 before k90:52.0 (1.10) after k90:52.0 (1.10) | o cublas 24.3 before k91:27.0 (1.11) after k91:27.0 (1.11) | gate_up cublas 140.1 before k90:152.1 (1.09) after k90:152.1 (1.09) | down cublas 66.5 before k90:69.6 (1.05) after k90:69.6 (1.05)
+TABLE M= 2048 x28 layers: cuBLAS 7788 us, before 8420 (1.081x), after 8420 (1.081x)
+TABLE M= 2304 us/launch: qkv cublas 53.3 before k91:63.0 (1.18) after k111:58.0 (1.09) | o cublas 28.9 before k91:38.1 (1.32) after k111:29.9 (1.04) | gate_up cublas 157.9 before k90:178.4 (1.13) after k90:178.4 (1.13) | down cublas 79.8 before k91:107.0 (1.34) after k111:80.6 (1.01)
+TABLE M= 2304 x28 layers: cuBLAS 8955 us, before 10821 (1.208x), after 9713 (1.085x)
+TABLE M= 4096 us/launch: qkv cublas 103.7 before k90:102.5 (0.99) after k90:102.5 (0.99) | o cublas 49.8 before k91:52.8 (1.06) after k91:52.8 (1.06) | gate_up cublas 280.3 before k90:295.5 (1.05) after k90:295.5 (1.05) | down cublas 137.7 before k90:139.4 (1.01) after k90:139.4 (1.01)
+TABLE M= 4096 x28 layers: cuBLAS 16001 us, before 16524 (1.033x), after 16524 (1.033x)
+TABLE M= 8192 us/launch: qkv cublas 192.2 before k90:208.0 (1.08) after k90:208.0 (1.08) | o cublas 101.6 before k90:99.8 (0.98) after k90:99.8 (0.98) | gate_up cublas 602.6 before k90:636.8 (1.06) after k111:588.5 (0.98) | down cublas 290.0 before k90:288.9 (1.00) after k90:288.9 (1.00)
+TABLE M= 8192 x28 layers: cuBLAS 33220 us, before 34537 (1.040x), after 33186 (0.999x)
+cold_table exit=0 (1043s)
+EQ decode90_kernel vs decode_kernel: 180 comparisons, 0 mismatches
+DEC b= 1 kv=  96 us/layer: fi    4.5 fi_tc    5.6 v1    5.3 v2    6.1 v0    6.1 | best v1 / fi 1.18
+DEC b= 1 kv= 320 us/layer: fi    8.6 fi_tc    7.9 v1   13.3 v2    9.7 v0    9.7 | best v2 / fi 1.13
+DEC b= 1 kv= 640 us/layer: fi    9.2 fi_tc    8.8 v1   22.0 v2   14.4 v0   14.4 | best v2 / fi 1.57
+DEC b= 1 kv=1280 us/layer: fi    9.6 fi_tc    9.7 v1   21.8 v2   14.5 v0   14.5 | best v2 / fi 1.51
+DEC b= 1 kv=2176 us/layer: fi   10.3 fi_tc   12.7 v1   22.1 v2   15.2 v0   15.2 | best v2 / fi 1.48
+DEC b= 1 kv=4200 us/layer: fi   12.3 fi_tc   15.8 v1   23.0 v2   17.8 v0   17.7 | best v0 / fi 1.44
+DEC b= 4 kv=  96 us/layer: fi    5.7 fi_tc    6.1 v1    6.1 v2    6.3 v0    6.3 | best v1 / fi 1.07
+DEC b= 4 kv= 320 us/layer: fi    9.4 fi_tc    9.5 v1   13.9 v2   10.4 v0   10.4 | best v2 / fi 1.11
+DEC b= 4 kv= 640 us/layer: fi   10.5 fi_tc   13.1 v1   21.9 v2   15.3 v0   15.3 | best v2 / fi 1.46
+DEC b= 4 kv=1280 us/layer: fi   12.9 fi_tc   16.9 v1   22.5 v2   18.2 v0   18.2 | best v2 / fi 1.41
+DEC b= 4 kv=2176 us/layer: fi   18.2 fi_tc   23.2 v1   24.9 v2   27.2 v0   24.9 | best v1 / fi 1.37
+DEC b= 4 kv=4200 us/layer: fi   30.3 fi_tc   34.4 v1   32.5 v2   44.9 v0   32.5 | best v1 / fi 1.07
+DEC b= 8 kv=  96 us/layer: fi    6.0 fi_tc    6.7 v1    6.3 v2    6.9 v0    6.9 | best v1 / fi 1.05
+DEC b= 8 kv= 320 us/layer: fi   10.5 fi_tc   13.0 v1   14.2 v2   11.8 v0   11.9 | best v2 / fi 1.12
+DEC b= 8 kv= 640 us/layer: fi   12.9 fi_tc   17.0 v1   22.6 v2   18.6 v0   18.6 | best v2 / fi 1.44
+DEC b= 8 kv=1280 us/layer: fi   20.3 fi_tc   24.6 v1   26.0 v2   30.1 v0   26.0 | best v1 / fi 1.28
+DEC b= 8 kv=2176 us/layer: fi   31.5 fi_tc   35.0 v1   33.2 v2   45.1 v0   33.2 | best v1 / fi 1.05
+DEC b= 8 kv=4200 us/layer: fi   53.3 fi_tc   56.7 v1   54.2 v2   77.7 v0   54.2 | best v1 / fi 1.02
+DEC b=16 kv=  96 us/layer: fi    6.4 fi_tc    7.6 v1    6.9 v2    7.9 v0    6.9 | best v1 / fi 1.08
+DEC b=16 kv= 320 us/layer: fi   13.2 fi_tc   17.1 v1   15.1 v2   14.9 v0   15.1 | best v2 / fi 1.13
+DEC b=16 kv= 640 us/layer: fi   20.5 fi_tc   24.6 v1   26.3 v2   28.3 v0   26.3 | best v1 / fi 1.28
+DEC b=16 kv=1280 us/layer: fi   35.4 fi_tc   38.4 v1   36.4 v2   50.0 v0   36.4 | best v1 / fi 1.03
+DEC b=16 kv=2176 us/layer: fi   55.5 fi_tc   57.9 v1   55.4 v2   76.7 v0   55.5 | best v1 / fi 1.00
+DEC b=16 kv=4200 us/layer: fi   98.2 fi_tc  101.1 v1  103.5 v2  130.3 v0  103.9 | best v1 / fi 1.05
+DEC b=32 kv=  96 us/layer: fi    8.1 fi_tc   11.9 v1    8.7 v2    8.7 v0    8.7 | best v1 / fi 1.07
+DEC b=32 kv= 320 us/layer: fi   21.7 fi_tc   22.4 v1   20.3 v2   20.3 v0   20.3 | best v1 / fi 0.94
+DEC b=32 kv= 640 us/layer: fi   35.3 fi_tc   35.9 v1   37.6 v2   37.6 v0   37.6 | best v1 / fi 1.07
+DEC b=32 kv=1280 us/layer: fi   62.6 fi_tc   63.6 v1   65.6 v2   65.6 v0   65.7 | best v1 / fi 1.05
+DEC b=32 kv=2176 us/layer: fi  102.1 fi_tc  102.2 v1  106.8 v2  106.7 v0  106.7 | best v2 / fi 1.05
+DEC b=32 kv=4200 us/layer: fi  189.2 fi_tc  190.1 v1  200.9 v2  200.5 v0  199.9 | best v0 / fi 1.06
+DEC b=64 kv=  96 us/layer: fi   11.6 fi_tc   20.5 v1   12.1 v2   12.1 v0   12.1 | best v1 / fi 1.04
+DEC b=64 kv= 320 us/layer: fi   36.3 fi_tc   40.1 v1   33.1 v2   33.1 v0   33.1 | best v1 / fi 0.91
+DEC b=64 kv= 640 us/layer: fi   63.7 fi_tc   65.0 v1   66.6 v2   66.6 v0   66.7 | best v1 / fi 1.05
+DEC b=64 kv=1280 us/layer: fi  118.9 fi_tc  119.5 v1  123.4 v2  123.3 v0  123.3 | best v2 / fi 1.04
+DEC b=64 kv=2176 us/layer: fi  197.5 fi_tc  196.8 v1  203.4 v2  203.3 v0  203.1 | best v0 / fi 1.03
+DEC b=64 kv=4200 us/layer: fi  370.6 fi_tc  370.3 v1  391.2 v2  391.1 v0  391.1 | best v2 / fi 1.06
+dec bench done (1074s)
+PRE hq=16 b=1 q=512 prefix=0: fa2 36.2 fa3 15.5 | v5 20.0 (1.29) | v6 22.8 (1.47) | v7 19.4 (1.25) | v0 19.4 (1.25)
+PRE hq=16 b=1 q=1024 prefix=0: fa2 74.7 fa3 22.8 | v5 39.5 (1.73) | v6 40.5 (1.78) | v7 33.3 (1.46) | v0 33.3 (1.46)
+PRE hq=16 b=1 q=2048 prefix=0: fa2 107.3 fa3 60.8 | v5 120.0 (1.97) | v6 77.7 (1.28) | v7 70.9 (1.17) | v0 71.0 (1.17)
+PRE hq=16 b=1 q=4096 prefix=0: fa2 340.4 fa3 176.8 | v5 367.0 (2.08) | v6 225.4 (1.27) | v7 250.5 (1.42) | v0 225.4 (1.27)
+PRE hq=16 b=8 q=1024 prefix=0: fa2 163.9 fa3 118.6 | v5 202.4 (1.71) | v6 155.1 (1.31) | v7 170.8 (1.44) | v0 155.7 (1.31)
+PRE hq=16 b=8 q=2048 prefix=0: fa2 505.2 fa3 360.3 | v5 663.6 (1.84) | v6 498.9 (1.38) | v7 564.8 (1.57) | v0 510.6 (1.42)
+PRE hq=16 b=1 q=2048 prefix=2048: fa2 214.6 fa3 124.5 | v5 270.9 (2.18) | v6 193.5 (1.55) | v7 184.9 (1.49) | v0 185.4 (1.49)
+PRE hq=16 b=1 q=128 prefix=4096: fa2 31.5 fa3 64.8 | v5 33.9 (1.08) | v6 34.4 (1.09) | v7 31.6 (1.00) | v0 31.4 (1.00)
+PRE hq=32 b=1 q=512 prefix=0: fa2 61.3 fa3 15.9 | v5 22.6 (1.42) | v6 22.5 (1.42) | v7 19.2 (1.21) | v0 19.3 (1.21)
+PRE hq=32 b=1 q=1024 prefix=0: fa2 58.6 fa3 37.0 | v5 65.8 (1.78) | v6 40.0 (1.08) | v7 41.0 (1.11) | v0 42.3 (1.14)
+PRE hq=32 b=1 q=2048 prefix=0: fa2 178.7 fa3 101.6 | v5 195.8 (1.93) | v6 123.7 (1.22) | v7 138.9 (1.37) | v0 123.8 (1.22)
+PRE hq=32 b=1 q=4096 prefix=0: fa2 532.2 fa3 316.8 | v5 647.1 (2.04) | v6 410.9 (1.30) | v7 478.2 (1.51) | v0 396.2 (1.25)
+PRE hq=32 b=8 q=1024 prefix=0: fa2 299.8 fa3 219.1 | v5 377.5 (1.72) | v6 296.2 (1.35) | v7 336.8 (1.54) | v0 296.5 (1.35)
+PRE hq=32 b=8 q=2048 prefix=0: fa2 955.5 fa3 700.8 | v5 1270.6 (1.81) | v6 949.7 (1.36) | v7 1135.4 (1.62) | v0 990.7 (1.41)
+PRE hq=32 b=1 q=2048 prefix=2048: fa2 398.8 fa3 223.4 | v5 487.4 (2.18) | v6 326.4 (1.46) | v7 362.9 (1.62) | v0 325.6 (1.46)
+PRE hq=32 b=1 q=128 prefix=4096: fa2 50.4 fa3 66.5 | v5 59.5 (1.18) | v6 53.7 (1.07) | v7 53.1 (1.05) | v0 53.1 (1.05)
+pre bench done (1087s)
+ENGSHAPE PRE hq=16 b=1 q=64 prefix=0: fa2 7.6 fa3 7.4 | v5 7.4 (1.00) | v6 10.0 (1.35) | v7 9.1 (1.23) | v0 7.5 (1.01)
+ENGSHAPE PRE hq=16 b=8 q=64 prefix=0: fa2 9.2 fa3 8.8 | v5 8.7 (0.99) | v6 10.0 (1.14) | v7 9.2 (1.05) | v0 8.7 (0.99)
+ENGSHAPE PRE hq=16 b=32 q=64 prefix=0: fa2 15.4 fa3 21.0 | v5 18.6 (1.21) | v6 21.7 (1.41) | v7 20.3 (1.32) | v0 18.6 (1.21)
+ENGSHAPE PRE hq=16 b=2 q=1024 prefix=0: fa2 59.3 fa3 38.1 | v5 66.9 (1.76) | v6 40.7 (1.07) | v7 41.7 (1.09) | v0 41.8 (1.10)
+ENGSHAPE PRE hq=16 b=4 q=512 prefix=0: fa2 34.1 fa3 27.6 | v5 42.4 (1.54) | v6 33.1 (1.20) | v7 29.8 (1.08) | v0 29.9 (1.08)
+ENGSHAPE PRE hq=16 b=8 q=256 prefix=0: fa2 22.7 fa3 20.1 | v5 30.4 (1.51) | v6 27.8 (1.38) | v7 23.9 (1.19) | v0 23.9 (1.19)
+ENGSHAPE PRE hq=16 b=16 q=128 prefix=0: fa2 17.1 fa3 17.2 | v5 20.2 (1.18) | v6 27.1 (1.58) | v7 22.5 (1.32) | v0 20.1 (1.18)
+ENGSHAPE PRE hq=16 b=8 q=64 prefix=1024: fa2 49.6 fa3 26.1 | v5 39.9 (1.53) | v6 45.9 (1.76) | v7 39.3 (1.51) | v0 39.3 (1.51)
+ENGSHAPE PRE hq=16 b=32 q=32 prefix=96: fa2 16.1 fa3 26.4 | v5 14.9 (0.93) | v6 25.6 (1.59) | v7 23.6 (1.47) | v0 15.1 (0.94)
+ENGSHAPE PRE hq=16 b=2 q=1000 prefix=24: fa2 61.4 fa3 39.4 | v5 68.3 (1.73) | v6 41.5 (1.05) | v7 45.9 (1.16) | v0 47.2 (1.20)
+pre bench (engine shapes) done (1094s)
+total 1094s
+
+[run_gpu] H100 int:kern_H100: exit=0 wall=1156s cost~$1.912 ledger=$27.28
