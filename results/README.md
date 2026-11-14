@@ -43,6 +43,12 @@ SGLang and vLLM 0.11.2, token ids only), which Section 7.1 cites for token-level
 | §7 Hopper kernels in the engine (H100) | `../modal/H100_sm90/` (suites, hashes, rollouts against the pre-change engine, end to end) | same |
 | §7 Table 4, H100 same-GPU baselines (SGLang, vLLM 0.17.1, PI; detcheck and loadgen) and PI vs FlashInfer at 64–256 requests | `../modal/H100_baselines/` (`SUMMARY.md`, `hc.*.json`, `run.log`) | `eval/baselines.sh` via `run_h100_baselines.sh` |
 | §7 H100 decode/prefill attention probes (not shipped) | `../../archive/ceiling_probes/h100_decode/` | see its README |
+| §7 Table 3 final row, Table 4 final PI row, H100 kernel benches and bit-identity of the final tree | `../modal/H100_round4/` (`README.md`, `all_H100.log`, `classA_A10G.log`) | `run.sh`, `dec_grid.py` there |
+| §7 intermediate integrated run (round 3 tree) | `../modal/H100_round3/` | same |
+| §7 "Where the H100 gap was": component ablation (PI attention only / PI GEMM only) and mid-M GEMM bench | `../../archive/ceiling_probes/h100_component_ablation/` | `abl.sh`, `midm.py` |
+| H100 GEMM tiles (ids 103–120): probes, cold tables, negatives | `../../archive/ceiling_probes/h100_gemm/`, `h100_gemm_r4/` | see their READMEs |
+| H100 decode (`decode90_kernel`, `decode_plan`), cluster probes and negatives | `../../archive/ceiling_probes/h100_decode_cluster/`, `h100_decode_r4/` | see their READMEs |
+| Independent ceiling review (per-SM intake, operand swap) | `../../archive/ceiling_probes/h100_review/` | see its README |
 | H100 prefill kernel (`prefill90w_kernel`): before/after against FlashInfer, ablations, probes not shipped | `../../archive/ceiling_probes/h100_prefill/` | see its README |
 | §7 tensor-core models and exact-lattice programs | `../../xclass/` | see `xclass/README.md` |
 

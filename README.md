@@ -19,14 +19,14 @@ Ask an LLM server the same question twice at temperature 0 and you can get two d
 On one A800, Qwen3 0.6B–8B, with radix caching, chunked prefill, CUDA graphs and CPU/GPU overlap all enabled:
 
 - **No throughput cost.** On average (geometric mean over 40 workloads) the deterministic mode is **1.2% faster** than the same engine without determinism. It is on par with vLLM 0.17.1.
-- **2.0–3.7× faster than vLLM's batch-invariant mode**, the only other engine that passes our numeric checks on the A800. On an H100 it is 1.7–2.9× faster than vLLM's batch-invariant mode and 1.4–1.75× faster than SGLang's deterministic mode, both of which pass there, at 4–12% below its own non-deterministic throughput.
+- **2.0–3.7× faster than vLLM's batch-invariant mode**, the only other engine that passes our numeric checks on the A800. On an H100 it is 1.8–3.1× faster than vLLM's batch-invariant mode and 1.5–1.9× faster than SGLang's deterministic mode, within −1.7% to +4.4% of its own non-deterministic throughput (paper §7, Table 4).
 - **Bitwise identical** tokens *and* log-probabilities across concurrency, prefix-cache state, chunking, decode vs. re-prefill, seeded sampling, eight server configurations and restarts.
 - **Rollout = trainer.** A PyTorch forward on the same kernels reproduces all **55,593** rollout log-probabilities bit for bit, so every importance ratio is exactly 1. A standard bf16 trainer misses by more than 1% on 10–22% of tokens.
 - **Same bits across GPUs.**
   - On five Ampere/Ada GPUs (A800, A100, A10G, L4, RTX 4090 D), every kernel output is identical.
   - On an A10G the engine replays A800 rollouts token for token, with every log-probability bitwise equal.
   - The H100's tensor cores round differently, so it has its own bits but keeps every guarantee.
-  - Hopper kernels built on `wgmma` and TMA reproduce the H100 bits; the GEMM runs at 1.02–1.09× cuBLAS's time at M = 512–4096.
+  - Hopper kernels built on `wgmma`, TMA, clusters and warp specialisation reproduce the H100 bits. The GEMM takes 0.96–1.11× cuBLAS's time, prefill attention 0.98–1.49× FlashInfer's, and short decode attention is held to 1.4–1.7× by the 512-key group (paper §7).
   - Exact-lattice variants of the program give one set of bits on Ampere, Ada and Hopper alike, at a measured cost (paper §7, [`xclass/`](xclass/)).
 - **Beyond softmax attention.** Gated DeltaNet decodes with the trainer's own chunked program inside vLLM, bitwise and at stock throughput, with speculative decoding for free.
 

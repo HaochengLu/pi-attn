@@ -1,0 +1,41 @@
+[run_gpu] workstream crit: $0.00 of $4.00
+[run_gpu] start H100 crit:ablation: ledger $0.08, gateway $0.11, budget $40.00
+apt exit=0
+model sha256 OK
+cargo build exit=0 (373s)
+flashinfer up after 10s
+flashinfer loadgen exit=0 (130s)
+pi_attn up after 8s
+pi_attn loadgen exit=0 (132s)
+pi_gemm up after 24s
+pi_gemm loadgen exit=0 (150s)
+deterministic up after 24s
+deterministic loadgen exit=0 (153s)
+2026-11-14T06:51:50.110742Z | llm-infer-rust | INFO | PI GEMM tile choice [3mn[0m[2m=[0m2048 [3mk[0m[2m=[0m2048 [3mchoice[0m[2m=[0m"1:99 2:99 4:99 8:99 16:99 32:99 64:99 128:101 192:98 256:98 320:100 384:94 448:94 512:91 640:91 768:91 896:91 1024:93 1280:91 1536:91 1792:91 2048:90 2304:91"
+2026-11-14T06:51:50.137070Z | llm-infer-rust | INFO | PI GEMM tile choice [3mn[0m[2m=[0m2048 [3mk[0m[2m=[0m6144 [3mchoice[0m[2m=[0m"1:51 2:99 4:99 8:99 16:99 32:99 64:99 128:101 192:98 256:70 320:100 384:91 448:91 512:91 640:91 768:91 896:91 1024:91 1280:90 1536:90 1792:90 2048:90 2304:91"
+2026-11-14T06:51:50.153695Z | llm-infer-rust | INFO | PI GEMM tile choice [3mn[0m[2m=[0m4096 [3mk[0m[2m=[0m2048 [3mchoice[0m[2m=[0m"1:99 2:99 4:99 8:99 16:99 32:99 64:99 128:98 192:100 256:91 320:93 384:91 448:93 512:91 640:90 768:90 896:90 1024:91 1280:91 1536:91 1792:90 2048:90 2304:91"
+2026-11-14T06:51:50.192921Z | llm-infer-rust | INFO | PI GEMM tile choice [3mn[0m[2m=[0m12288 [3mk[0m[2m=[0m2048 [3mchoice[0m[2m=[0m"1:100 2:100 4:100 8:100 16:14 32:100 64:100 128:91 192:90 256:90 320:93 384:91 448:91 512:91 640:90 768:91 896:90 1024:90 1280:90 1536:91 1792:91 2048:90 2304:90"
+2026-11-14T06:51:55.301917Z | llm-infer-rust | INFO | PI GEMM tile choice [3mn[0m[2m=[0m151936 [3mk[0m[2m=[0m2048 [3mchoice[0m[2m=[0m"1:100 2:100 4:100 8:100 16:100 32:100 64:100 128:91 192:90 256:91 320:90 384:91 448:90 512:90 640:90 768:90 896:90 1024:90 1280:90 1536:91 1792:90 2048:90 2304:90"
+ABL 64/32/c1: FI 438 tok/s tpot 2.224 ttft 4.1 | pi_attn +3.4% tpot -93us ttft +0.4ms | pi_gemm -4.3% tpot +101us ttft +0.1ms | deterministic -1.7% tpot +16us ttft +0.7ms
+   all: {'flashinfer': [437.0, 438.1, 438.1], 'pi_attn': [452.7, 453.0, 453.0], 'pi_gemm': [418.3, 419.7, 419.3], 'deterministic': [430.5, 430.9, 430.5]}
+ABL 64/32/c8: FI 2898 tok/s tpot 2.452 ttft 11.5 | pi_attn +2.3% tpot -68us ttft -0.1ms | pi_gemm -7.1% tpot +166us ttft +1.5ms | deterministic -4.9% tpot +87us ttft +1.5ms
+   all: {'flashinfer': [2882.6, 2897.7, 2905.4], 'pi_attn': [2965.4, 2860.1, 2986.6], 'pi_gemm': [2690.5, 2692.1, 2643.8], 'deterministic': [2755.1, 2790.5, 2728.4]}
+ABL 64/32/c32: FI 8254 tok/s tpot 2.867 ttft 21.1 | pi_attn +2.6% tpot -83us ttft -0.0ms | pi_gemm -1.7% tpot +106us ttft +1.5ms | deterministic -3.6% tpot +85us ttft -0.1ms
+   all: {'flashinfer': [8085.6, 8403.4, 8254.2], 'pi_attn': [8222.4, 8579.7, 8468.0], 'pi_gemm': [7827.0, 8113.3, 8111.5], 'deterministic': [7840.3, 7961.2, 7956.6]}
+ABL 512/256/c8: FI 2987 tok/s tpot 2.580 ttft 27.0 | pi_attn -7.0% tpot +195us ttft +1.2ms | pi_gemm -4.7% tpot +114us ttft +4.5ms | deterministic -10.8% tpot +305us ttft +5.2ms
+   all: {'flashinfer': [2991.3, 2986.6, 2982.9], 'pi_attn': [2773.7, 2778.3, 2784.7], 'pi_gemm': [2847.0, 2848.1, 2845.0], 'deterministic': [2659.3, 2664.4, 2663.3]}
+ABL 2048/128/c8: FI 1984 tok/s tpot 3.556 ttft 63.1 | pi_attn -2.1% tpot +44us ttft +5.3ms | pi_gemm -5.6% tpot +187us ttft +6.8ms | deterministic -7.6% tpot +218us ttft +13.1ms
+   all: {'flashinfer': [2006.8, 1984.1, 1981.5], 'pi_attn': [1973.4, 1941.2, 1942.2], 'pi_gemm': [1901.0, 1872.8, 1871.7], 'deterministic': [1867.2, 1832.8, 1832.0]}
+ABL 1024/512/c32: FI 6929 tok/s tpot 4.377 ttft 106.3 | pi_attn -2.2% tpot +96us ttft +4.8ms | pi_gemm -2.8% tpot +110us ttft +11.7ms | deterministic -4.3% tpot +176us ttft +16.1ms
+   all: {'flashinfer': [6920.7, 6928.6, 6931.1], 'pi_attn': [6775.0, 6776.1, 6768.7], 'pi_gemm': [6744.1, 6736.2, 6725.0], 'deterministic': [6629.9, 6632.2, 6628.7]}
+ABL 512/256/c64: FI 12232 tok/s tpot 4.747 ttft 93.4 | pi_attn +0.1% tpot -19us ttft +6.1ms | pi_gemm -3.8% tpot +168us ttft +14.0ms | deterministic -3.3% tpot +130us ttft +14.8ms
+   all: {'flashinfer': [12232.4, 12193.1, 12252.0], 'pi_attn': [12265.2, 12196.4, 12245.1], 'pi_gemm': [11774.6, 11764.2, 11748.6], 'deterministic': [11827.0, 11828.4, 11792.3]}
+ABL 512/256/c128: FI 15812 tok/s tpot 7.208 ttft 160.9 | pi_attn -2.5% tpot +163us ttft +7.9ms | pi_gemm -5.7% tpot +421us ttft +17.0ms | deterministic -7.6% tpot +560us ttft +22.5ms
+   all: {'flashinfer': [15874.4, 15812.3, 15704.2], 'pi_attn': [15507.6, 15415.7, 15275.3], 'pi_gemm': [14974.2, 14903.3, 14820.2], 'deterministic': [14626.1, 14617.0, 14499.6]}
+ABL 512/256/c256: FI 16374 tok/s tpot 13.432 ttft 385.2 | pi_attn -4.9% tpot +726us ttft +28.6ms | pi_gemm -6.6% tpot +951us ttft +35.7ms | deterministic -10.4% tpot +1616us ttft +55.0ms
+   all: {'flashinfer': [16821.9, 16374.2, 16048.5], 'pi_attn': [16046.7, 15568.0, 15380.3], 'pi_gemm': [15707.3, 15298.6, 15086.1], 'deterministic': [15026.3, 14664.7, 14409.9]}
+ABL 2048/128/c64: FI 3556 tok/s tpot 14.351 ttft 389.7 | pi_attn -3.2% tpot +435us ttft +23.5ms | pi_gemm -5.6% tpot +762us ttft +34.1ms | deterministic -8.0% tpot +1151us ttft +52.0ms
+   all: {'flashinfer': [3573.5, 3555.6, 3525.9], 'pi_attn': [3464.7, 3440.1, 3417.2], 'pi_gemm': [3382.3, 3355.3, 3331.3], 'deterministic': [3287.7, 3270.4, 3252.2]}
+total 956s
+
+[run_gpu] H100 crit:ablation: exit=0 wall=980s cost~$1.622 ledger=$2.64

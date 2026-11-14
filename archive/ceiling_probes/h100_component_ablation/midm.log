@@ -1,0 +1,20 @@
+[run_gpu] workstream crit: $1.62 of $4.00
+[run_gpu] start H100 crit:midm: ledger $2.89, gateway $2.79, budget $40.00
+MIDM M=  64 us/launch: qkv cublas 8.7 pi k99:9.4 k102:9.7 k101:9.7 (1.08) | o cublas 6.4 pi k99:7.3 k102:7.7 k101:8.0 (1.14) | gate_up cublas 20.7 pi k100:21.3 k14:21.6 k70:22.0 (1.03) | down cublas 14.8 pi k99:16.4 k102:18.1 k101:18.5 (1.11)
+MIDM M=  64 x28 layers: cuBLAS 1416 us, PI best 1524 us, +108 us (1.076x)
+MIDM M= 128 us/launch: qkv cublas 8.8 pi k101:10.9 k98:11.0 k70:11.7 (1.25) | o cublas 6.5 pi k101:8.1 k99:8.2 k102:8.5 (1.25) | gate_up cublas 21.9 pi k91:24.0 k94:24.6 k93:24.9 (1.09) | down cublas 14.4 pi k101:19.4 k98:20.5 k99:20.8 (1.34)
+MIDM M= 128 x28 layers: cuBLAS 1444 us, PI best 1745 us, +302 us (1.209x)
+MIDM M= 192 us/launch: qkv cublas 9.3 pi k100:13.6 k94:14.1 k91:15.0 (1.46) | o cublas 8.1 pi k101:9.2 k98:9.3 k70:10.9 (1.13) | gate_up cublas 23.3 pi k90:31.4 k94:35.8 k93:36.4 (1.35) | down cublas 14.7 pi k98:22.9 k101:22.9 k70:26.2 (1.56)
+MIDM M= 192 x28 layers: cuBLAS 1551 us, PI best 2157 us, +606 us (1.391x)
+MIDM M= 256 us/launch: qkv cublas 10.4 pi k91:14.4 k68:15.0 k67:15.1 (1.39) | o cublas 6.7 pi k98:10.5 k101:10.6 k70:11.2 (1.57) | gate_up cublas 24.5 pi k90:32.1 k91:33.4 k93:37.5 (1.31) | down cublas 17.3 pi k70:26.3 k98:27.1 k100:27.9 (1.52) best-wgmma k98:27.1
+MIDM M= 256 x28 layers: cuBLAS 1647 us, PI best 2333 us, +686 us (1.417x)
+MIDM M= 512 us/launch: qkv cublas 13.3 pi k91:16.4 k93:19.0 k92:22.1 (1.23) | o cublas 10.3 pi k91:13.9 k68:14.7 k67:14.9 (1.35) | gate_up cublas 37.6 pi k91:44.9 k93:51.3 k90:54.0 (1.19) | down cublas 26.3 pi k91:32.1 k68:37.5 k67:37.7 (1.22)
+MIDM M= 512 x28 layers: cuBLAS 2452 us, PI best 3005 us, +552 us (1.225x)
+MIDM M=1024 us/launch: qkv cublas 24.1 pi k90:27.3 k91:28.1 k93:33.1 (1.13) | o cublas 13.3 pi k91:15.2 k93:15.8 k92:21.0 (1.14) | gate_up cublas 72.3 pi k90:77.6 k91:81.1 k93:95.6 (1.07) | down cublas 34.7 pi k91:36.9 k93:41.1 k92:57.8 (1.06)
+MIDM M=1024 x28 layers: cuBLAS 4042 us, PI best 4396 us, +354 us (1.088x)
+MIDM M=2048 us/launch: qkv cublas 46.5 pi k90:50.4 k91:52.6 k93:60.7 (1.09) | o cublas 24.0 pi k90:26.1 k91:26.4 k93:29.3 (1.08) | gate_up cublas 137.5 pi k90:147.4 k91:161.1 k93:194.8 (1.07) | down cublas 65.1 pi k90:68.7 k91:73.2 k93:84.1 (1.06)
+MIDM M=2048 x28 layers: cuBLAS 7647 us, PI best 8194 us, +547 us (1.072x)
+MIDM M=2304 us/launch: qkv cublas 52.3 pi k91:62.8 k93:75.2 k90:75.5 (1.20) | o cublas 26.3 pi k91:36.8 k93:41.5 k90:46.8 (1.40) | gate_up cublas 155.5 pi k91:179.3 k90:182.8 k93:222.7 (1.15) | down cublas 73.1 pi k91:106.4 k93:115.8 k90:138.0 (1.45)
+MIDM M=2304 x28 layers: cuBLAS 8602 us, PI best 10790 us, +2187 us (1.254x)
+
+[run_gpu] H100 crit:midm: exit=0 wall=312s cost~$0.516 ledger=$3.65
