@@ -90,8 +90,9 @@ SEGSPLIT = {54: (128, 3), 55: (64, 6)}  # S > 1 shapes only: (BK, stages), one c
 SEG_WS = {30, 31, 32, 33, *WARP_SK}  # S > 1: S * M * N partials in g_seg_ws
 SM90 = {90: False, 91: False, 92: False, 93: False, 94: False, 95: True, 96: True, 97: True,
         98: False, 99: False, 100: False, 101: False, 102: False,
-        **{k: False for k in range(103, 113)}}  # wgmma ids: runs S > 1
-SM90_BK = {100: 128, 101: 128, 102: 128, 103: 128, 104: 128, 105: 128}  # K columns per stage (default 64)
+        **{k: False for k in range(103, 121)}}  # wgmma ids: runs S > 1
+SM90_BK = {100: 128, 101: 128, 102: 128, 103: 128, 104: 128, 105: 128, 113: 128, 114: 128}  # K columns per stage (default 64)
+SM90_ROWS = {113: 64, 114: 64, 115: 128, 116: 128, 117: 128, 118: 128, 119: 128, 120: 192}  # 2 x 1 clusters: M above one row tile
 assert (arch == "90a") == all(k in KERNELS for k in SM90) and (arch == "90a" or not any(k in KERNELS for k in SM90))
 
 
@@ -100,7 +101,7 @@ def usable(k, M, N, K, S=None):
     written independently of gemm_dispatch.cuh."""
     S = gemm_segments(N, K) if S is None else S
     if k in SM90:  # 64-column K stages; the S = 1 ids and the S > 1 ids each refuse the other's shapes
-        return SM90[k] == (S > 1) and (K // S) % SM90_BK.get(k, 64) == 0
+        return SM90[k] == (S > 1) and (K // S) % SM90_BK.get(k, 64) == 0 and M > SM90_ROWS.get(k, 0)
     if k in CUTLASS_TILE:  # mainloop shared memory: stages x (TBM + TBN) x TBK bf16
         tbm, tbn, tbk, st = CUTLASS_TILE[k]
         if st * (tbm + tbn) * tbk * 2 > SMEM_OPTIN:

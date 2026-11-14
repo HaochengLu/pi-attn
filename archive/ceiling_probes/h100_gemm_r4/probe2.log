@@ -1,0 +1,61 @@
+[run_gpu] workstream gemm2: $0.57 of $2.50
+[run_gpu] start H100 gemm2:probe2: ledger $30.94, gateway $30.71, budget $40.00
+NVIDIA H100 80GB HBM3, 610.57.04
+patch applied
+build exit=0 (133s)
+sanity cl exit=0 (137s)
+SANITY cl 200 M 256 equal
+SANITY cl 204 M 256 equal
+SANITY cl 208 M 256 equal
+SANITY cl 210 M 256 equal
+SANITY cl 213 M 256 equal
+SANITY cl 216 M 256 equal
+SANITY cl 230 M 256 equal
+SANITY cl 231 M 256 equal
+SANITY cl 235 M 256 equal
+SANITY cl 236 M 256 equal
+SANITY cl 237 M 256 equal
+SANITY cl 200 M 200 equal
+SANITY cl 204 M 200 equal
+SANITY cl 208 M 200 equal
+SANITY cl 210 M 200 equal
+SANITY cl 213 M 200 equal
+SANITY cl 216 M 200 equal
+SANITY cl 230 M 200 equal
+SANITY cl 231 M 200 equal
+SANITY cl 235 M 200 equal
+SANITY cl 236 M 200 equal
+SANITY cl 237 M 200 equal
+sanity rs exit=0 (141s)
+bitcheck qkv done
+bitcheck o done
+bitcheck gate_up done
+bitcheck down done
+BITCHECK 328 launches of ids [200, 204, 208, 210, 213, 216, 230, 231, 235, 236, 237] vs id 91: mismatching ids {}
+  ALL M=128 qkv cublas 8.8: k91:14.5 k104:11.0 k105:9.6 k106:10.7 k107:12.4 k109:10.8 k110:16.6 k112:19.4 k200:9.3 k204:10.9 k210:14.7 k213:12.3 k216:10.5 k230:10.8 k231:10.9 k235:17.1 k236:12.0 k237:11.5
+  ALL M=128 o cublas 6.5: k104:6.8 k105:7.6 k106:9.6 k109:9.3 k200:7.7 k204:10.0 k216:6.6 k230:9.7 k231:9.4 k236:11.1 k237:10.3
+  ALL M=128 gate_up cublas 21.9: k90:31.2 k91:23.9 k106:25.2 k107:22.8 k108:26.2 k110:24.7 k111:32.7 k112:26.3 k204:27.9 k208:26.3 k210:30.4 k213:26.0 k230:24.6 k231:27.0 k235:34.0 k236:30.8 k237:25.2
+  ALL M=128 down cublas 14.7: k104:15.3 k105:16.4 k106:21.4 k109:21.3 k200:17.1 k204:22.8 k216:13.7 k230:22.0 k231:20.9 k236:26.7 k237:23.4
+R4 M= 128 us/launch: qkv cublas 8.8 shipped k105:9.6 (1.09) best k200:9.3 (1.06) | o cublas 6.5 shipped k104:6.8 (1.04) best k216:6.6 (1.02) | gate_up cublas 21.9 shipped k107:22.8 (1.04) best k107:22.8 (1.04) | down cublas 14.7 shipped k104:15.3 (1.04) best k216:13.7 (0.93)
+R4 M= 128 x28: cuBLAS 1455 us, shipped 1527 (1.049x), best 1469 (1.010x)
+  ALL M=192 qkv cublas 9.4: k90:25.2 k91:14.9 k105:15.1 k106:16.0 k107:14.4 k108:19.9 k109:11.2 k110:17.1 k112:19.9 k200:12.7 k204:14.5 k208:20.0 k210:15.7 k213:13.7 k230:11.0 k231:12.5 k235:17.6 k236:15.4 k237:11.6
+  ALL M=192 o cublas 8.1: k91:14.0 k104:10.3 k105:8.7 k106:10.6 k107:11.7 k109:9.8 k200:7.6 k204:10.3 k210:14.0 k213:12.0 k216:9.8 k230:9.7 k231:9.7 k235:16.1 k236:11.6 k237:10.9
+  ALL M=192 gate_up cublas 23.2: k90:31.6 k91:40.7 k107:37.2 k108:27.8 k110:25.6 k111:34.2 k112:27.2 k208:27.0 k210:32.8 k213:31.9 k230:28.5 k231:33.4 k235:35.2 k237:30.0
+  ALL M=192 down cublas 14.7: k91:32.7 k104:26.4 k105:20.2 k106:26.5 k107:28.0 k109:23.5 k200:17.0 k204:24.0 k210:32.6 k213:29.2 k216:22.6 k230:22.1 k231:22.0 k235:39.3 k236:28.6 k237:25.6
+R4 M= 192 us/launch: qkv cublas 9.4 shipped k109:11.2 (1.20) best k230:11.0 (1.17) | o cublas 8.1 shipped k105:8.7 (1.07) best k200:7.6 (0.94) | gate_up cublas 23.2 shipped k110:25.6 (1.10) best k110:25.6 (1.10) | down cublas 14.7 shipped k105:20.2 (1.37) best k200:17.0 (1.16)
+R4 M= 192 x28: cuBLAS 1550 us, shipped 1837 (1.186x), best 1713 (1.105x)
+  ALL M=256 qkv cublas 10.4: k90:25.1 k91:14.7 k105:15.0 k106:11.8 k107:12.8 k108:19.7 k109:34.4 k110:20.5 k111:28.2 k112:20.1 k200:12.9 k204:11.1 k208:20.1 k210:15.0 k213:12.7 k230:11.1 k231:13.9 k235:17.1 k236:12.2 k237:11.8
+  ALL M=256 o cublas 6.8: k91:14.2 k104:10.6 k105:8.8 k106:9.6 k107:11.3 k109:17.8 k110:16.9 k112:19.6 k200:7.9 k204:10.2 k210:14.3 k213:11.5 k216:10.1 k230:10.0 k231:10.0 k235:16.4 k236:11.6 k237:11.1
+  ALL M=256 gate_up cublas 24.4: k90:32.5 k91:33.8 k107:27.9 k108:27.5 k110:57.7 k111:36.6 k112:55.1 k208:27.5 k210:32.1 k213:27.0 k235:34.8
+  ALL M=256 down cublas 17.5: k91:32.2 k104:27.3 k105:21.3 k106:20.7 k107:26.7 k109:51.7 k110:42.7 k112:46.2 k200:17.5 k204:22.5 k210:32.1 k213:26.7 k216:23.2 k230:22.2 k231:21.0 k235:38.9 k236:27.9 k237:25.9
+R4 M= 256 us/launch: qkv cublas 10.4 shipped k106:11.8 (1.14) best k230:11.1 (1.07) | o cublas 6.8 shipped k105:8.8 (1.30) best k200:7.9 (1.18) | gate_up cublas 24.4 shipped k108:27.5 (1.13) best k213:27.0 (1.11) | down cublas 17.5 shipped k106:20.7 (1.19) best k200:17.5 (1.00)
+R4 M= 256 x28: cuBLAS 1652 us, shipped 1927 (1.167x), best 1780 (1.078x)
+  ALL M=512 qkv cublas 13.5: k90:25.0 k91:16.0 k106:19.6 k107:22.6 k108:20.6 k110:20.2 k111:27.7 k112:20.3 k204:18.1 k208:20.1 k210:15.5 k213:20.6 k230:20.1 k231:23.0 k235:17.6 k236:20.2 k237:21.2
+  ALL M=512 o cublas 10.3: k90:25.0 k91:14.3 k105:14.0 k106:11.4 k107:11.8 k108:19.6 k109:22.4 k110:16.4 k111:28.0 k112:19.7 k200:13.7 k204:10.6 k208:20.0 k210:15.0 k213:11.7 k230:11.4 k231:13.1 k235:17.0 k236:11.4 k237:11.8
+  ALL M=512 gate_up cublas 37.2: k90:55.6 k108:43.7 k111:59.7 k112:62.1 k208:41.7
+  ALL M=512 down cublas 26.3: k90:61.7 k91:32.9 k105:41.3 k106:29.1 k107:30.9 k108:46.8 k109:71.2 k110:42.0 k111:69.7 k112:47.2 k200:38.1 k204:23.9 k208:47.3 k210:35.7 k213:28.1 k230:28.3 k231:34.2 k235:42.0 k236:28.3 k237:29.2
+R4 M= 512 us/launch: qkv cublas 13.5 shipped k91:16.0 (1.19) best k210:15.5 (1.15) | o cublas 10.3 shipped k106:11.4 (1.11) best k204:10.6 (1.03) | gate_up cublas 37.2 shipped k108:43.7 (1.17) best k208:41.7 (1.12) | down cublas 26.3 shipped k106:29.1 (1.10) best k204:23.9 (0.91)
+R4 M= 512 x28: cuBLAS 2444 us, shipped 2804 (1.147x), best 2564 (1.049x)
+main exit=0 (147s)
+
+[run_gpu] H100 gemm2:probe2: exit=0 wall=200s cost~$0.331 ledger=$31.61
