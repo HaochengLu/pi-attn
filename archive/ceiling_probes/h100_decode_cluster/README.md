@@ -71,3 +71,15 @@ Batch 4 from 2176 keys, batch 8 from 1280 and batches 16 to 64 run `decode_kerne
 
 Bits: `test_invariance` passes with every decode position checked against prefill under the planner and with each decode kernel forced (`checks failed: 0 []`); the five attention hashes and the 108 GEMM hashes of `eval/xgpu_hashes.py` equal `results/modal/H100_sm90/hashes_H100.json`; the mutant `decode90_d_unfused` (d with two roundings instead of one fma) fails 14 path checks.
 
+## Engine (`final_engine_H100.log`, `engine.sh`)
+
+Qwen3-1.7B, `--deterministic --max-seq-len 8192`, one sandbox, greedy output tokens per second (median of 3 repeats). `PI_DECODE90=0` keeps `decode_kernel` everywhere; with 16 fold groups of capacity the rule takes `decode90_kernel` at batch 1 only.
+
+| workload (in / out / concurrency) | `PI_DECODE90=0` | planner |
+|---|---|---|
+| 64 / 256 / 1 | 422.7 | 429.9 |
+| 2048 / 128 / 1 | 351.9 | 375.4 |
+| 512 / 256 / 8 | 2660.2 | 2655.7 |
+
+`detcheck` reports DETERMINISTIC with 0 mismatches in every row, and the 64 H100 reference rollouts (`results/modal/H100_sm90/H100_prechange.rollout.gen.json`) replay with identical token ids and 14442/14442 log-probabilities bitwise equal.
+

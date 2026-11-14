@@ -1,0 +1,38 @@
+[run_gpu] workstream dec: $5.69 of $11.00
+[run_gpu] start H100 dec:engine: ledger $20.55, gateway $13.94, budget $40.00
+patch applied
+apt exit=0
+model sha256 OK
+cargo build exit=0 (380s)
+NVIDIA H100 80GB HBM3, 610.57.04
+AB PI_DECODE90=0 run 1 loadgen exit=0 (505s)
+AB PI_DECODE90=0 run 1 64/256/c1: out tok/s 422.68 itl_ms 2.36 all [422.6, 422.7, 422.7]
+AB PI_DECODE90=0 run 1 512/256/c8: out tok/s 2660.19 itl_ms 2.89 all [2642.3, 2660.2, 2660.3]
+AB PI_DECODE90=0 run 1 2048/128/c1: out tok/s 351.87 itl_ms 2.72 all [352.3, 351.9, 351.6]
+AB PI_DECODE90=1 run 1 loadgen exit=0 (638s)
+AB PI_DECODE90=1 run 1 64/256/c1: out tok/s 429.87 itl_ms 2.32 all [429.8, 429.9, 429.9]
+AB PI_DECODE90=1 run 1 512/256/c8: out tok/s 2655.73 itl_ms 2.89 all [2655.7, 2654.4, 2655.7]
+AB PI_DECODE90=1 run 1 2048/128/c1: out tok/s 375.41 itl_ms 2.54 all [376.1, 375.3, 375.4]
+Qwen3-1.7B rust-det detcheck exit=0
+Qwen3-1.7B rust-det loadgen exit=0
+BASELINES_DONE
+batch  [{"concurrency": 4, "requests": 16, "mismatched": 0, "first_divergence_tokens": []}, {"concurrency": 16, "requests": 16, "mismatched": 0, "first_divergence_tokens": []}]
+prefix {"full_hit": 0, "partial_hit": 0, "requests": 8}
+shared {"requests": 32, "prefix_tokens": 2616, "mismatched": 0, "first_divergence_tokens": []}
+path   {"requests": 24, "mismatched": 0, "first_divergence_tokens": []}
+spath  {"requests": 24, "mismatched": 0, "first_divergence_tokens": []}
+repeat {"samples": 200, "unique_completions": 1}
+sample {"rows": [{"concurrency": 4, "requests": 16, "mismatched": 0, "first_divergence_tokens": []}, {"concurrency": 16, "requests": 16, "mismatched": 0, "first_divergence_tokens": []}], "distinct_reference_samples": 16}
+DETERMINISTIC
+{"out_tok_s": 430.24, "req_s": 1.68, "ttft_ms": 5.19, "tpot_ms": 2.31, "itl_ms": 2.31, "p99_ttft_ms": 5.45, "e2e_ms": 594.91, "tokens": 8192, "in": 64, "out": 256, "concurrency": 1, "shared": 0, "repeats": 3, "out_tok_s_all": [430.2, 430.2, 430.3]}
+{"out_tok_s": 2645.43, "req_s": 10.33, "ttft_ms": 36.6, "tpot_ms": 2.89, "itl_ms": 2.89, "p99_ttft_ms": 43.3, "e2e_ms": 772.82, "tokens": 8192, "in": 512, "out": 256, "concurrency": 8, "shared": 0, "repeats": 3, "out_tok_s_all": [2645.4, 2642.8, 2646.9]}
+{"out_tok_s": 8167.12, "req_s": 31.9, "ttft_ms": 73.91, "tpot_ms": 3.6, "itl_ms": 3.6, "p99_ttft_ms": 133.66, "e2e_ms": 989.96, "tokens": 16384, "in": 512, "out": 256, "concurrency": 32, "shared": 0, "repeats": 3, "out_tok_s_all": [8167.1, 8141.0, 8176.2]}
+{"out_tok_s": 3194.61, "req_s": 12.48, "ttft_ms": 119.85, "tpot_ms": 4.5, "itl_ms": 4.51, "p99_ttft_ms": 323.42, "e2e_ms": 1268.1, "tokens": 8192, "in": 2048, "out": 256, "concurrency": 16, "shared": 0, "repeats": 3, "out_tok_s_all": [3192.7, 3194.6, 3198.8]}
+{"out_tok_s": 891.42, "req_s": 6.96, "ttft_ms": 88.36, "tpot_ms": 3.82, "itl_ms": 3.83, "p99_ttft_ms": 181.8, "e2e_ms": 573.22, "tokens": 4096, "in": 4096, "out": 128, "concurrency": 4, "shared": 0, "repeats": 3, "out_tok_s_all": [891.7, 891.4, 889.1]}
+baselines done (1039s)
+64 rollouts: 64 with identical token ids; 14442/14442 log-probabilities bitwise equal
+ROLLOUTS IDENTICAL TO REFERENCE: True
+xgpu_rollout exit=0
+done (1078s)
+
+[run_gpu] H100 dec:engine: exit=0 wall=1112s cost~$1.841 ledger=$24.03
