@@ -1,0 +1,36 @@
+wg_diag.cu(258): warning #177-D: function "exact_errors" was declared but never referenced
+  static size_t exact_errors(const Data& d, const std::vector<float>& out) {
+                ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+wg_diag.cu(258): warning #177-D: function "exact_errors" was declared but never referenced
+  static size_t exact_errors(const Data& d, const std::vector<float>& out) {
+                ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+GPU NVIDIA H100 80GB HBM3 sm_90  SMs 132
+D2 hash FULL 5c8fdeae63acb81e
+variant   0: total mismatches over 8 reps 0 (looked 0, stale-B explained 0, stale-A 0)
+variant   1: total mismatches over 8 reps 0 (looked 0, stale-B explained 0, stale-A 0)
+variant   2: total mismatches over 8 reps 0 (looked 0, stale-B explained 0, stale-A 0)
+variant   4: total mismatches over 8 reps 0 (looked 0, stale-B explained 0, stale-A 0)
+    v8 rep 2 tile 688: 256 wrong, colmask 0f, r 0 n 0 full 36278.2617 wg -218143.656 | stale-B source tile 778 (kind 0) stale-A source -1
+    v8 rep 2 tile 688: 256 wrong, colmask 0f, r 0 n 2 full 961.285217 wg 1029859.5 | stale-B source tile 778 (kind 0) stale-A source -1
+    v8 rep 2 tile 688: 256 wrong, colmask 0f, r 1 n 0 full 8722.63184 wg -117303.016 | stale-B source tile 778 (kind 0) stale-A source -1
+    v8 rep 2 tile 688: 256 wrong, colmask 0f, r 1 n 2 full -92165.0625 wg 145785.5 | stale-B source tile 778 (kind 0) stale-A source -1
+    v8 rep 2 tile 688: 256 wrong, colmask 0f, r 2 n 0 full -17502.2949 wg -26068.6152 | stale-B source tile 778 (kind 0) stale-A source -1
+    v8 rep 2 tile 688: 256 wrong, colmask 0f, r 2 n 2 full 966.630798 wg 2193041.25 | stale-B source tile 778 (kind 0) stale-A source -1
+variant   8: total mismatches over 8 reps 2048 (looked 6, stale-B explained 6, stale-A 0)
+variant 100: total mismatches over 8 reps 0 (looked 0, stale-B explained 0, stale-A 0)
+    v101 rep 0 tile 1183: 128 wrong, colmask c0, r 0 n 6 full 82193.8281 wg -15260.9434 | stale-B source tile 1117 (kind 2) stale-A source -1
+    v101 rep 1 tile 761: 128 wrong, colmask 0c, r 0 n 2 full -6282.94775 wg -488072.906 | stale-B source tile 777 (kind 0) stale-A source -1
+    v101 rep 1 tile 765: 128 wrong, colmask 03, r 0 n 0 full 133240.797 wg -258.496033 | stale-B source tile 781 (kind 0) stale-A source -1
+    v101 rep 1 tile 1360: 128 wrong, colmask 03, r 0 n 0 full -147221.5 wg -69679.1484 | stale-B source tile 1376 (kind 2) stale-A source -1
+    v101 rep 2 tile 666: 128 wrong, colmask 03, r 0 n 0 full -515629.844 wg -57881.6289 | stale-B source tile 610 (kind 0) stale-A source -1
+    v101 rep 3 tile 257: 128 wrong, colmask 30, r 0 n 4 full 56370.6367 wg 2742.92212 | stale-B source tile 221 (kind 2) stale-A source -1
+variant 101: total mismatches over 8 reps 4992 (looked 6, stale-B explained 6, stale-A 0)
+variant 102: total mismatches over 8 reps 0 (looked 0, stale-B explained 0, stale-A 0)
+
+[run_gpu] H100 r2theory:wg_diag: exit=0 wall=19s cost~$0.032 ledger=$1.29

@@ -1,0 +1,24 @@
+built ['1', '128']
+built ['1', '16']
+built ['0', '128']
+built ['1', '32']
+INV xc128 reference hash 28f1db83eaf99556
+INV xc128 variants [1, 2, 3, 4] checks {'batch': 9, 'chunk': 8, 'split': 144, 'path': 8564} failed 0 []
+INV xc32 reference hash ac1de77cfd2091f4
+INV xc32 variants [1, 2, 3, 4] checks {'batch': 9, 'chunk': 8, 'split': 144, 'path': 8564} failed 0 []
+INV xc16 reference hash daee43a3e90e4ead
+INV xc16 variants [1, 2, 3, 4] checks {'batch': 9, 'chunk': 8, 'split': 144, 'path': 8564} failed 0 []
+device NVIDIA H100 80GB HBM3 (9, 0)
+prefill hq=32 hkv=8 b=1 q=512 prefix=0: fi=16.3 stock=27.0 xc128=31.9 xc32=36.2 xc16=36.3 | /fi: stock=1.66 xc128=1.96 xc32=2.22 xc16=2.23 | /stock: xc128=1.181 xc32=1.341 xc16=1.344
+prefill hq=32 hkv=8 b=1 q=2048 prefix=0: fi=97.5 stock=287.4 xc128=331.5 xc32=362.7 xc16=378.6 | /fi: stock=2.95 xc128=3.40 xc32=3.72 xc16=3.88 | /stock: xc128=1.153 xc32=1.262 xc16=1.317
+prefill hq=32 hkv=8 b=1 q=8192 prefix=0: fi=1115.2 stock=2811.6 xc128=3332.4 xc32=3835.6 xc16=3930.2 | /fi: stock=2.52 xc128=2.99 xc32=3.44 xc16=3.52 | /stock: xc128=1.185 xc32=1.364 xc16=1.398
+prefill hq=32 hkv=8 b=8 q=1024 prefix=0: fi=206.6 stock=440.3 xc128=528.8 xc32=587.2 xc16=612.0 | /fi: stock=2.13 xc128=2.56 xc32=2.84 xc16=2.96 | /stock: xc128=1.201 xc32=1.334 xc16=1.390
+prefill hq=32 hkv=8 b=32 q=512 prefix=0: fi=305.2 stock=551.2 xc128=617.8 xc32=682.1 xc16=700.4 | /fi: stock=1.81 xc128=2.02 xc32=2.23 xc16=2.29 | /stock: xc128=1.121 xc32=1.237 xc16=1.271
+prefill hq=32 hkv=8 b=1 q=128 prefix=4096: fi=64.0 stock=64.4 xc128=74.2 xc32=82.5 xc16=84.0 | /fi: stock=1.01 xc128=1.16 xc32=1.29 xc16=1.31 | /stock: xc128=1.152 xc32=1.281 xc16=1.304
+prefill hq=32 hkv=8 b=1 q=128 prefix=16384: fi=234.7 stock=238.6 xc128=276.0 xc32=304.0 xc16=311.0 | /fi: stock=1.02 xc128=1.18 xc32=1.30 xc16=1.33 | /stock: xc128=1.157 xc32=1.274 xc16=1.303
+decode  hq=32 hkv=8 b=1 kv=4096: fi=12.9 fi_tc=15.9 stock=23.3 xc128=23.6 xc32=23.5 xc16=23.5 | /fi: stock=1.81 xc128=1.83 xc32=1.82 xc16=1.82 | /stock: xc128=1.013 xc32=1.009 xc16=1.009
+decode  hq=32 hkv=8 b=1 kv=32768: fi=55.9 fi_tc=54.4 stock=56.4 xc128=58.6 xc32=57.7 xc16=58.2 | /fi: stock=1.01 xc128=1.05 xc32=1.03 xc16=1.04 | /stock: xc128=1.039 xc32=1.023 xc16=1.032
+decode  hq=32 hkv=8 b=8 kv=2048: fi=31.1 fi_tc=33.0 stock=31.1 xc128=32.4 xc32=32.2 xc16=32.4 | /fi: stock=1.00 xc128=1.04 xc32=1.04 xc16=1.04 | /stock: xc128=1.042 xc32=1.035 xc16=1.042
+decode  hq=32 hkv=8 b=64 kv=1024: fi=105.7 fi_tc=96.2 stock=98.1 xc128=107.2 xc32=100.8 xc16=100.4 | /fi: stock=0.93 xc128=1.01 xc32=0.95 xc16=0.95 | /stock: xc128=1.093 xc32=1.028 xc16=1.023
+
+[run_gpu] H100 r2attn:xc4_inv_bench_H100: exit=0 wall=208s cost~$0.344 ledger=$12.79

@@ -1,0 +1,62 @@
+GPU NVIDIA H100 80GB HBM3 sm_90  SFU probe (compiled for sm_80)
+SFU  0 ex2.approx.ftz                         89afe7f25cfc8444
+SFU  1 ex2.approx                             8e1764085db4e860
+SFU  2 lg2.approx.ftz                         73bb9c87dfaf1e3e
+SFU  3 lg2.approx                             a37037281e0a2278
+SFU  4 rsqrt.approx.ftz                       393b85eb722a40cd
+SFU  5 rsqrt.approx                           b0118eb19cb279eb
+SFU  6 sqrt.approx.ftz                        ab9f92719e2bb62e
+SFU  7 rcp.approx.ftz                         8f1a576e8821dc79
+SFU  8 sin.approx.ftz                         a0790c2327f3fc14
+SFU  9 cos.approx.ftz                         b9bf5267c15298da
+SFU 10 tanh.approx                            a8b1a4da2a088e55
+SFU 11 sqrt.rn                                3024e264e61ea303
+SFU 12 rcp.rn                                 2da51242e4ea17ff
+SFU 13 libm expf                              a588464020ad0e64
+SFU 14 libm logf                              19247660d7e705f0
+SFU 15 libm tanhf                             6e357ed4814eab46
+SFU 16 libm erff                              44c1cc11b9029e31
+SFU 17 libm rsqrtf                            b0118eb19cb279eb
+SFU 18 sigmoid 1/(1+expf(-x))                 d45b7cb0bf2ccae2
+SFU 19 silu x/(1+expf(-x))                    61330a3c32260915
+SFU 20 libm exp2f                             8e1764085db4e860
+SFU 21 libm log2f                             8f708aa619d126c5
+SFU 22 libm sinf                              d491d866dd39a5ee
+SFU 23 libm cosf                              fa6b6f73718c56d0
+SFU 24 div.approx.ftz(x,y)                    c3c569c5f3ea68b3
+SFU 25 div.full(x,y)                          0a5c229833440662
+SFU 26 div.rn(x,y)                            57ae1f5dd837c7b1
+SFU 27 libm powf(x,y)                         7ae1e1dda99aab82
+SFU 28 fma.rn(x,y,x) [fmaf]                   ba1e89b2dbddd9c6
+SFU 29 softmax-term ex2.approx.ftz(x*log2e)   8f7be07392ebbc1f
+GPU NVIDIA H100 80GB HBM3 sm_90  SFU probe (compiled for sm_90a)
+SFU  0 ex2.approx.ftz                         89afe7f25cfc8444
+SFU  1 ex2.approx                             8e1764085db4e860
+SFU  2 lg2.approx.ftz                         73bb9c87dfaf1e3e
+SFU  3 lg2.approx                             a37037281e0a2278
+SFU  4 rsqrt.approx.ftz                       393b85eb722a40cd
+SFU  5 rsqrt.approx                           b0118eb19cb279eb
+SFU  6 sqrt.approx.ftz                        ab9f92719e2bb62e
+SFU  7 rcp.approx.ftz                         8f1a576e8821dc79
+SFU  8 sin.approx.ftz                         a0790c2327f3fc14
+SFU  9 cos.approx.ftz                         b9bf5267c15298da
+SFU 10 tanh.approx                            a8b1a4da2a088e55
+SFU 11 sqrt.rn                                3024e264e61ea303
+SFU 12 rcp.rn                                 2da51242e4ea17ff
+SFU 13 libm expf                              a588464020ad0e64
+SFU 14 libm logf                              19247660d7e705f0
+SFU 15 libm tanhf                             6e357ed4814eab46
+SFU 16 libm erff                              44c1cc11b9029e31
+SFU 17 libm rsqrtf                            b0118eb19cb279eb
+SFU 18 sigmoid 1/(1+expf(-x))                 d45b7cb0bf2ccae2
+SFU 19 silu x/(1+expf(-x))                    61330a3c32260915
+SFU 20 libm exp2f                             8e1764085db4e860
+SFU 21 libm log2f                             8f708aa619d126c5
+SFU 22 libm sinf                              d491d866dd39a5ee
+SFU 23 libm cosf                              fa6b6f73718c56d0
+SFU 24 div.approx.ftz(x,y)                    c3c569c5f3ea68b3
+SFU 25 div.full(x,y)                          0a5c229833440662
+SFU 26 div.rn(x,y)                            57ae1f5dd837c7b1
+SFU 27 libm powf(x,y)                         7ae1e1dda99aab82
+SFU 28 fma.rn(x,y,x) [fmaf]                   ba1e89b2dbddd9c6
+SFU 29 softmax-term ex2.approx.ftz(x*log2e)   8f7be07392ebbc1f

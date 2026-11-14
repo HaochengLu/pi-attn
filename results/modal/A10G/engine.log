@@ -1,0 +1,34 @@
+rust: rustc 1.95.0 (59807616e 2026-04-14)  g++: g++-13 (Ubuntu 13.4.0-6ubuntu1~22~ppa2) 13.4.0
+model sha256 OK
+  Downloaded serde_path_to_error v0.1.20
+  Downloaded thiserror-impl v2.0.20
+  Downloaded thiserror-impl v1.0.69
+  Downloaded thiserror v2.0.20
+  Downloaded thiserror v1.0.69
+cargo build exit=0 (429s)
+warning: sglang-rust@0.1.0:           detected during instantiation of "cudaError_t flashinfer::sampling::TopPSamplingFromProb(T *, IdType *, __nv_bool *, IdType *, T *, uint32_t, T, uint32_t, __nv_bool, uint64_t *, uint64_t, uint64_t *, uint64_t, cudaStream_t) [with T=float, IdType=int64_t]" at line 15 of src/engine/sampling_flashinfer.cu
+warning: sglang-rust@0.1.0: 
+    Finished `release` profile [optimized] target(s) in 4m 49s
+server up after 488s
+64 rollouts: 64 with identical token ids; 14293/14293 log-probabilities bitwise equal
+ROLLOUTS IDENTICAL TO REFERENCE: True
+xgpu_rollout exit=0
+detcheck exit=0
+batch  [{"concurrency": 4, "requests": 16, "mismatched": 0, "first_divergence_tokens": []}, {"concurrency": 16, "requests": 16, "mismatched": 0, "first_divergence_tokens": []}]
+prefix {"full_hit": 0, "partial_hit": 0, "requests": 8}
+shared {"requests": 32, "prefix_tokens": 2616, "mismatched": 0, "first_divergence_tokens": []}
+path   {"requests": 24, "mismatched": 0, "first_divergence_tokens": []}
+spath  {"requests": 24, "mismatched": 0, "first_divergence_tokens": []}
+repeat {"samples": 200, "unique_completions": 1}
+sample {"rows": [{"concurrency": 4, "requests": 16, "mismatched": 0, "first_divergence_tokens": []}, {"concurrency": 16, "requests": 16, "mismatched": 0, "first_divergence_tokens": []}], "distinct_reference_samples": 16}
+DETERMINISTIC
+score exit=0
+pi alone              : 14293/14293 tokens bitwise equal to the engine | |dlogp| mean 0.00e+00 max 0.00e+00 | ratio [1.0000, 1.0000], 0.00% of tokens off by > 1%
+pi packing 0          : 14293/14293 tokens bitwise equal to the engine | |dlogp| mean 0.00e+00 max 0.00e+00 | ratio [1.0000, 1.0000], 0.00% of tokens off by > 1%
+pi packing 1          : 14293/14293 tokens bitwise equal to the engine | |dlogp| mean 0.00e+00 max 0.00e+00 | ratio [1.0000, 1.0000], 0.00% of tokens off by > 1%
+hf alone              : 5249/14293 tokens bitwise equal to the engine | |dlogp| mean 9.12e-03 max 7.48e-01 | ratio [0.6246, 2.1129], 11.85% of tokens off by > 1%
+hf batch 8            : 5262/14293 tokens bitwise equal to the engine | |dlogp| mean 9.15e-03 max 7.46e-01 | ratio [0.4910, 2.1085], 11.54% of tokens off by > 1%
+PI TRAINER == ENGINE: True
+total 1475s
+
+[run_gpu] A10G verify:engine_A10G_2: exit=0 wall=1500s cost~$0.938 ledger=$9.00

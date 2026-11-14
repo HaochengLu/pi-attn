@@ -1,0 +1,92 @@
+GPU NVIDIA H100 80GB HBM3 sm_90 wgmma feed protocols, tiles 512 T 64
+FEED 0 st; bar; fence                            : 1819904 mismatching outputs, 6486 bad tile-runs of 10240 (655360 wgmma steps)
+FEED 8 cp.async; wait_group; bar; fence          : 0 mismatching outputs, 0 bad tile-runs of 10240 (655360 wgmma steps)
+FEED 8 cp.async; wait_group; bar; fence          : 0 mismatching outputs, 0 bad tile-runs of 10240 (655360 wgmma steps)
+FEED 8 cp.async; wait_group; bar; fence          : 0 mismatching outputs, 0 bad tile-runs of 10240 (655360 wgmma steps)
+GPU NVIDIA H100 80GB HBM3 sm_90  XC probe tiles 256 T 64 (K = 1024)
+XCHASH data 0 prog SA0 SB0 sA0 sB0 mode0 mma.sync 65b00a9a9494d656 out-of-domain 0
+XCHASH data 0 prog SA0 SB0 sA0 sB0 mode0 wgmma rep 0 65b00a9a9494d656 mismatches vs mma.sync 0
+XCHASH data 0 prog SA0 SB0 sA0 sB0 mode0 wgmma rep 1 65b00a9a9494d656 mismatches vs mma.sync 0
+XCHASH data 0 prog SA0 SB0 sA0 sB0 mode0 wgmma rep 2 65b00a9a9494d656 mismatches vs mma.sync 0
+XCHASH data 0 prog SA1 SB1 sA2 sB2 mode0 mma.sync a6da24de9ba459ce out-of-domain 0
+XCHASH data 0 prog SA1 SB1 sA2 sB2 mode0 wgmma rep 0 a6da24de9ba459ce mismatches vs mma.sync 0
+XCHASH data 0 prog SA1 SB1 sA2 sB2 mode0 wgmma rep 1 a6da24de9ba459ce mismatches vs mma.sync 0
+XCHASH data 0 prog SA1 SB1 sA2 sB2 mode0 wgmma rep 2 a6da24de9ba459ce mismatches vs mma.sync 0
+XCHASH data 0 prog SA2 SB1 sA2 sB2 mode0 mma.sync 30bcf0cf86529b80 out-of-domain 0
+XCHASH data 0 prog SA2 SB1 sA2 sB2 mode0 wgmma rep 0 30bcf0cf86529b80 mismatches vs mma.sync 0
+XCHASH data 0 prog SA2 SB1 sA2 sB2 mode0 wgmma rep 1 30bcf0cf86529b80 mismatches vs mma.sync 0
+XCHASH data 0 prog SA2 SB1 sA2 sB2 mode0 wgmma rep 2 30bcf0cf86529b80 mismatches vs mma.sync 0
+XCHASH data 0 prog SA2 SB2 sA2 sB2 mode1 mma.sync fcc683f178c87826 out-of-domain 0
+XCHASH data 0 prog SA2 SB2 sA2 sB2 mode1 wgmma rep 0 fcc683f178c87826 mismatches vs mma.sync 0
+XCHASH data 0 prog SA2 SB2 sA2 sB2 mode1 wgmma rep 1 fcc683f178c87826 mismatches vs mma.sync 0
+XCHASH data 0 prog SA2 SB2 sA2 sB2 mode1 wgmma rep 2 fcc683f178c87826 mismatches vs mma.sync 0
+XCHASH data 0 prog SA2 SB2 sA2 sB2 mode0 mma.sync 424bce90409bbfcf out-of-domain 0
+XCHASH data 0 prog SA2 SB2 sA2 sB2 mode0 wgmma rep 0 424bce90409bbfcf mismatches vs mma.sync 0
+XCHASH data 0 prog SA2 SB2 sA2 sB2 mode0 wgmma rep 1 424bce90409bbfcf mismatches vs mma.sync 0
+XCHASH data 0 prog SA2 SB2 sA2 sB2 mode0 wgmma rep 2 424bce90409bbfcf mismatches vs mma.sync 0
+XCHASH data 0 prog SA1 SB1 sA5 sB5 mode2 mma.sync 677866728953bc59 out-of-domain 0
+XCHASH data 1 prog SA0 SB0 sA0 sB0 mode0 mma.sync 1884791907ed1d17 out-of-domain 0
+XCHASH data 1 prog SA0 SB0 sA0 sB0 mode0 wgmma rep 0 1884791907ed1d17 mismatches vs mma.sync 0
+XCHASH data 1 prog SA0 SB0 sA0 sB0 mode0 wgmma rep 1 1884791907ed1d17 mismatches vs mma.sync 0
+XCHASH data 1 prog SA0 SB0 sA0 sB0 mode0 wgmma rep 2 1884791907ed1d17 mismatches vs mma.sync 0
+XCHASH data 1 prog SA1 SB1 sA2 sB2 mode0 mma.sync 6b547e46fcf02d6e out-of-domain 0
+XCHASH data 1 prog SA1 SB1 sA2 sB2 mode0 wgmma rep 0 6b547e46fcf02d6e mismatches vs mma.sync 0
+XCHASH data 1 prog SA1 SB1 sA2 sB2 mode0 wgmma rep 1 6b547e46fcf02d6e mismatches vs mma.sync 0
+XCHASH data 1 prog SA1 SB1 sA2 sB2 mode0 wgmma rep 2 6b547e46fcf02d6e mismatches vs mma.sync 0
+XCHASH data 1 prog SA2 SB1 sA2 sB2 mode0 mma.sync 6fa783f9a0366a88 out-of-domain 0
+XCHASH data 1 prog SA2 SB1 sA2 sB2 mode0 wgmma rep 0 6fa783f9a0366a88 mismatches vs mma.sync 0
+XCHASH data 1 prog SA2 SB1 sA2 sB2 mode0 wgmma rep 1 6fa783f9a0366a88 mismatches vs mma.sync 0
+XCHASH data 1 prog SA2 SB1 sA2 sB2 mode0 wgmma rep 2 6fa783f9a0366a88 mismatches vs mma.sync 0
+XCHASH data 1 prog SA2 SB2 sA2 sB2 mode1 mma.sync 84c98f234c4521ab out-of-domain 0
+XCHASH data 1 prog SA2 SB2 sA2 sB2 mode1 wgmma rep 0 84c98f234c4521ab mismatches vs mma.sync 0
+XCHASH data 1 prog SA2 SB2 sA2 sB2 mode1 wgmma rep 1 84c98f234c4521ab mismatches vs mma.sync 0
+XCHASH data 1 prog SA2 SB2 sA2 sB2 mode1 wgmma rep 2 84c98f234c4521ab mismatches vs mma.sync 0
+XCHASH data 1 prog SA2 SB2 sA2 sB2 mode0 mma.sync deac398463753418 out-of-domain 0
+XCHASH data 1 prog SA2 SB2 sA2 sB2 mode0 wgmma rep 0 deac398463753418 mismatches vs mma.sync 0
+XCHASH data 1 prog SA2 SB2 sA2 sB2 mode0 wgmma rep 1 deac398463753418 mismatches vs mma.sync 0
+XCHASH data 1 prog SA2 SB2 sA2 sB2 mode0 wgmma rep 2 deac398463753418 mismatches vs mma.sync 0
+XCHASH data 1 prog SA1 SB1 sA5 sB5 mode2 mma.sync 6da38752fcc03a90 out-of-domain 0
+XCHASH data 2 prog SA0 SB0 sA0 sB0 mode0 mma.sync efec9b51960cd1e9 out-of-domain 0
+XCHASH data 2 prog SA0 SB0 sA0 sB0 mode0 wgmma rep 0 efec9b51960cd1e9 mismatches vs mma.sync 0
+XCHASH data 2 prog SA0 SB0 sA0 sB0 mode0 wgmma rep 1 efec9b51960cd1e9 mismatches vs mma.sync 0
+XCHASH data 2 prog SA0 SB0 sA0 sB0 mode0 wgmma rep 2 efec9b51960cd1e9 mismatches vs mma.sync 0
+XCHASH data 2 prog SA1 SB1 sA2 sB2 mode0 mma.sync 11f5e5c34686afa4 out-of-domain 0
+XCHASH data 2 prog SA1 SB1 sA2 sB2 mode0 wgmma rep 0 11f5e5c34686afa4 mismatches vs mma.sync 0
+XCHASH data 2 prog SA1 SB1 sA2 sB2 mode0 wgmma rep 1 11f5e5c34686afa4 mismatches vs mma.sync 0
+XCHASH data 2 prog SA1 SB1 sA2 sB2 mode0 wgmma rep 2 11f5e5c34686afa4 mismatches vs mma.sync 0
+XCHASH data 2 prog SA2 SB1 sA2 sB2 mode0 mma.sync 04610c9405edb05d out-of-domain 0
+XCHASH data 2 prog SA2 SB1 sA2 sB2 mode0 wgmma rep 0 04610c9405edb05d mismatches vs mma.sync 0
+XCHASH data 2 prog SA2 SB1 sA2 sB2 mode0 wgmma rep 1 04610c9405edb05d mismatches vs mma.sync 0
+XCHASH data 2 prog SA2 SB1 sA2 sB2 mode0 wgmma rep 2 04610c9405edb05d mismatches vs mma.sync 0
+XCHASH data 2 prog SA2 SB2 sA2 sB2 mode1 mma.sync f49080a99f6d7a16 out-of-domain 0
+XCHASH data 2 prog SA2 SB2 sA2 sB2 mode1 wgmma rep 0 f49080a99f6d7a16 mismatches vs mma.sync 0
+XCHASH data 2 prog SA2 SB2 sA2 sB2 mode1 wgmma rep 1 f49080a99f6d7a16 mismatches vs mma.sync 0
+XCHASH data 2 prog SA2 SB2 sA2 sB2 mode1 wgmma rep 2 f49080a99f6d7a16 mismatches vs mma.sync 0
+XCHASH data 2 prog SA2 SB2 sA2 sB2 mode0 mma.sync 9bd5bd11c83fff77 out-of-domain 0
+XCHASH data 2 prog SA2 SB2 sA2 sB2 mode0 wgmma rep 0 9bd5bd11c83fff77 mismatches vs mma.sync 0
+XCHASH data 2 prog SA2 SB2 sA2 sB2 mode0 wgmma rep 1 9bd5bd11c83fff77 mismatches vs mma.sync 0
+XCHASH data 2 prog SA2 SB2 sA2 sB2 mode0 wgmma rep 2 9bd5bd11c83fff77 mismatches vs mma.sync 0
+XCHASH data 2 prog SA1 SB1 sA5 sB5 mode2 mma.sync 9d9c34f81be57e95 out-of-domain 0
+XCHASH data 3 prog SA0 SB0 sA0 sB0 mode0 mma.sync 182c25b65c1dff73 out-of-domain 0
+XCHASH data 3 prog SA0 SB0 sA0 sB0 mode0 wgmma rep 0 182c25b65c1dff73 mismatches vs mma.sync 0
+XCHASH data 3 prog SA0 SB0 sA0 sB0 mode0 wgmma rep 1 182c25b65c1dff73 mismatches vs mma.sync 0
+XCHASH data 3 prog SA0 SB0 sA0 sB0 mode0 wgmma rep 2 182c25b65c1dff73 mismatches vs mma.sync 0
+XCHASH data 3 prog SA1 SB1 sA2 sB2 mode0 mma.sync fa2273f6ee302ca7 out-of-domain 0
+XCHASH data 3 prog SA1 SB1 sA2 sB2 mode0 wgmma rep 0 fa2273f6ee302ca7 mismatches vs mma.sync 0
+XCHASH data 3 prog SA1 SB1 sA2 sB2 mode0 wgmma rep 1 fa2273f6ee302ca7 mismatches vs mma.sync 0
+XCHASH data 3 prog SA1 SB1 sA2 sB2 mode0 wgmma rep 2 fa2273f6ee302ca7 mismatches vs mma.sync 0
+XCHASH data 3 prog SA2 SB1 sA2 sB2 mode0 mma.sync e7534d024dadfad0 out-of-domain 0
+XCHASH data 3 prog SA2 SB1 sA2 sB2 mode0 wgmma rep 0 e7534d024dadfad0 mismatches vs mma.sync 0
+XCHASH data 3 prog SA2 SB1 sA2 sB2 mode0 wgmma rep 1 e7534d024dadfad0 mismatches vs mma.sync 0
+XCHASH data 3 prog SA2 SB1 sA2 sB2 mode0 wgmma rep 2 e7534d024dadfad0 mismatches vs mma.sync 0
+XCHASH data 3 prog SA2 SB2 sA2 sB2 mode1 mma.sync cdcd76a87b5f22b0 out-of-domain 0
+XCHASH data 3 prog SA2 SB2 sA2 sB2 mode1 wgmma rep 0 cdcd76a87b5f22b0 mismatches vs mma.sync 0
+XCHASH data 3 prog SA2 SB2 sA2 sB2 mode1 wgmma rep 1 cdcd76a87b5f22b0 mismatches vs mma.sync 0
+XCHASH data 3 prog SA2 SB2 sA2 sB2 mode1 wgmma rep 2 cdcd76a87b5f22b0 mismatches vs mma.sync 0
+XCHASH data 3 prog SA2 SB2 sA2 sB2 mode0 mma.sync d1802bc7229a842a out-of-domain 0
+XCHASH data 3 prog SA2 SB2 sA2 sB2 mode0 wgmma rep 0 d1802bc7229a842a mismatches vs mma.sync 0
+XCHASH data 3 prog SA2 SB2 sA2 sB2 mode0 wgmma rep 1 d1802bc7229a842a mismatches vs mma.sync 0
+XCHASH data 3 prog SA2 SB2 sA2 sB2 mode0 wgmma rep 2 d1802bc7229a842a mismatches vs mma.sync 0
+XCHASH data 3 prog SA1 SB1 sA5 sB5 mode2 mma.sync 8677fb468bbb71a6 out-of-domain 0
+
+[run_gpu] H100 r2theory:wgfeed2: exit=0 wall=37s cost~$0.061 ledger=$2.84
