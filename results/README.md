@@ -17,27 +17,31 @@ exception:
 
 `a800/baselines_38c32da_tokens/` keeps the previous A800 run's detcheck table (engine 38c32da,
 SGLang and vLLM 0.11.2, token ids only), which Section 7.1 cites for token-level counts.
-`a800/gdn/` is written by the scripts in `gdn/` (Section 8; see `gdn/README.md`).
+`a800/gdn/` is written by the scripts in `gdn/` (§6.1; see `gdn/README.md`).
 
 | paper | file under `a800/` | written by |
 |---|---|---|
-| §7.1 detcheck, four models (tokens and log-probabilities) | `detcheck/final_<model>.{log,json}` | `run_all.sh` detcheck stage (`detcheck/detcheck.py --logprobs`) |
-| §7.1 seven server configurations | `crossconfig/__deterministic_/`, `crossconfig/__attention_backend_flashinfer_/` | `eval/crossconfig.sh` |
-| §7.1 / §7.4 SGLang and vLLM | `baselines/Qwen3-1.7B/SUMMARY.md` and the per-engine JSONs | `eval/baselines.sh` (engines from `BASELINE_ENGINES`) |
-| §7.1 GSM8K | `accuracy/<model>/SUMMARY.md`, per-run logs | `eval/accuracy.sh`, `eval/compare_accuracy.py` |
-| §7.2 kernel hashes on both GPUs | `xgpu/` | `eval/xgpu_hashes.py`, `eval/xgpu_compare.py` |
-| §7.2 agreement with fp32 | `fp32_agreement/<model>.json` | `eval/fp32_agreement.sh` (`eval/hf_agreement.py`) |
-| §7.3 rollout log-probabilities | `rollout/<model>.json` (report), `rollout/<model>.log`, `rollout/<model>.gen.json` | `eval/rollout.sh` (`eval/rollout_logprobs.py`) |
-| §7.4 throughput matrix | `e2e_matrix/SUMMARY.md`, one JSON per launch | `eval/e2e_matrix.sh`, `eval/summarize_matrix.py` |
-| §7.4 components (PI attention vs row-invariant GEMM) | `e2e_ablation/SUMMARY.md`, one JSON per launch | `eval/e2e_ablation.sh`, `eval/summarize_ablation.py` |
-| §7.4 long context and shared prefixes | `e2e_extended/SUMMARY.md` | `eval/e2e_extended.sh`, `eval/summarize_extended.py` |
-| §7.4 high concurrency | `e2e_highconc/SUMMARY.md` | `eval/e2e_highconc.sh`, `eval/summarize_extended.py` |
-| §7.4 attention kernels | `kernels/attention.{txt,json}`, `kernels/prefill_configs.txt` | `eval/kernel_benches.sh` (`kernels/bench_attention.py`, `kernels/bench_prefill.py`) |
-| §7.4 projection GEMMs vs cuBLAS | `kernels/gemm_burst.txt` (M = 1..2048, launches over weight copies), `kernels/gemm_cold.txt`, `kernels/gemm.txt` (warm), `kernels/gemm_step_graph.txt` (one decode step's projections in a graph) | `eval/kernel_benches.sh` |
-| §6 GEMM tuning time at startup | `e2e_matrix/tuning.txt` | `run_all.sh` (the engine's `PI GEMM tiles tuned` and `PI GEMM tile choice` log lines) |
-| §7.5 batch-1 traces | `nsys/b1_compare.txt` | `scripts/nsys_decode.sh`, `scripts/nsys_compare.py` |
-| §7.7 kernel tests and mutants | `run_all/kernel_tests.log` | `kernels/test_*.py` |
-| §9 tensor-parallel degree | `kernels/bench_tp.log` | `kernels/bench_tp.py`, `kernels/test_tp_model.py` |
+| §5.1 detcheck, four models (tokens and log-probabilities) | `detcheck/final_<model>.{log,json}` | `run_all.sh` detcheck stage (`detcheck/detcheck.py --logprobs`) |
+| §5.1 seven server configurations | `crossconfig/__deterministic_/`, `crossconfig/__attention_backend_flashinfer_/` | `eval/crossconfig.sh` |
+| §5.1 / §5.3 SGLang and vLLM | `baselines/Qwen3-1.7B/SUMMARY.md` and the per-engine JSONs | `eval/baselines.sh` (engines from `BASELINE_ENGINES`) |
+| §5.1 GSM8K | `accuracy/<model>/SUMMARY.md`, per-run logs | `eval/accuracy.sh`, `eval/compare_accuracy.py` |
+| §5.1 kernel hashes, A800 vs RTX 4090 D | `xgpu/` | `eval/xgpu_hashes.py`, `eval/xgpu_compare.py` |
+| §5.1 agreement with fp32 | `fp32_agreement/<model>.json` | `eval/fp32_agreement.sh` (`eval/hf_agreement.py`) |
+| §5.2 rollout log-probabilities | `rollout/<model>.json` (report), `rollout/<model>.log`, `rollout/<model>.gen.json` | `eval/rollout.sh` (`eval/rollout_logprobs.py`) |
+| §5.3 throughput matrix | `e2e_matrix/SUMMARY.md`, one JSON per launch | `eval/e2e_matrix.sh`, `eval/summarize_matrix.py` |
+| §5.3 components (PI attention vs row-invariant GEMM) | `e2e_ablation/SUMMARY.md`, one JSON per launch | `eval/e2e_ablation.sh`, `eval/summarize_ablation.py` |
+| §5.3 long context and shared prefixes | `e2e_extended/SUMMARY.md` | `eval/e2e_extended.sh`, `eval/summarize_extended.py` |
+| §5.3 high concurrency | `e2e_highconc/SUMMARY.md` | `eval/e2e_highconc.sh`, `eval/summarize_extended.py` |
+| §5.3 attention kernels | `kernels/attention.{txt,json}`, `kernels/prefill_configs.txt` | `eval/kernel_benches.sh` (`kernels/bench_attention.py`, `kernels/bench_prefill.py`) |
+| §5.3 projection GEMMs vs cuBLAS | `kernels/gemm_burst.txt` (M = 1..2048, launches over weight copies), `kernels/gemm_cold.txt`, `kernels/gemm.txt` (warm), `kernels/gemm_step_graph.txt` (one decode step's projections in a graph) | `eval/kernel_benches.sh` |
+| §4 GEMM tuning time at startup | `e2e_matrix/tuning.txt` | `run_all.sh` (the engine's `PI GEMM tiles tuned` and `PI GEMM tile choice` log lines) |
+| §5.3 batch-1 traces | `nsys/b1_compare.txt` | `scripts/nsys_decode.sh`, `scripts/nsys_compare.py` |
+| §5.4 kernel tests and mutants | `run_all/kernel_tests.log` | `kernels/test_*.py` |
+| §6.2 tensor-parallel degree | `kernels/bench_tp.log` | `kernels/bench_tp.py`, `kernels/test_tp_model.py` |
+| §7 Table 2, kernel hashes and suites on A100, A10G, L4, H100 | `../modal/<GPU>/xgpu_hashes.json`, `../modal/suite_<GPU>.log` | `eval/xgpu_hashes.py`, `eval/xgpu_compare.py`, `kernels/test_*.py` |
+| §7 Table 2, engine rollout replay, detcheck, trainer (A10G, H100) | `../modal/<GPU>/engine.log` | `eval/xgpu_rollout.py`, `detcheck/detcheck.py --logprobs`, `eval/rollout_logprobs.py` |
+| §7 Hopper kernels in the engine (H100) | `../modal/H100_sm90/` (suites, hashes, rollouts against the pre-change engine, end to end) | same |
+| §7 tensor-core models and exact-lattice programs | `../../xclass/` | see `xclass/README.md` |
 
 The paper's figures are drawn from these files by `paper/figures.py` (`cd paper && python figures.py ../results figs`).
 

@@ -22,7 +22,12 @@ On one A800, Qwen3 0.6B–8B, with radix caching, chunked prefill, CUDA graphs a
 - **2.0–3.7× faster than vLLM's batch-invariant mode**, the only other engine that passes our numeric checks.
 - **Bitwise identical** tokens *and* log-probabilities across concurrency, prefix-cache state, chunking, decode vs. re-prefill, seeded sampling, eight server configurations and restarts.
 - **Rollout = trainer.** A PyTorch forward on the same kernels reproduces all **55,593** rollout log-probabilities bit for bit, so every importance ratio is exactly 1. A standard bf16 trainer misses by more than 1% on 10–22% of tokens.
-- **Same bits on two GPU architectures.** Every kernel output and every GSM8K generation is identical across an A800 (sm_80) and an RTX 4090 D (sm_89).
+- **Same bits across GPUs.**
+  - On five Ampere/Ada GPUs (A800, A100, A10G, L4, RTX 4090 D), every kernel output is identical.
+  - On an A10G the engine replays A800 rollouts token for token, with every log-probability bitwise equal.
+  - The H100's tensor cores round differently, so it has its own bits but keeps every guarantee.
+  - Hopper kernels built on `wgmma` and TMA reproduce the H100 bits; the GEMM runs at 1.02–1.09× cuBLAS's time.
+  - Exact-lattice variants of the program give one set of bits on every GPU, at a measured cost (paper §7, [`xclass/`](xclass/)).
 - **Beyond softmax attention.** Gated DeltaNet decodes with the trainer's own chunked program inside vLLM, bitwise and at stock throughput, with speculative decoding for free.
 
 ## How it works
@@ -57,7 +62,7 @@ eval/run_all.sh        # rebuilds the engine, runs every test and benchmark (~8 
 cd paper && python figures.py ../results figs && bash build.sh    # redraw the figures, rebuild paper.pdf
 ```
 
-[`results/README.md`](results/README.md) maps every table and figure to the files that hold its numbers. The A800 run is in `results/a800/`; the earlier RTX 4090 D run is at the top level of `results/`. Set `BASELINE_ENGINES="rust rust-det sglang sglang-det vllm vllm-det vllm17 vllm17-det"` to include the SGLang and vLLM baselines.
+[`results/README.md`](results/README.md) maps every table and figure to the files that hold its numbers. The A800 run is in `results/a800/`; the earlier RTX 4090 D run is at the top level of `results/`; the A100, A10G, L4 and H100 runs are in `results/modal/`. Set `BASELINE_ENGINES="rust rust-det sglang sglang-det vllm vllm-det vllm17 vllm17-det"` to include the SGLang and vLLM baselines.
 
 ## Repository
 
@@ -71,6 +76,7 @@ cd paper && python figures.py ../results figs && bash build.sh    # redraw the f
 | [`gdn/`](gdn/) | Exact Gated DeltaNet decode and its vLLM 0.17.1 integration |
 | [`results/`](results/) | Every number in the paper |
 | [`requirements/`](requirements/) | Exact package lists of the four Python environments and model hashes |
+| [`xclass/`](xclass/) | Tensor-core models, SFU identity probes and the exact-lattice GEMM and attention programs that give the same bits on every GPU class |
 | [`archive/`](archive/) | Earlier kernel versions and every measured optimization attempt, kept or rejected |
 
 ## Tests

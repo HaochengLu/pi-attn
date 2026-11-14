@@ -1,0 +1,28 @@
+prefill hq=16 b=1 q=512 prefix=0: fi    15.2 | mma.sync s0/s1/s2/s4 21/21/21/21 | wgmma s0/s1/s2/s4 21/21/21/21 | wgmma best/fi 1.40 planner/best 1.00
+prefill hq=16 b=1 q=1024 prefix=0: fi    22.7 | mma.sync s0/s1/s2/s4 47/47/53/53 | wgmma s0/s1/s2/s4 42/42/50/50 | wgmma best/fi 1.85 planner/best 1.00
+prefill hq=16 b=1 q=2048 prefix=0: fi    60.3 | mma.sync s0/s1/s2/s4 148/141/160/154 | wgmma s0/s1/s2/s4 143/129/150/144 | wgmma best/fi 2.14 planner/best 1.11
+prefill hq=16 b=1 q=4096 prefix=0: fi   169.9 | mma.sync s0/s1/s2/s4 442/441/513/502 | wgmma s0/s1/s2/s4 401/401/474/466 | wgmma best/fi 2.36 planner/best 1.00
+prefill hq=16 b=8 q=512 prefix=0: fi    48.5 | mma.sync s0/s1/s2/s4 84/83/82/83 | wgmma s0/s1/s2/s4 78/78/78/78 | wgmma best/fi 1.60 planner/best 1.00
+prefill hq=16 b=8 q=1024 prefix=0: fi   115.0 | mma.sync s0/s1/s2/s4 238/238/354/353 | wgmma s0/s1/s2/s4 219/221/339/339 | wgmma best/fi 1.90 planner/best 0.99
+prefill hq=16 b=8 q=2048 prefix=0: fi   330.8 | mma.sync s0/s1/s2/s4 798/793/1075/1082 | wgmma s0/s1/s2/s4 717/719/1007/1022 | wgmma best/fi 2.17 planner/best 1.00
+prefill hq=16 b=32 q=512 prefix=0: fi   159.3 | mma.sync s0/s1/s2/s4 285/289/284/278 | wgmma s0/s1/s2/s4 261/261/261/261 | wgmma best/fi 1.64 planner/best 1.00
+prefill hq=16 b=1 q=512 prefix=2048: fi    42.6 | mma.sync s0/s1/s2/s4 79/86/74/80 | wgmma s0/s1/s2/s4 75/88/70/73 | wgmma best/fi 1.63 planner/best 1.08
+prefill hq=16 b=1 q=2048 prefix=2048: fi   121.8 | mma.sync s0/s1/s2/s4 373/342/385/370 | wgmma s0/s1/s2/s4 343/305/358/344 | wgmma best/fi 2.50 planner/best 1.13
+prefill hq=16 b=1 q=1024 prefix=1024: fi    38.8 | mma.sync s0/s1/s2/s4 91/90/113/108 | wgmma s0/s1/s2/s4 80/80/102/99 | wgmma best/fi 2.07 planner/best 1.00
+prefill hq=16 b=1 q=128 prefix=4096: fi    64.0 | mma.sync s0/s1/s2/s4 37/136/91/59 | wgmma s0/s1/s2/s4 36/139/93/61 | wgmma best/fi 0.56 planner/best 0.59
+prefill hq=16 b=1 q=512 prefix=8192: fi   128.9 | mma.sync s0/s1/s2/s4 248/285/234/267 | wgmma s0/s1/s2/s4 239/291/220/241 | wgmma best/fi 1.70 planner/best 1.09
+prefill hq=32 b=1 q=512 prefix=0: fi    15.8 | mma.sync s0/s1/s2/s4 26/26/26/26 | wgmma s0/s1/s2/s4 24/24/24/24 | wgmma best/fi 1.51 planner/best 1.00
+prefill hq=32 b=1 q=1024 prefix=0: fi    37.7 | mma.sync s0/s1/s2/s4 92/79/93/93 | wgmma s0/s1/s2/s4 88/73/87/87 | wgmma best/fi 1.94 planner/best 1.20
+prefill hq=32 b=1 q=2048 prefix=0: fi    96.7 | mma.sync s0/s1/s2/s4 292/232/292/281 | wgmma s0/s1/s2/s4 264/213/271/267 | wgmma best/fi 2.21 planner/best 1.24
+prefill hq=32 b=1 q=4096 prefix=0: fi   296.5 | mma.sync s0/s1/s2/s4 791/790/964/960 | wgmma s0/s1/s2/s4 703/703/889/890 | wgmma best/fi 2.37 planner/best 1.00
+prefill hq=32 b=8 q=512 prefix=0: fi    83.8 | mma.sync s0/s1/s2/s4 147/148/149/148 | wgmma s0/s1/s2/s4 137/137/138/139 | wgmma best/fi 1.64 planner/best 1.00
+prefill hq=32 b=8 q=1024 prefix=0: fi   212.0 | mma.sync s0/s1/s2/s4 449/448/683/674 | wgmma s0/s1/s2/s4 411/406/650/639 | wgmma best/fi 1.92 planner/best 1.01
+prefill hq=32 b=8 q=2048 prefix=0: fi   667.2 | mma.sync s0/s1/s2/s4 1532/1520/2103/2181 | wgmma s0/s1/s2/s4 1388/1368/1946/2040 | wgmma best/fi 2.05 planner/best 1.01
+prefill hq=32 b=32 q=512 prefix=0: fi   306.0 | mma.sync s0/s1/s2/s4 559/538/538/538 | wgmma s0/s1/s2/s4 508/502/502/502 | wgmma best/fi 1.64 planner/best 1.01
+prefill hq=32 b=1 q=512 prefix=2048: fi    44.2 | mma.sync s0/s1/s2/s4 111/111/145/146 | wgmma s0/s1/s2/s4 97/96/132/134 | wgmma best/fi 2.18 planner/best 1.01
+prefill hq=32 b=1 q=2048 prefix=2048: fi   219.6 | mma.sync s0/s1/s2/s4 594/593/712/697 | wgmma s0/s1/s2/s4 524/533/654/645 | wgmma best/fi 2.39 planner/best 0.98
+prefill hq=32 b=1 q=1024 prefix=1024: fi    69.6 | mma.sync s0/s1/s2/s4 174/174/212/203 | wgmma s0/s1/s2/s4 157/158/198/192 | wgmma best/fi 2.26 planner/best 1.00
+prefill hq=32 b=1 q=128 prefix=4096: fi    66.2 | mma.sync s0/s1/s2/s4 66/144/99/77 | wgmma s0/s1/s2/s4 62/144/100/71 | wgmma best/fi 0.94 planner/best 0.88
+prefill hq=32 b=1 q=512 prefix=8192: fi   132.9 | mma.sync s0/s1/s2/s4 388/375/469/464 | wgmma s0/s1/s2/s4 329/337/426/428 | wgmma best/fi 2.48 planner/best 0.98
+
+[run_gpu] H100 r4hopper:attn_splits: exit=0 wall=187s cost~$0.309 ledger=$23.00

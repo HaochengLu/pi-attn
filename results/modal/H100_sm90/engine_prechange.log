@@ -1,0 +1,86 @@
+tar: Ignoring unknown extended header keyword 'LIBARCHIVE.xattr.com.apple.provenance'
+tar: Ignoring unknown extended header keyword 'LIBARCHIVE.xattr.com.apple.provenance'
+tar: Ignoring unknown extended header keyword 'LIBARCHIVE.xattr.com.apple.provenance'
+tar: Ignoring unknown extended header keyword 'LIBARCHIVE.xattr.com.apple.provenance'
+tar: Ignoring unknown extended header keyword 'LIBARCHIVE.xattr.com.apple.provenance'
+tar: Ignoring unknown extended header keyword 'LIBARCHIVE.xattr.com.apple.provenance'
+tar: Ignoring unknown extended header keyword 'LIBARCHIVE.xattr.com.apple.provenance'
+tar: Ignoring unknown extended header keyword 'LIBARCHIVE.xattr.com.apple.provenance'
+rust: rustc 1.95.0 (59807616e 2026-04-14)  g++: g++-13 (Ubuntu 13.4.0-6ubuntu1~22~ppa2) 13.4.0
+model sha256 OK
+  Downloaded proc-macro-error-attr3 v3.1.1
+  Downloaded proc-macro-error3 v3.1.1
+  Downloaded thiserror v2.0.20
+  Downloaded thiserror v1.0.69
+  Downloaded thiserror-impl v2.0.20
+cargo build exit=0 (287s)
+warning: sglang-rust@0.1.0:           detected during instantiation of "cudaError_t flashinfer::sampling::TopPSamplingFromProb(T *, IdType *, __nv_bool *, IdType *, T *, uint32_t, T, uint32_t, __nv_bool, uint64_t *, uint64_t, uint64_t *, uint64_t, cudaStream_t) [with T=float, IdType=int64_t]" at line 15 of src/engine/sampling_flashinfer.cu
+warning: sglang-rust@0.1.0: 
+    Finished `release` profile [optimized] target(s) in 4m 06s
+server up after 305s
+--- phase A: pre-change engine vs the A800 reference (differs by tensor-core class, as before)
+64 rollouts: 24 with identical token ids; 4377/14293 log-probabilities bitwise equal
+ROLLOUTS IDENTICAL TO REFERENCE: False
+xgpu_rollout(old vs A800) exit=1
+tar: Ignoring unknown extended header keyword 'LIBARCHIVE.xattr.com.apple.provenance'
+tar: Ignoring unknown extended header keyword 'LIBARCHIVE.xattr.com.apple.provenance'
+tar: Ignoring unknown extended header keyword 'LIBARCHIVE.xattr.com.apple.provenance'
+tar: Ignoring unknown extended header keyword 'LIBARCHIVE.xattr.com.apple.provenance'
+tar: Ignoring unknown extended header keyword 'LIBARCHIVE.xattr.com.apple.provenance'
+tar: Ignoring unknown extended header keyword 'LIBARCHIVE.xattr.com.apple.provenance'
+tar: Ignoring unknown extended header keyword 'LIBARCHIVE.xattr.com.apple.provenance'
+tar: Ignoring unknown extended header keyword 'LIBARCHIVE.xattr.com.apple.provenance'
+cargo build (sm90 branch) exit=0 (205s)
+warning: sglang-rust@0.1.0: 
+    Finished `release` profile [optimized] target(s) in 3m 25s
+binary imports cuTensorMapEncodeTiled: 0
+server up after 535s
+--- phase B: sm90 branch vs the pre-change engine on this GPU
+64 rollouts: 64 with identical token ids; 14442/14442 log-probabilities bitwise equal
+ROLLOUTS IDENTICAL TO REFERENCE: True
+xgpu_rollout(new vs old, same H100) exit=0
+--- GEMM tile choices (old engine, then sm90 branch; ids 90..97 are the wgmma tiles)
+2026-11-14T02:18:55.354384Z | llm-infer-rust | INFO | PI GEMM tile choice n=2048 k=2048 choice="1:51 2:61 4:61 8:62 16:63 32:14 64:14 128:14 192:70 256:70 320:68 384:68 448:68 512:68 640:69 768:69 896:69 1024:69 1280:10"
+2026-11-14T02:18:55.354443Z | llm-infer-rust | INFO | PI GEMM tile choice n=2048 k=6144 choice="1:51 2:51 4:51 8:61 16:63 32:64 64:64 128:14 192:70 256:70 320:68 384:68 448:68 512:68 640:69 768:69 896:69 1024:69 1280:71"
+2026-11-14T02:18:55.354464Z | llm-infer-rust | INFO | PI GEMM tile choice n=4096 k=2048 choice="1:62 2:61 4:14 8:14 16:14 32:14 64:14 128:70 192:68 256:68 320:69 384:69 448:69 512:69 640:10 768:10 896:16 1024:16 1280:69"
+2026-11-14T02:18:55.354483Z | llm-infer-rust | INFO | PI GEMM tile choice n=12288 k=2048 choice="1:14 2:14 4:14 8:14 16:14 32:14 64:14 128:15 192:68 256:68 320:68 384:69 448:69 512:69 640:69 768:69 896:10 1024:69 1280:10"
+2026-11-14T02:18:58.585602Z | llm-infer-rust | INFO | PI GEMM tile choice n=151936 k=2048 choice="1:14 2:14 4:14 8:14 16:14 32:14 64:70 128:69 192:68 256:10 320:68 384:69 448:16 512:69 640:69 768:69 896:69 1024:69 1280:69"
+2026-11-14T02:22:45.454872Z | llm-infer-rust | INFO | PI GEMM tile choice n=2048 k=2048 choice="1:51 2:61 4:61 8:61 16:63 32:14 64:14 128:14 192:70 256:70 320:68 384:68 448:68 512:68 640:69 768:69 896:69 1024:69 1280:16"
+2026-11-14T02:22:45.454922Z | llm-infer-rust | INFO | PI GEMM tile choice n=2048 k=6144 choice="1:51 2:51 4:51 8:61 16:63 32:64 64:64 128:14 192:70 256:70 320:68 384:68 448:68 512:68 640:69 768:69 896:69 1024:69 1280:71"
+2026-11-14T02:22:45.454942Z | llm-infer-rust | INFO | PI GEMM tile choice n=4096 k=2048 choice="1:62 2:61 4:14 8:14 16:14 32:14 64:14 128:70 192:68 256:68 320:69 384:69 448:69 512:69 640:16 768:16 896:16 1024:16 1280:69"
+2026-11-14T02:22:45.454961Z | llm-infer-rust | INFO | PI GEMM tile choice n=12288 k=2048 choice="1:21 2:14 4:14 8:14 16:14 32:14 64:14 128:15 192:68 256:68 320:68 384:69 448:69 512:69 640:69 768:69 896:10 1024:10 1280:10"
+2026-11-14T02:22:48.708546Z | llm-infer-rust | INFO | PI GEMM tile choice n=151936 k=2048 choice="1:14 2:14 4:14 8:14 16:14 32:14 64:70 128:69 192:68 256:69 320:69 384:69 448:10 512:16 640:69 768:69 896:69 1024:69 1280:69"
+detcheck exit=0
+batch  [{"concurrency": 4, "requests": 16, "mismatched": 0, "first_divergence_tokens": []}, {"concurrency": 16, "requests": 16, "mismatched": 0, "first_divergence_tokens": []}]
+prefix {"full_hit": 0, "partial_hit": 0, "requests": 8}
+shared {"requests": 32, "prefix_tokens": 2616, "mismatched": 0, "first_divergence_tokens": []}
+path   {"requests": 24, "mismatched": 0, "first_divergence_tokens": []}
+spath  {"requests": 24, "mismatched": 0, "first_divergence_tokens": []}
+repeat {"samples": 200, "unique_completions": 1}
+sample {"rows": [{"concurrency": 4, "requests": 16, "mismatched": 0, "first_divergence_tokens": []}, {"concurrency": 16, "requests": 16, "mismatched": 0, "first_divergence_tokens": []}], "distinct_reference_samples": 16}
+DETERMINISTIC
+score exit=0
+pi alone              : 14442/14442 tokens bitwise equal to the engine | |dlogp| mean 0.00e+00 max 0.00e+00 | ratio [1.0000, 1.0000], 0.00% of tokens off by > 1%
+pi packing 0          : 14442/14442 tokens bitwise equal to the engine | |dlogp| mean 0.00e+00 max 0.00e+00 | ratio [1.0000, 1.0000], 0.00% of tokens off by > 1%
+pi packing 1          : 14442/14442 tokens bitwise equal to the engine | |dlogp| mean 0.00e+00 max 0.00e+00 | ratio [1.0000, 1.0000], 0.00% of tokens off by > 1%
+hf alone              : 5367/14442 tokens bitwise equal to the engine | |dlogp| mean 8.92e-03 max 9.03e-01 | ratio [0.4055, 1.6201], 11.44% of tokens off by > 1%
+hf batch 8            : 5364/14442 tokens bitwise equal to the engine | |dlogp| mean 8.87e-03 max 6.60e-01 | ratio [0.5362, 1.9354], 11.64% of tokens off by > 1%
+PI TRAINER == ENGINE: True
+e2e flashinfer exit=0
+e2e pi exit=0
+e2e flashinfer exit=0
+e2e pi exit=0
+E2E 64/32/c1: out tok/s FI 445.8 PI 430.8 (-3.4%) | TTFT FI 4.0 PI 4.8 (+21.0%)
+E2E 64/32/c8: out tok/s FI 2979.5 PI 2678.9 (-10.1%) | TTFT FI 11.1 PI 13.8 (+23.6%)
+E2E 64/32/c32: out tok/s FI 8882.3 PI 7475.6 (-15.8%) | TTFT FI 19.7 PI 26.6 (+35.3%)
+E2E 512/256/c8: out tok/s FI 3048.5 PI 2510.0 (-17.7%) | TTFT FI 27.6 PI 41.2 (+49.5%)
+E2E 2048/128/c8: out tok/s FI 2043.8 PI 1691.0 (-17.3%) | TTFT FI 59.3 PI 90.2 (+52.3%)
+E2E 1024/512/c32: out tok/s FI 7188.9 PI 6143.8 (-14.5%) | TTFT FI 98.0 PI 147.1 (+50.1%)
+2026-11-14T02:33:37.424257Z | llm-infer-rust | INFO | PI GEMM tile choice n=2048 k=2048 choice="1:51 2:61 4:61 8:61 16:14 32:14 64:14 128:14 192:70 256:70 320:68 384:68 448:68 512:68 640:69 768:69 896:69 1024:69 1280:16 1536:10 1792:16 2048:16 2304:69"
+2026-11-14T02:33:37.443887Z | llm-infer-rust | INFO | PI GEMM tile choice n=2048 k=6144 choice="1:51 2:51 4:51 8:61 16:64 32:64 64:64 128:14 192:70 256:70 320:68 384:68 448:68 512:68 640:69 768:69 896:69 1024:69 1280:71 1536:16 1792:10 2048:10 2304:71"
+2026-11-14T02:33:37.456180Z | llm-infer-rust | INFO | PI GEMM tile choice n=4096 k=2048 choice="1:62 2:61 4:14 8:14 16:14 32:14 64:14 128:70 192:68 256:68 320:69 384:69 448:69 512:69 640:71 768:16 896:10 1024:10 1280:69 1536:69 1792:10 2048:16 2304:69"
+2026-11-14T02:33:37.483401Z | llm-infer-rust | INFO | PI GEMM tile choice n=12288 k=2048 choice="1:14 2:14 4:14 8:14 16:14 32:14 64:14 128:15 192:68 256:68 320:68 384:69 448:69 512:69 640:69 768:69 896:10 1024:10 1280:10 1536:69 1792:69 2048:10 2304:10"
+2026-11-14T02:33:42.013471Z | llm-infer-rust | INFO | PI GEMM tile choice n=151936 k=2048 choice="1:14 2:14 4:14 8:14 16:14 32:14 64:70 128:69 192:68 256:11 320:68 384:69 448:69 512:16 640:69 768:69 896:69 1024:69 1280:69 1536:69 1792:69 2048:69 2304:69"
+total 1239s
+
+[run_gpu] H100 r4hopper:engine_H100: exit=0 wall=1277s cost~$2.114 ledger=$25.50
