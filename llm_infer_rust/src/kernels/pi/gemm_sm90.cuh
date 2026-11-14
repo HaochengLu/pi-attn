@@ -15,6 +15,12 @@
 //    writes the rounded tile to shared memory and hands it to one asynchronous TMA store. The walk goes in
 //    blocks `swz` n tiles wide so that one wave of CTAs shares its X rows and W columns in L2.
 // One CTA = 1 producer warp group + BM / 64 consumer warp groups (64 rows x BN columns each).
+// Decode (M below one row tile): the X stage loads are issued with a TMA box of exactly M rows. A box that
+// crosses the tensor's last row costs about 3 ns per out-of-bounds row on H100 (measured: a 64 x 16 tile over
+// K = 6144 took 35 us at M = 1 against 16 us at M = 64), which made every tile here slower as M shrank. The
+// stage rows past M then hold stale shared memory; wgmma computes on them, row by row independently of the
+// real rows, and the TMA store drops them. Ids 98..102 are tiles for this regime: N tiles narrow enough that a
+// 2048-column weight still gives every SM a CTA to stream through, each element's chain still the whole K.
 // A launch refuses (cudaErrorInvalidValue, before launching) x, w, y that are not 16-byte aligned, row
 // strides that are not multiples of 8 elements (TMA), a K remainder, and a segment count its kind does not run.
 #pragma once
@@ -35,11 +41,12 @@
 
 namespace pi_gemm90 {
 
-// SEG: S > 1 kernels keep the segment totals in a second register fragment (BN <= 128).
-template <int BM, int BN, int ST, bool SEG, typename OutT>
+// SEG: S > 1 kernels keep the segment totals in a second register fragment (BN <= 128). BK: K columns per stage.
+template <int BM, int BN, int ST, bool SEG, typename OutT, int BK = 64>
 struct Sm90Gemm {
   static_assert(BM == 64 || BM == 128, "one or two consumer warp groups");
-  static constexpr int kBK = 64;
+  static_assert(BK % 64 == 0, "whole 64-column (128-byte swizzled) K slabs");
+  static constexpr int kBK = BK;
   using TileShape = cute::Shape<cute::Int<BM>, cute::Int<BN>, cute::Int<kBK>>;
   using ClusterShape = cute::Shape<cute::_1, cute::_1, cute::_1>;
   using Schedule = std::conditional_t<BM == 128, cutlass::gemm::KernelTmaWarpSpecializedCooperative,
@@ -225,12 +232,12 @@ __global__ void __launch_bounds__(G::kThreads) sm90_gemm_kernel(CUTLASS_GRID_CON
 }
 
 // set_smem(kernel, bytes): the caller's once-per-device cudaFuncSetAttribute (gemm_dispatch.cuh).
-template <int BM, int BN, int ST, bool SEG, typename OutT>
+template <int BM, int BN, int ST, bool SEG, typename OutT, int BK>
 template <typename SetSmem>
-cudaError_t Sm90Gemm<BM, BN, ST, SEG, OutT>::run(const void* x, int64_t ldx, const void* w, OutT* y, int64_t ldy,
+cudaError_t Sm90Gemm<BM, BN, ST, SEG, OutT, BK>::run(const void* x, int64_t ldx, const void* w, OutT* y, int64_t ldy,
                                                  int M, int N, int K, int segs, int sms, SetSmem&& set_smem,
                                                  cudaStream_t stream) {
-  using Self = Sm90Gemm<BM, BN, ST, SEG, OutT>;
+  using Self = Sm90Gemm<BM, BN, ST, SEG, OutT, BK>;
   if (segs < 1 || K % (kBK * segs) || (!SEG && segs != 1) || (SEG && segs < 2) || N % 8 || ldy % 8 || ldx % 8 ||
       ((uintptr_t)x & 15) || ((uintptr_t)w & 15) || ((uintptr_t)y & 15) || sms < 1)
     return cudaErrorInvalidValue;
@@ -240,6 +247,23 @@ cudaError_t Sm90Gemm<BM, BN, ST, SEG, OutT>::run(const void* x, int64_t ldx, con
   Params params{Mainloop::to_underlying_arguments(cute::make_shape(M, N, K, 1), margs, nullptr), M, N, K, segs, 1, {}};
   const int smem = (int)sizeof(SharedStorage);
   const int tiles_m = (M + BM - 1) / BM, tiles_n = (N + BN - 1) / BN;
+  if (M < BM) {
+    // X's descriptor again, as cute builds it (make_tma_copy_desc: 16-bit elements, dims (K, M, L = 1) since the
+    // collective loads through the 3-d instruction, one 64-column 128-byte-swizzled slab per instruction) but
+    // with a box of M rows, and the stage's byte count to match.
+    cute::TmaDescriptor desc{};
+    const cuuint64_t gdim[3] = {(cuuint64_t)K, (cuuint64_t)M, 1}, gstride[2] = {(cuuint64_t)ldx * 2, 0};
+    const cuuint32_t box[3] = {64, (cuuint32_t)M, 1}, estride[3] = {1, 1, 1};
+    if (cuTensorMapEncodeTiled(&desc, CU_TENSOR_MAP_DATA_TYPE_UINT16, 3, const_cast<void*>(x), gdim, gstride, box, estride,
+                               CU_TENSOR_MAP_INTERLEAVE_NONE, CU_TENSOR_MAP_SWIZZLE_128B, CU_TENSOR_MAP_L2_PROMOTION_L2_128B,
+                               CU_TENSOR_MAP_FLOAT_OOB_FILL_NONE) != CUDA_SUCCESS)
+      return cudaErrorInvalidValue;
+    int driver = 0;
+    if (cudaDriverGetVersion(&driver) == cudaSuccess && driver <= 13010 && (uint64_t)M * ldx * 2 < 131072)
+      reinterpret_cast<uint64_t*>(&desc)[1] &= ~(1llu << 21);  // cute's workaround for small tensors on old drivers
+    *const_cast<cute::TmaDescriptor*>(params.mainloop.tma_load_a.get_tma_descriptor()) = desc;
+    params.mainloop.tma_transaction_bytes = (uint32_t)((M + BN) * kBK * 2);
+  }
   // Persistent CTAs: as many as are resident at once (shared memory and threads per SM); more would only queue.
   const int per_sm = std::max(1, std::min((228 << 10) / smem, 2048 / kThreads));
   const int grid = std::min(tiles_m * tiles_n, sms * per_sm);
@@ -256,9 +280,12 @@ cudaError_t Sm90Gemm<BM, BN, ST, SEG, OutT>::run(const void* x, int64_t ldx, con
   return cudaGetLastError();
 }
 
-// Ids 90..94: S = 1 tiles 128x256, 128x128, 64x128, 64x256, 64x64; 95..97: S > 1 tiles 128x128, 64x128, 64x64.
+// Ids 90..94: S = 1 tiles 128x256, 128x128, 64x128, 64x256, 64x64; 95..97: S > 1 tiles 128x128, 64x128, 64x64;
+// 98..102: S = 1 decode tiles 64x32, 64x16 with 64-column stages and 64x64, 64x32, 64x16 with 128-column stages.
 // Stage counts leave room for the epilogue tile (2 bytes per element for bf16 output, 4 for fp32).
-inline bool is_sm90_kernel(int k) { return k >= 90 && k <= 97; }
+constexpr int kSm90First = 90, kSm90Last = 102;
+inline bool is_sm90_kernel(int k) { return k >= kSm90First && k <= kSm90Last; }
+inline int sm90_kernel_bk(int k) { return k >= 100 ? 128 : 64; }
 template <typename OutT, typename SetSmem>
 cudaError_t run_gemm_sm90(int k, const void* x, int64_t ldx, const void* w, OutT* y, int64_t ldy, int M, int N, int K,
                           int segs, int sms, SetSmem&& ss, cudaStream_t st) {
@@ -272,6 +299,11 @@ cudaError_t run_gemm_sm90(int k, const void* x, int64_t ldx, const void* w, OutT
     case 95: return Sm90Gemm<128, 128, h ? 5 : 4, true, OutT>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
     case 96: return Sm90Gemm<64, 128, 3, true, OutT>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
     case 97: return Sm90Gemm<64, 64, 4, true, OutT>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
+    case 98: return Sm90Gemm<64, 32, 6, false, OutT>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
+    case 99: return Sm90Gemm<64, 16, 8, false, OutT>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
+    case 100: return Sm90Gemm<64, 64, 3, false, OutT, 128>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
+    case 101: return Sm90Gemm<64, 32, 4, false, OutT, 128>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
+    case 102: return Sm90Gemm<64, 16, 4, false, OutT, 128>::run(x, ldx, w, y, ldy, M, N, K, segs, sms, ss, st);
     default: return cudaErrorInvalidValue;
   }
 }

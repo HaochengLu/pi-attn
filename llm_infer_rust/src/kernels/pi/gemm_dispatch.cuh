@@ -17,7 +17,8 @@
 // halve the mainloop's barriers per k), 71 / 72 stream-K over 128x128 / 128x64 of them, 48/49
 // segment-parallel CUTLASS tiles (S > 1 shapes), 54/55 segment-split (M <= 16, S > 1
 // shapes: one CTA per n8 tile, one warp per segment), 90..97 wgmma + TMA tiles (gemm_sm90.cuh; only in
-// sm_90a builds, PI_SM90A, and only on a compute-capability 9.0 device; 90..94 S = 1, 95..97 S > 1; they
+// sm_90a builds, PI_SM90A, and only on a compute-capability 9.0 device; 90..94 S = 1, 95..97 S > 1, 98..102
+// S = 1 narrow tiles for decode (100..102 with 128-column K stages); they
 // refuse operands that are not 16-byte aligned). All realise the same k order; an id that
 // cannot run a shape returns an error before launching and is then not tuned. S (segs) is
 // the weight's canonical segment count, gemm_segments(N, K, t_max) of the whole weight:
@@ -60,7 +61,7 @@ inline const std::vector<int>& large_kernels() {
                                   48, 49, 50, 64, 65, 66, 67, 68, 69, 70, 71, 72};
   static const std::vector<int> hopper = [] {
     std::vector<int> h = v;
-    for (int k = 90; k <= 97; ++k) h.push_back(k);
+    for (int k = 90; k <= 102; ++k) h.push_back(k);
     return h;
   }();
   return sm90_device() ? hopper : v;
@@ -81,6 +82,7 @@ inline int kernel_max_m(int k) {
 inline int kernel_bk(int k) {
   switch (k) {
     case 53: return 1024;
+    case 100: case 101: case 102: return 128;
     case 51: case 61: return 512;
     case 21: case 22: case 30: case 43: case 60: case 62: case 63: return 256;
     case 20: case 24: case 25: case 31: case 32: case 33: case 40: case 41: case 42: case 54: return 128;
