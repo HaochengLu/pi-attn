@@ -1,0 +1,36 @@
+# decode16_kernel (unswapped), us per layer, A800, hq 16 / hkv 8, capacity 8192: three kernel wrappers around the same
+# decode16_group, each against decode_kernel (v1) in the same process (probes/r5_wrap_ab.py; terminal output of the
+# two runs, 2026-11-14). ptxas: all three use 128 registers.
+#
+# Run 1. A = a 1-D grid whose CTA index is taken apart in a __noinline__ function (16 bytes of stack, no spills);
+#        B = the same arithmetic inline (c / cols, c % cols, col / num_kv_heads, col % num_kv_heads; 12 bytes of
+#        spill stores).
+AB b= 1 kv=  320: A.v3   15.5 A.v1   16.1 B.v3   14.7 B.v1   16.0
+AB b= 1 kv=  512: A.v3   19.4 A.v1   23.5 B.v3   18.5 B.v1   23.5
+AB b= 1 kv= 1024: A.v3   21.7 A.v1   24.9 B.v3   21.0 B.v1   24.9
+AB b= 1 kv= 4200: A.v3   27.7 A.v1   30.1 B.v3   26.6 B.v1   30.0
+AB b= 2 kv=  192: A.v3   12.3 A.v1   12.1 B.v3   11.7 B.v1   12.1
+AB b= 2 kv=  512: A.v3   20.0 A.v1   26.6 B.v3   19.3 B.v1   26.7
+AB b= 4 kv=  192: A.v3   12.7 A.v1   12.4 B.v3   12.1 B.v1   12.4
+AB b= 4 kv=  640: A.v3   23.4 A.v1   28.8 B.v3   22.9 B.v1   28.8
+AB b= 8 kv=  192: A.v3   13.5 A.v1   12.9 B.v3   12.9 B.v1   12.9
+AB b= 8 kv=  512: A.v3   24.1 A.v1   27.9 B.v3   23.4 B.v1   27.9
+AB b= 8 kv=  640: A.v3   27.7 A.v1   30.1 B.v3   27.0 B.v1   30.1
+AB b=13 kv=  192: A.v3   15.2 A.v1   13.7 B.v3   14.6 B.v1   13.7
+AB b=13 kv=  512: A.v3   29.6 A.v1   29.3 B.v3   28.5 B.v1   29.3
+#
+# Run 2. A = the shipped wrapper: decode_grid's 3-D grid with the helper rows after the requests in y (no integer
+#        division; no stack, no spills); B = decode90_kernel's wrapper (3-D grid, no helpers).
+AB b= 1 kv=  320: A.v3   14.5 A.v1   16.2 B.v3   14.4 B.v1   16.1
+AB b= 1 kv=  512: A.v3   18.0 A.v1   23.5 B.v3   18.1 B.v1   23.5
+AB b= 1 kv= 1024: A.v3   20.4 A.v1   24.9 B.v3   20.2 B.v1   25.0
+AB b= 1 kv= 4200: A.v3   26.3 A.v1   30.0 B.v3   25.7 B.v1   30.0
+AB b= 2 kv=  192: A.v3   11.1 A.v1   12.1 B.v3   11.1 B.v1   12.0
+AB b= 2 kv=  512: A.v3   18.5 A.v1   26.7 B.v3   18.6 B.v1   26.7
+AB b= 4 kv=  192: A.v3   11.5 A.v1   12.4 B.v3   11.5 B.v1   12.4
+AB b= 4 kv=  640: A.v3   22.2 A.v1   28.8 B.v3   22.0 B.v1   28.8
+AB b= 8 kv=  192: A.v3   12.3 A.v1   12.9 B.v3   12.2 B.v1   12.9
+AB b= 8 kv=  512: A.v3   22.9 A.v1   27.8 B.v3   22.7 B.v1   27.8
+AB b= 8 kv=  640: A.v3   26.3 A.v1   30.2 B.v3   32.4 B.v1   30.2
+AB b=13 kv=  192: A.v3   13.9 A.v1   13.8 B.v3   13.8 B.v1   13.7
+AB b=13 kv=  512: A.v3   27.4 A.v1   29.3 B.v3   27.1 B.v1   29.3

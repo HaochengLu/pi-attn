@@ -1,0 +1,72 @@
+DEC hq=16 hkv=8 b=  1 kv=   96 us/layer: fi    8.4 fi_tc    9.1 v1    7.8 v3    9.6 h1    8.5 h3    9.8 | v1/fi 0.93 v3/v1 1.231 h1/v1 1.090 h3/v3 1.021 | 1140 MHz
+DEC hq=16 hkv=8 b=  1 kv=  192 us/layer: fi   11.6 fi_tc   11.0 v1   10.0 v3   10.2 h1   10.4 h3   10.4 | v1/fi 0.91 v3/v1 1.020 h1/v1 1.040 h3/v3 1.020 | 1410 MHz
+DEC hq=16 hkv=8 b=  1 kv=  320 us/layer: fi   12.5 fi_tc   11.4 v1   16.0 v3   13.8 h1   16.4 h3   13.5 | v1/fi 1.40 v3/v1 0.863 h1/v1 1.025 h3/v3 0.978 | 1410 MHz
+DEC hq=16 hkv=8 b=  1 kv=  512 us/layer: fi   12.7 fi_tc   11.8 v1   23.5 v3   18.2 h1   23.8 h3   17.1 | v1/fi 1.99 v3/v1 0.774 h1/v1 1.013 h3/v3 0.940 | 1410 MHz
+DEC hq=16 hkv=8 b=  1 kv=  640 us/layer: fi   12.8 fi_tc   12.0 v1   24.8 v3   20.0 h1   25.2 h3   19.2 | v1/fi 2.07 v3/v1 0.806 h1/v1 1.016 h3/v3 0.960 | 1410 MHz
+DEC hq=16 hkv=8 b=  1 kv= 1024 us/layer: fi   13.1 fi_tc   12.9 v1   25.0 v3   20.3 h1   25.3 h3   19.5 | v1/fi 1.94 v3/v1 0.812 h1/v1 1.012 h3/v3 0.961 | 1410 MHz
+DEC hq=16 hkv=8 b=  1 kv= 2176 us/layer: fi   15.3 fi_tc   18.5 v1   26.4 v3   21.8 h1   26.6 h3   21.0 | v1/fi 1.73 v3/v1 0.826 h1/v1 1.008 h3/v3 0.963 | 1410 MHz
+DEC hq=16 hkv=8 b=  1 kv= 4200 us/layer: fi   19.3 fi_tc   24.1 v1   29.9 v3   25.6 h1   29.5 h3   24.6 | v1/fi 1.55 v3/v1 0.856 h1/v1 0.987 h3/v3 0.961 | 1410 MHz
+DEC hq=16 hkv=8 b=  1 kv= 8000 us/layer: fi   30.5 fi_tc   35.0 v1   33.8 v3   47.9 h1   33.9 h3   44.4 | v1/fi 1.11 v3/v1 1.417 (>1 wave) h1/v1 1.003 h3/v3 0.927 | 1410 MHz
+DEC hq=16 hkv=8 b=  2 kv=   96 us/layer: fi    7.0 fi_tc    7.7 v1    7.4 v3    7.9 h1    7.8 h3    8.1 | v1/fi 1.06 v3/v1 1.068 h1/v1 1.054 h3/v3 1.025 | 1410 MHz
+DEC hq=16 hkv=8 b=  2 kv=  192 us/layer: fi   12.5 fi_tc   11.6 v1   12.1 v3   10.6 h1   12.4 h3   10.9 | v1/fi 1.04 v3/v1 0.876 h1/v1 1.025 h3/v3 1.028 | 1410 MHz
+DEC hq=16 hkv=8 b=  2 kv=  320 us/layer: fi   12.8 fi_tc   12.1 v1   18.0 v3   13.9 h1   18.0 h3   13.6 | v1/fi 1.49 v3/v1 0.772 h1/v1 1.000 h3/v3 0.978 | 1410 MHz
+DEC hq=16 hkv=8 b=  2 kv=  512 us/layer: fi   13.1 fi_tc   12.9 v1   26.6 v3   18.6 h1   26.0 h3   17.5 | v1/fi 2.06 v3/v1 0.699 h1/v1 0.977 h3/v3 0.941 | 1410 MHz
+DEC hq=16 hkv=8 b=  2 kv=  640 us/layer: fi   13.4 fi_tc   13.4 v1   28.1 v3   20.7 h1   27.6 h3   20.0 | v1/fi 2.10 v3/v1 0.737 h1/v1 0.982 h3/v3 0.966 | 1410 MHz
+DEC hq=16 hkv=8 b=  2 kv= 1024 us/layer: fi   14.6 fi_tc   17.8 v1   28.5 v3   21.5 h1   28.0 h3   20.7 | v1/fi 1.95 v3/v1 0.754 h1/v1 0.982 h3/v3 0.963 | 1410 MHz
+DEC hq=16 hkv=8 b=  2 kv= 2176 us/layer: fi   19.4 fi_tc   23.7 v1   29.8 v3   25.4 h1   29.4 h3   24.4 | v1/fi 1.54 v3/v1 0.852 h1/v1 0.987 h3/v3 0.961 | 1410 MHz
+DEC hq=16 hkv=8 b=  2 kv= 4200 us/layer: fi   30.9 fi_tc   35.0 v1   34.2 v3   46.3 h1   34.3 h3   43.1 | v1/fi 1.11 v3/v1 1.354 (>1 wave) h1/v1 1.003 h3/v3 0.931 | 1410 MHz
+DEC hq=16 hkv=8 b=  2 kv= 8000 us/layer: fi   51.0 fi_tc   53.0 v1   50.4 v3   69.6 h1   50.6 h3   64.9 | v1/fi 0.99 v3/v1 1.381 (>1 wave) h1/v1 1.004 h3/v3 0.932 | 1410 MHz
+DEC hq=16 hkv=8 b=  4 kv=   96 us/layer: fi    7.8 fi_tc    8.3 v1    8.1 v3    8.3 h1    8.6 h3    8.5 | v1/fi 1.04 v3/v1 1.025 h1/v1 1.062 h3/v3 1.024 | 1410 MHz
+DEC hq=16 hkv=8 b=  4 kv=  192 us/layer: fi   13.0 fi_tc   12.4 v1   12.4 v3   11.0 h1   12.7 h3   11.2 | v1/fi 1.00 v3/v1 0.887 h1/v1 1.024 h3/v3 1.018 | 1410 MHz
+DEC hq=16 hkv=8 b=  4 kv=  320 us/layer: fi   13.5 fi_tc   13.6 v1   18.3 v3   14.6 h1   18.2 h3   14.3 | v1/fi 1.36 v3/v1 0.798 h1/v1 0.995 h3/v3 0.979 | 1410 MHz
+DEC hq=16 hkv=8 b=  4 kv=  512 us/layer: fi   14.7 fi_tc   17.9 v1   27.1 v3   19.6 h1   26.5 h3   18.5 | v1/fi 1.84 v3/v1 0.723 h1/v1 0.978 h3/v3 0.944 | 1410 MHz
+DEC hq=16 hkv=8 b=  4 kv=  640 us/layer: fi   15.4 fi_tc   18.7 v1   28.8 v3   22.0 h1   28.3 h3   21.5 | v1/fi 1.87 v3/v1 0.764 h1/v1 0.983 h3/v3 0.977 | 1410 MHz
+DEC hq=16 hkv=8 b=  4 kv= 1024 us/layer: fi   18.1 fi_tc   23.2 v1   29.2 v3   24.5 h1   28.9 h3   23.6 | v1/fi 1.61 v3/v1 0.839 h1/v1 0.990 h3/v3 0.963 | 1410 MHz
+DEC hq=16 hkv=8 b=  4 kv= 2176 us/layer: fi   31.6 fi_tc   35.8 v1   33.6 v3   46.1 h1   33.9 h3   42.9 | v1/fi 1.06 v3/v1 1.372 (>1 wave) h1/v1 1.009 h3/v3 0.931 | 1410 MHz
+DEC hq=16 hkv=8 b=  4 kv= 4200 us/layer: fi   52.2 fi_tc   56.1 v1   53.6 v3   68.1 h1   53.4 h3   63.9 | v1/fi 1.03 v3/v1 1.271 (>1 wave) h1/v1 0.996 h3/v3 0.938 | 1410 MHz
+DEC hq=16 hkv=8 b=  4 kv= 8000 us/layer: fi   88.9 fi_tc   92.2 v1   89.2 v3  119.4 h1   89.3 h3  113.0 | v1/fi 1.00 v3/v1 1.339 (>1 wave) h1/v1 1.001 h3/v3 0.946 | 1410 MHz
+DEC hq=16 hkv=8 b=  8 kv=   96 us/layer: fi    8.1 fi_tc    9.2 v1    8.5 v3    9.0 h1    9.0 h3    9.1 | v1/fi 1.05 v3/v1 1.059 h1/v1 1.059 h3/v3 1.011 | 1410 MHz
+DEC hq=16 hkv=8 b=  8 kv=  192 us/layer: fi   14.6 fi_tc   17.1 v1   12.8 v3   11.8 h1   13.1 h3   12.0 | v1/fi 0.88 v3/v1 0.922 h1/v1 1.023 h3/v3 1.017 | 1410 MHz
+DEC hq=16 hkv=8 b=  8 kv=  320 us/layer: fi   15.9 fi_tc   19.0 v1   18.9 v3   16.5 h1   18.9 h3   16.2 | v1/fi 1.19 v3/v1 0.873 h1/v1 1.000 h3/v3 0.982 | 1410 MHz
+DEC hq=16 hkv=8 b=  8 kv=  512 us/layer: fi   18.6 fi_tc   23.5 v1   28.0 v3   22.8 h1   27.5 h3   21.6 | v1/fi 1.51 v3/v1 0.814 h1/v1 0.982 h3/v3 0.947 | 1410 MHz
+DEC hq=16 hkv=8 b=  8 kv=  640 us/layer: fi   20.4 fi_tc   26.3 v1   30.2 v3   32.1 h1   29.9 h3   30.8 | v1/fi 1.48 v3/v1 1.063 (>1 wave) h1/v1 0.990 h3/v3 0.960 | 1410 MHz
+DEC hq=16 hkv=8 b=  8 kv= 1024 us/layer: fi   30.0 fi_tc   35.1 v1   32.5 v3   44.3 h1   32.8 h3   41.2 | v1/fi 1.08 v3/v1 1.363 (>1 wave) h1/v1 1.009 h3/v3 0.930 | 1410 MHz
+DEC hq=16 hkv=8 b=  8 kv= 2176 us/layer: fi   53.8 fi_tc   57.8 v1   54.7 v3   87.6 h1   54.5 h3   81.6 | v1/fi 1.02 v3/v1 1.601 (>1 wave) h1/v1 0.996 h3/v3 0.932 | 1410 MHz
+DEC hq=16 hkv=8 b=  8 kv= 4200 us/layer: fi   92.1 fi_tc   94.6 v1   91.6 v3  154.9 h1   91.6 h3  142.1 | v1/fi 0.99 v3/v1 1.691 (>1 wave) h1/v1 1.000 h3/v3 0.917 | 1410 MHz
+DEC hq=16 hkv=8 b=  8 kv= 8000 us/layer: fi  162.4 fi_tc  168.1 v1  169.3 v3  281.2 h1  169.3 h3  257.2 | v1/fi 1.04 v3/v1 1.661 (>1 wave) h1/v1 1.000 h3/v3 0.915 | 1410 MHz
+DEC hq=16 hkv=8 b= 13 kv=   96 us/layer: fi    8.6 fi_tc   10.2 v1    9.2 v3    9.9 h1    9.7 h3   10.1 | v1/fi 1.07 v3/v1 1.076 h1/v1 1.054 h3/v3 1.020 | 1410 MHz
+DEC hq=16 hkv=8 b= 13 kv=  192 us/layer: fi   15.9 fi_tc   19.1 v1   13.6 v3   13.5 h1   14.0 h3   13.7 | v1/fi 0.86 v3/v1 0.993 h1/v1 1.029 h3/v3 1.015 | 1410 MHz
+DEC hq=16 hkv=8 b= 13 kv=  320 us/layer: fi   19.0 fi_tc   23.8 v1   20.2 v3   19.4 h1   20.4 h3   19.2 | v1/fi 1.06 v3/v1 0.960 h1/v1 1.010 h3/v3 0.990 | 1410 MHz
+DEC hq=16 hkv=8 b= 13 kv=  512 us/layer: fi   25.2 fi_tc   30.8 v1   29.2 v3   28.0 h1   29.1 h3   25.9 | v1/fi 1.16 v3/v1 0.959 h1/v1 0.997 h3/v3 0.925 | 1410 MHz
+DEC hq=16 hkv=8 b= 13 kv=  640 us/layer: fi   30.5 fi_tc   35.8 v1   33.4 v3   37.5 h1   33.5 h3   35.5 | v1/fi 1.10 v3/v1 1.123 (>1 wave) h1/v1 1.003 h3/v3 0.947 | 1410 MHz
+DEC hq=16 hkv=8 b= 13 kv= 1024 us/layer: fi   43.3 fi_tc   48.2 v1   41.4 v3   52.3 h1   41.8 h3   49.3 | v1/fi 0.96 v3/v1 1.263 (>1 wave) h1/v1 1.010 h3/v3 0.943 | 1410 MHz
+DEC hq=16 hkv=8 b= 13 kv= 2176 us/layer: fi   82.3 fi_tc   84.0 v1   78.0 v3   99.8 h1   78.0 h3   94.6 | v1/fi 0.95 v3/v1 1.279 (>1 wave) h1/v1 1.000 h3/v3 0.948 | 1410 MHz
+DEC hq=16 hkv=8 b= 13 kv= 4200 us/layer: fi  141.2 fi_tc  146.4 v1  148.9 v3  174.6 h1  148.8 h3  166.3 | v1/fi 1.05 v3/v1 1.173 (>1 wave) h1/v1 0.999 h3/v3 0.952 | 1410 MHz
+DEC hq=16 hkv=8 b= 13 kv= 8000 us/layer: fi  257.1 fi_tc  264.4 v1  269.7 v3  309.5 h1  269.6 h3  299.7 | v1/fi 1.05 v3/v1 1.148 (>1 wave) h1/v1 1.000 h3/v3 0.968 | 1410 MHz
+DEC hq=16 hkv=8 b= 16 kv=   96 us/layer: fi    9.3 fi_tc   13.5 v1    9.5 h1   10.1 | v1/fi 1.02 h1/v1 1.063 | 1410 MHz
+DEC hq=16 hkv=8 b= 16 kv=  192 us/layer: fi   17.3 fi_tc   17.8 v1   14.4 h1   14.9 | v1/fi 0.83 h1/v1 1.035 | 1410 MHz
+DEC hq=16 hkv=8 b= 16 kv=  320 us/layer: fi   21.4 fi_tc   23.6 v1   20.9 h1   21.3 | v1/fi 0.98 h1/v1 1.019 | 1410 MHz
+DEC hq=16 hkv=8 b= 16 kv=  512 us/layer: fi   30.4 fi_tc   32.2 v1   31.0 h1   31.2 | v1/fi 1.02 h1/v1 1.006 | 1410 MHz
+DEC hq=16 hkv=8 b= 16 kv=  640 us/layer: fi   35.9 fi_tc   37.7 v1   37.6 h1   37.5 | v1/fi 1.05 h1/v1 0.997 | 1410 MHz
+DEC hq=16 hkv=8 b= 16 kv= 1024 us/layer: fi   52.0 fi_tc   54.0 v1   51.5 h1   51.1 | v1/fi 0.99 h1/v1 0.992 | 1410 MHz
+DEC hq=16 hkv=8 b= 16 kv= 2176 us/layer: fi   95.5 fi_tc  101.8 v1   93.5 h1   93.6 | v1/fi 0.98 h1/v1 1.001 | 1410 MHz
+DEC hq=16 hkv=8 b= 16 kv= 4200 us/layer: fi  172.1 fi_tc  180.5 v1  176.9 h1  176.9 | v1/fi 1.03 h1/v1 1.000 | 1410 MHz
+DEC hq=16 hkv=8 b= 16 kv= 8000 us/layer: fi  317.3 fi_tc  342.7 v1  327.3 h1  327.1 | v1/fi 1.03 h1/v1 0.999 | 1410 MHz
+DEC hq=16 hkv=8 b= 32 kv=   96 us/layer: fi   12.0 fi_tc   23.2 v1   13.1 h1   13.4 | v1/fi 1.09 h1/v1 1.023 | 1410 MHz
+DEC hq=16 hkv=8 b= 32 kv=  192 us/layer: fi   24.6 fi_tc   30.7 v1   21.5 h1   21.7 | v1/fi 0.87 h1/v1 1.009 | 1410 MHz
+DEC hq=16 hkv=8 b= 32 kv=  320 us/layer: fi   37.6 fi_tc   42.1 v1   32.9 h1   32.9 | v1/fi 0.87 h1/v1 1.000 | 1410 MHz
+DEC hq=16 hkv=8 b= 32 kv=  512 us/layer: fi   51.7 fi_tc   58.1 v1   49.4 h1   49.1 | v1/fi 0.96 h1/v1 0.994 | 1410 MHz
+DEC hq=16 hkv=8 b= 32 kv=  640 us/layer: fi   61.9 fi_tc   69.3 v1   62.4 h1   62.2 | v1/fi 1.01 h1/v1 0.997 | 1410 MHz
+DEC hq=16 hkv=8 b= 32 kv= 1024 us/layer: fi   92.4 fi_tc  100.6 v1   88.6 h1   88.7 | v1/fi 0.96 h1/v1 1.001 | 1410 MHz
+DEC hq=16 hkv=8 b= 32 kv= 2176 us/layer: fi  179.4 fi_tc  197.6 v1  181.1 h1  181.2 | v1/fi 1.01 h1/v1 1.001 | 1410 MHz
+DEC hq=16 hkv=8 b= 32 kv= 4200 us/layer: fi  330.3 fi_tc  357.1 v1  340.1 h1  340.0 | v1/fi 1.03 h1/v1 1.000 | 1410 MHz
+DEC hq=16 hkv=8 b= 32 kv= 8000 us/layer: fi  614.5 fi_tc  679.0 v1  640.1 h1  639.1 | v1/fi 1.04 h1/v1 0.998 | 1410 MHz
+DEC hq=16 hkv=8 b= 64 kv=   96 us/layer: fi   20.9 fi_tc   33.0 v1   24.2 h1   24.7 | v1/fi 1.16 h1/v1 1.021 | 1410 MHz
+DEC hq=16 hkv=8 b= 64 kv=  192 us/layer: fi   37.2 fi_tc   48.0 v1   38.2 h1   38.8 | v1/fi 1.03 h1/v1 1.016 | 1410 MHz
+DEC hq=16 hkv=8 b= 64 kv=  320 us/layer: fi   57.6 fi_tc   67.5 v1   56.6 h1   56.8 | v1/fi 0.98 h1/v1 1.004 | 1410 MHz
+DEC hq=16 hkv=8 b= 64 kv=  512 us/layer: fi   88.1 fi_tc   94.2 v1   86.4 h1   86.3 | v1/fi 0.98 h1/v1 0.999 | 1410 MHz
+DEC hq=16 hkv=8 b= 64 kv=  640 us/layer: fi  107.6 fi_tc  112.7 v1  110.8 h1  111.0 | v1/fi 1.03 h1/v1 1.002 | 1410 MHz
+DEC hq=16 hkv=8 b= 64 kv= 1024 us/layer: fi  168.0 fi_tc  170.4 v1  174.0 h1  173.3 | v1/fi 1.04 h1/v1 0.996 | 1410 MHz
+DEC hq=16 hkv=8 b= 64 kv= 2176 us/layer: fi  343.5 fi_tc  342.9 v1  352.7 h1  352.5 | v1/fi 1.03 h1/v1 0.999 | 1410 MHz
+DEC hq=16 hkv=8 b= 64 kv= 4200 us/layer: fi  654.2 fi_tc  641.6 v1  676.0 h1  674.9 | v1/fi 1.05 h1/v1 0.998 | 1410 MHz
+DEC hq=16 hkv=8 b= 64 kv= 8000 us/layer: fi 1227.1 fi_tc 1205.0 v1 1274.6 h1 1272.3 | v1/fi 1.06 h1/v1 0.998 | 1410 MHz

@@ -15,6 +15,12 @@ exception:
   - `a800/xgpu/compare_4090D_A800.txt`: `python ../eval/xgpu_compare.py ../results/xgpu/NVIDIA_GeForce_RTX_4090_D.json ../results/a800/xgpu/NVIDIA_A800-SXM4-80GB.json`
   - `a800/accuracy/xgpu_4090D_vs_A800.md`: `python xgpu_accuracy.py ../results/accuracy/<model> ../results/a800/accuracy/<model>` (from `eval/`), for 1.7B and 8B.
 
+`a800_r5/` (see its README) is a later A800 session on the tree with the round-5 class-A scheduling changes
+(a 16-warp decode kernel with the mma operands swapped, chosen per step; longest-first prefill grids): the kernel
+tests, hashes, engine rollouts and detcheck again, the attention benches, and the §5.3 end-to-end stages. The
+paper's §5.3 throughput, component, long-context and high-concurrency numbers, Figure 5 and the attention kernel
+numbers come from `a800_r5/`; everything else in the table below is `a800/`.
+
 `a800/baselines_38c32da_tokens/` keeps the previous A800 run's detcheck table (engine 38c32da,
 SGLang and vLLM 0.11.2, token ids only), which Section 7.1 cites for token-level counts.
 `a800/gdn/` is written by the scripts in `gdn/` (§6.1; see `gdn/README.md`).
@@ -28,11 +34,13 @@ SGLang and vLLM 0.11.2, token ids only), which Section 7.1 cites for token-level
 | §5.1 kernel hashes, A800 vs RTX 4090 D | `xgpu/` | `eval/xgpu_hashes.py`, `eval/xgpu_compare.py` |
 | §5.1 agreement with fp32 | `fp32_agreement/<model>.json` | `eval/fp32_agreement.sh` (`eval/hf_agreement.py`) |
 | §5.2 rollout log-probabilities | `rollout/<model>.json` (report), `rollout/<model>.log`, `rollout/<model>.gen.json` | `eval/rollout.sh` (`eval/rollout_logprobs.py`) |
-| §5.3 throughput matrix | `e2e_matrix/SUMMARY.md`, one JSON per launch | `eval/e2e_matrix.sh`, `eval/summarize_matrix.py` |
-| §5.3 components (PI attention vs row-invariant GEMM) | `e2e_ablation/SUMMARY.md`, one JSON per launch | `eval/e2e_ablation.sh`, `eval/summarize_ablation.py` |
-| §5.3 long context and shared prefixes | `e2e_extended/SUMMARY.md` | `eval/e2e_extended.sh`, `eval/summarize_extended.py` |
-| §5.3 high concurrency | `e2e_highconc/SUMMARY.md` | `eval/e2e_highconc.sh`, `eval/summarize_extended.py` |
-| §5.3 attention kernels | `kernels/attention.{txt,json}`, `kernels/prefill_configs.txt` | `eval/kernel_benches.sh` (`kernels/bench_attention.py`, `kernels/bench_prefill.py`) |
+| §5.3 throughput matrix, components, long context, high concurrency, attention kernels: current numbers | `../a800_r5/` (`e2e_matrix/`, `e2e_ablation/`, `e2e_extended/`, `e2e_highconc/`, `kernels/`) | `../a800_r5/run_r5.sh` (the scripts below with `PI_RESULTS`) |
+| §3, Appendix B: class-A decode kernel choice, prefill grid order, mma operand symmetry | `../a800_r5/kernels/decode_plan.txt`, `../a800_r5/kernels/prefill_order.txt`, `../../archive/ceiling_probes/a800_r5/` | see their READMEs |
+| §5.3 throughput matrix (before round 5) | `e2e_matrix/SUMMARY.md`, one JSON per launch | `eval/e2e_matrix.sh`, `eval/summarize_matrix.py` |
+| §5.3 components (PI attention vs row-invariant GEMM; before round 5) | `e2e_ablation/SUMMARY.md`, one JSON per launch | `eval/e2e_ablation.sh`, `eval/summarize_ablation.py` |
+| §5.3 long context and shared prefixes (before round 5) | `e2e_extended/SUMMARY.md` | `eval/e2e_extended.sh`, `eval/summarize_extended.py` |
+| §5.3 high concurrency (before round 5) | `e2e_highconc/SUMMARY.md` | `eval/e2e_highconc.sh`, `eval/summarize_extended.py` |
+| §5.3 attention kernels (before round 5) | `kernels/attention.{txt,json}`, `kernels/prefill_configs.txt` | `eval/kernel_benches.sh` (`kernels/bench_attention.py`, `kernels/bench_prefill.py`) |
 | §5.3 projection GEMMs vs cuBLAS | `kernels/gemm_burst.txt` (M = 1..2048, launches over weight copies), `kernels/gemm_cold.txt`, `kernels/gemm.txt` (warm), `kernels/gemm_step_graph.txt` (one decode step's projections in a graph) | `eval/kernel_benches.sh` |
 | §4 GEMM tuning time at startup | `e2e_matrix/tuning.txt` | `run_all.sh` (the engine's `PI GEMM tiles tuned` and `PI GEMM tile choice` log lines) |
 | §5.3 batch-1 traces | `nsys/b1_compare.txt` | `scripts/nsys_decode.sh`, `scripts/nsys_compare.py` |

@@ -1,0 +1,35 @@
+NVIDIA A800-SXM4-80GB sm_80
+SYM steps=1 gauss 1/1: 0 of 51200000 elements differ (of which both NaN, payload only: 0); NaN outputs 0
+SYM steps=1 gauss 3/100: 0 of 51200000 elements differ (of which both NaN, payload only: 0); NaN outputs 0
+SYM steps=1 gauss 1/1e-3: 0 of 51200000 elements differ (of which both NaN, payload only: 0); NaN outputs 0
+SYM steps=1 gauss c=0: 0 of 51200000 elements differ (of which both NaN, payload only: 0); NaN outputs 0
+SYM steps=1 wide 2^+-6: 0 of 51200000 elements differ (of which both NaN, payload only: 0); NaN outputs 0
+SYM steps=1 wide 2^+-20, c 1e4: 0 of 51200000 elements differ (of which both NaN, payload only: 0); NaN outputs 0
+SYM steps=1 wide 2^+-60 (overflow/underflow): 0 of 51200000 elements differ (of which both NaN, payload only: 0); NaN outputs 0
+SYM steps=1 raw bits: 0 of 51200000 elements differ (of which both NaN, payload only: 0); NaN outputs 6166556
+SYM steps=1 gauss + 2% specials: 0 of 51200000 elements differ (of which both NaN, payload only: 0); NaN outputs 4760698
+SYM steps=1 gauss + 30% specials: 0 of 51200000 elements differ (of which both NaN, payload only: 0); NaN outputs 43056332
+SYM steps=1 softmax-like (P in [0,1], V gauss): 0 of 51200000 elements differ (of which both NaN, payload only: 0); NaN outputs 0
+SYM steps=2 gauss 1/1: 0 of 51200000 elements differ (of which both NaN, payload only: 0); NaN outputs 0
+SYM steps=2 gauss 3/100: 0 of 51200000 elements differ (of which both NaN, payload only: 0); NaN outputs 0
+SYM steps=2 gauss 1/1e-3: 0 of 51200000 elements differ (of which both NaN, payload only: 0); NaN outputs 0
+SYM steps=2 gauss c=0: 0 of 51200000 elements differ (of which both NaN, payload only: 0); NaN outputs 0
+SYM steps=2 wide 2^+-6: 0 of 51200000 elements differ (of which both NaN, payload only: 0); NaN outputs 0
+SYM steps=2 wide 2^+-20, c 1e4: 0 of 51200000 elements differ (of which both NaN, payload only: 0); NaN outputs 0
+SYM steps=2 wide 2^+-60 (overflow/underflow): 0 of 51200000 elements differ (of which both NaN, payload only: 0); NaN outputs 0
+SYM steps=2 raw bits: 0 of 51200000 elements differ (of which both NaN, payload only: 0); NaN outputs 11452336
+SYM steps=2 gauss + 2% specials: 0 of 51200000 elements differ (of which both NaN, payload only: 0); NaN outputs 9122736
+SYM steps=2 gauss + 30% specials: 0 of 51200000 elements differ (of which both NaN, payload only: 0); NaN outputs 50169473
+SYM steps=2 softmax-like (P in [0,1], V gauss): 0 of 51200000 elements differ (of which both NaN, payload only: 0); NaN outputs 0
+SYM steps=8 gauss 1/1: 0 of 51200000 elements differ (of which both NaN, payload only: 0); NaN outputs 0
+SYM steps=8 gauss 3/100: 0 of 51200000 elements differ (of which both NaN, payload only: 0); NaN outputs 0
+SYM steps=8 gauss 1/1e-3: 0 of 51200000 elements differ (of which both NaN, payload only: 0); NaN outputs 0
+SYM steps=8 gauss c=0: 0 of 51200000 elements differ (of which both NaN, payload only: 0); NaN outputs 0
+SYM steps=8 wide 2^+-6: 0 of 51200000 elements differ (of which both NaN, payload only: 0); NaN outputs 0
+SYM steps=8 wide 2^+-20, c 1e4: 0 of 51200000 elements differ (of which both NaN, payload only: 0); NaN outputs 0
+SYM steps=8 wide 2^+-60 (overflow/underflow): 0 of 51200000 elements differ (of which both NaN, payload only: 0); NaN outputs 0
+SYM steps=8 raw bits: 0 of 51200000 elements differ (of which both NaN, payload only: 0); NaN outputs 32398816
+SYM steps=8 gauss + 2% specials: 0 of 51200000 elements differ (of which both NaN, payload only: 0); NaN outputs 29500509
+SYM steps=8 gauss + 30% specials: 0 of 51200000 elements differ (of which both NaN, payload only: 0); NaN outputs 51199998
+SYM steps=8 softmax-like (P in [0,1], V gauss): 0 of 51200000 elements differ (of which both NaN, payload only: 0); NaN outputs 0
+SYM TOTAL: 0 of 1689600000 differ (0 NaN-payload-only)

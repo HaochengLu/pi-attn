@@ -1,0 +1,54 @@
+PRE hq=16 b= 1 q=  64 prefix=    0 (K/V     2 MiB): fi      9.7 | asc     10.9 (1.12) | lf     10.8 | rule     10.8 (1.11) | rule/asc 0.991 lf/asc 0.991 | 1410 MHz
+PRE hq=16 b= 1 q= 512 prefix=    0 (K/V     2 MiB): fi     60.4 | asc     33.4 (0.55) | lf     29.2 | rule     29.2 (0.48) | rule/asc 0.874 lf/asc 0.874 | 1410 MHz
+PRE hq=16 b= 1 q=1024 prefix=    0 (K/V     4 MiB): fi     71.1 | asc     73.4 (1.03) | lf     62.9 | rule     62.9 (0.88) | rule/asc 0.857 lf/asc 0.857 | 1410 MHz
+PRE hq=16 b= 1 q=2048 prefix=    0 (K/V     8 MiB): fi    171.5 | asc    208.2 (1.21) | lf    159.1 | rule    159.1 (0.93) | rule/asc 0.764 lf/asc 0.764 | 1410 MHz
+PRE hq=16 b= 1 q=4096 prefix=    0 (K/V    16 MiB): fi    503.0 | asc    634.7 (1.26) | lf    538.6 | rule    539.9 (1.07) | rule/asc 0.851 lf/asc 0.849 | 1395 MHz
+PRE hq=16 b= 1 q=8192 prefix=    0 (K/V    32 MiB): fi   1661.8 | asc   2170.7 (1.31) | lf   2029.9 | rule   2012.5 (1.21) | rule/asc 0.927 lf/asc 0.935 | 1380 MHz
+PRE hq=16 b= 1 q=2048 prefix= 2048 (K/V    16 MiB): fi    435.0 | asc    502.8 (1.16) | lf    454.6 | rule    454.7 (1.05) | rule/asc 0.904 lf/asc 0.904 | 1410 MHz
+PRE hq=16 b= 1 q=2048 prefix= 6144 (K/V    32 MiB): fi    822.2 | asc   1090.7 (1.33) | lf   1042.1 | rule   1042.1 (1.27) | rule/asc 0.955 lf/asc 0.955 | 1410 MHz
+PRE hq=16 b= 1 q=2048 prefix=14336 (K/V    64 MiB): fi   1705.9 | asc   2265.0 (1.33) | lf   2216.1 | rule   2264.9 (1.33) | rule/asc 1.000 lf/asc 0.978 | 1410 MHz
+PRE hq=16 b= 1 q= 512 prefix= 8192 (K/V    34 MiB): fi    256.4 | asc    395.8 (1.54) | lf    431.2 | rule    401.8 (1.57) | rule/asc 1.015 lf/asc 1.089 | 1395 MHz
+PRE hq=16 b= 1 q= 128 prefix= 4096 (K/V    18 MiB): fi     50.8 | asc     65.8 (1.30) | lf     73.0 | rule     65.8 (1.30) | rule/asc 1.000 lf/asc 1.109 | 1410 MHz
+PRE hq=16 b= 1 q= 128 prefix=16384 (K/V    66 MiB): fi    114.9 | asc    207.2 (1.80) | lf    257.5 | rule    207.1 (1.80) | rule/asc 1.000 lf/asc 1.243 | 1395 MHz
+PRE hq=16 b= 2 q=1024 prefix=    0 (K/V     8 MiB): fi     90.2 | asc    117.5 (1.30) | lf     94.9 | rule     94.9 (1.05) | rule/asc 0.808 lf/asc 0.808 | 1410 MHz
+PRE hq=16 b= 2 q=4096 prefix=    0 (K/V    32 MiB): fi    862.9 | asc   1139.9 (1.32) | lf   1065.0 | rule   1065.4 (1.23) | rule/asc 0.935 lf/asc 0.934 | 1395 MHz
+PRE hq=16 b= 3 q=2048 prefix=    0 (K/V    24 MiB): fi    364.8 | asc    485.2 (1.33) | lf    440.8 | rule    441.2 (1.21) | rule/asc 0.909 lf/asc 0.908 | 1395 MHz
+PRE hq=16 b= 4 q= 512 prefix=    0 (K/V     8 MiB): fi     55.6 | asc     75.3 (1.35) | lf     64.1 | rule     64.0 (1.15) | rule/asc 0.850 lf/asc 0.851 | 1410 MHz
+PRE hq=16 b= 8 q= 256 prefix=    0 (K/V    16 MiB): fi     37.0 | asc     52.4 (1.42) | lf     47.2 | rule     47.3 (1.28) | rule/asc 0.903 lf/asc 0.901 | 1410 MHz
+PRE hq=16 b= 8 q= 512 prefix=    0 (K/V    16 MiB): fi     93.0 | asc    129.3 (1.39) | lf    115.9 | rule    116.0 (1.25) | rule/asc 0.897 lf/asc 0.896 | 1410 MHz
+PRE hq=16 b= 8 q=1024 prefix=    0 (K/V    32 MiB): fi    261.0 | asc    365.0 (1.40) | lf    348.3 | rule    349.5 (1.34) | rule/asc 0.958 lf/asc 0.954 | 1395 MHz
+PRE hq=16 b=12 q=1024 prefix=    0 (K/V    48 MiB): fi    368.7 | asc    532.3 (1.44) | lf    542.0 | rule    532.5 (1.44) | rule/asc 1.000 lf/asc 1.018 | 1410 MHz
+PRE hq=16 b=16 q= 128 prefix=    0 (K/V    32 MiB): fi     28.3 | asc     43.1 (1.52) | lf     41.5 | rule     41.5 (1.47) | rule/asc 0.963 lf/asc 0.963 | 1410 MHz
+PRE hq=16 b=16 q= 512 prefix=    0 (K/V    32 MiB): fi    159.6 | asc    235.7 (1.48) | lf    230.9 | rule    231.0 (1.45) | rule/asc 0.980 lf/asc 0.980 | 1410 MHz
+PRE hq=16 b=32 q=  64 prefix=    0 (K/V    64 MiB): fi     26.5 | asc     38.6 (1.46) | lf     38.6 | rule     38.6 (1.46) | rule/asc 1.000 lf/asc 1.000 | 1410 MHz
+PRE hq=16 b=32 q= 512 prefix=    0 (K/V    64 MiB): fi    297.6 | asc    451.0 (1.52) | lf    470.3 | rule    450.9 (1.52) | rule/asc 1.000 lf/asc 1.043 | 1410 MHz
+PRE hq=16 b=64 q= 128 prefix=    0 (K/V   128 MiB): fi     98.4 | asc    141.6 (1.44) | lf    148.2 | rule    141.6 (1.44) | rule/asc 1.000 lf/asc 1.047 | 1410 MHz
+PRE hq=16 b= 4 q=2048 prefix= 2048 (K/V    64 MiB): fi   1190.0 | asc   1622.4 (1.36) | lf   1623.0 | rule   1632.2 (1.37) | rule/asc 1.006 lf/asc 1.000 | 1395 MHz
+PRE hq=16 b=16 q=2048 prefix=    0 (K/V   128 MiB): fi   1645.4 | asc   2326.5 (1.41) | lf   2528.3 | rule   2326.4 (1.41) | rule/asc 1.000 lf/asc 1.087 | 1395 MHz
+PRE hq=32 b= 1 q=  64 prefix=    0 (K/V     2 MiB): fi     10.1 | asc     10.9 (1.08) | lf     10.9 | rule     10.9 (1.08) | rule/asc 1.000 lf/asc 1.000 | 1410 MHz
+PRE hq=32 b= 1 q= 512 prefix=    0 (K/V     2 MiB): fi     41.0 | asc     46.0 (1.12) | lf     35.9 | rule     36.0 (0.88) | rule/asc 0.783 lf/asc 0.780 | 1410 MHz
+PRE hq=32 b= 1 q=1024 prefix=    0 (K/V     4 MiB): fi     94.0 | asc    115.2 (1.23) | lf     92.8 | rule     92.9 (0.99) | rule/asc 0.806 lf/asc 0.806 | 1410 MHz
+PRE hq=32 b= 1 q=2048 prefix=    0 (K/V     8 MiB): fi    263.9 | asc    339.6 (1.29) | lf    289.5 | rule    292.2 (1.11) | rule/asc 0.860 lf/asc 0.852 | 1395 MHz
+PRE hq=32 b= 1 q=4096 prefix=    0 (K/V    16 MiB): fi    867.3 | asc   1126.5 (1.30) | lf   1040.4 | rule   1040.5 (1.20) | rule/asc 0.924 lf/asc 0.924 | 1380 MHz
+PRE hq=32 b= 1 q=8192 prefix=    0 (K/V    32 MiB): fi   3072.6 | asc   4137.6 (1.35) | lf   3990.3 | rule   3980.4 (1.30) | rule/asc 0.962 lf/asc 0.964 | 1380 MHz
+PRE hq=32 b= 1 q=2048 prefix= 2048 (K/V    16 MiB): fi    663.9 | asc    855.2 (1.29) | lf    792.2 | rule    783.7 (1.18) | rule/asc 0.916 lf/asc 0.926 | 1395 MHz
+PRE hq=32 b= 1 q=2048 prefix= 6144 (K/V    32 MiB): fi   1381.9 | asc   1855.8 (1.34) | lf   1786.4 | rule   1802.6 (1.30) | rule/asc 0.971 lf/asc 0.963 | 1395 MHz
+PRE hq=32 b= 1 q=2048 prefix=14336 (K/V    64 MiB): fi   2837.1 | asc   3852.2 (1.36) | lf   3804.2 | rule   3854.2 (1.36) | rule/asc 1.001 lf/asc 0.988 | 1395 MHz
+PRE hq=32 b= 1 q= 512 prefix= 8192 (K/V    34 MiB): fi    613.5 | asc    751.1 (1.22) | lf    756.6 | rule    756.5 (1.23) | rule/asc 1.007 lf/asc 1.007 | 1410 MHz
+PRE hq=32 b= 1 q= 128 prefix= 4096 (K/V    18 MiB): fi     79.8 | asc    107.0 (1.34) | lf    111.5 | rule    107.0 (1.34) | rule/asc 1.000 lf/asc 1.042 | 1410 MHz
+PRE hq=32 b= 1 q= 128 prefix=16384 (K/V    66 MiB): fi    227.7 | asc    386.0 (1.70) | lf    493.3 | rule    386.1 (1.70) | rule/asc 1.000 lf/asc 1.278 | 1395 MHz
+PRE hq=32 b= 2 q=1024 prefix=    0 (K/V     8 MiB): fi    150.9 | asc    197.1 (1.31) | lf    169.9 | rule    169.8 (1.13) | rule/asc 0.861 lf/asc 0.862 | 1410 MHz
+PRE hq=32 b= 2 q=4096 prefix=    0 (K/V    32 MiB): fi   1604.6 | asc   2150.6 (1.34) | lf   2112.5 | rule   2089.5 (1.30) | rule/asc 0.972 lf/asc 0.982 | 1380 MHz
+PRE hq=32 b= 3 q=2048 prefix=    0 (K/V    24 MiB): fi    657.0 | asc    892.4 (1.36) | lf    865.0 | rule    864.3 (1.32) | rule/asc 0.969 lf/asc 0.969 | 1380 MHz
+PRE hq=32 b= 4 q= 512 prefix=    0 (K/V     8 MiB): fi     92.1 | asc    124.7 (1.35) | lf    110.3 | rule    110.3 (1.20) | rule/asc 0.885 lf/asc 0.885 | 1410 MHz
+PRE hq=32 b= 8 q= 256 prefix=    0 (K/V    16 MiB): fi     63.9 | asc     89.4 (1.40) | lf     82.9 | rule     83.0 (1.30) | rule/asc 0.928 lf/asc 0.927 | 1410 MHz
+PRE hq=32 b= 8 q= 512 prefix=    0 (K/V    16 MiB): fi    158.5 | asc    226.3 (1.43) | lf    218.4 | rule    218.3 (1.38) | rule/asc 0.965 lf/asc 0.965 | 1410 MHz
+PRE hq=32 b= 8 q=1024 prefix=    0 (K/V    32 MiB): fi    478.8 | asc    677.4 (1.41) | lf    680.6 | rule    681.5 (1.42) | rule/asc 1.006 lf/asc 1.005 | 1380 MHz
+PRE hq=32 b=12 q=1024 prefix=    0 (K/V    48 MiB): fi    708.5 | asc    995.5 (1.41) | lf   1051.8 | rule   1001.2 (1.41) | rule/asc 1.006 lf/asc 1.057 | 1395 MHz
+PRE hq=32 b=16 q= 128 prefix=    0 (K/V    32 MiB): fi     51.9 | asc     70.9 (1.37) | lf     70.2 | rule     70.0 (1.35) | rule/asc 0.987 lf/asc 0.990 | 1410 MHz
+PRE hq=32 b=16 q= 512 prefix=    0 (K/V    32 MiB): fi    293.6 | asc    432.9 (1.47) | lf    439.4 | rule    439.5 (1.50) | rule/asc 1.015 lf/asc 1.015 | 1395 MHz
+PRE hq=32 b=32 q=  64 prefix=    0 (K/V    64 MiB): fi     48.2 | asc     63.1 (1.31) | lf     65.2 | rule     63.0 (1.31) | rule/asc 0.998 lf/asc 1.033 | 1410 MHz
+PRE hq=32 b=32 q= 512 prefix=    0 (K/V    64 MiB): fi    574.2 | asc    838.4 (1.46) | lf    900.1 | rule    835.4 (1.45) | rule/asc 0.996 lf/asc 1.074 | 1395 MHz
+PRE hq=32 b=64 q= 128 prefix=    0 (K/V   128 MiB): fi    169.5 | asc    252.7 (1.49) | lf    264.1 | rule    252.7 (1.49) | rule/asc 1.000 lf/asc 1.045 | 1410 MHz
+PRE hq=32 b= 4 q=2048 prefix= 2048 (K/V    64 MiB): fi   2279.1 | asc   3110.4 (1.36) | lf   3136.0 | rule   3110.1 (1.36) | rule/asc 1.000 lf/asc 1.008 | 1395 MHz
+PRE hq=32 b=16 q=2048 prefix=    0 (K/V   128 MiB): fi   3208.0 | asc   4509.8 (1.41) | lf   4951.7 | rule   4499.1 (1.40) | rule/asc 0.998 lf/asc 1.098 | 1380 MHz

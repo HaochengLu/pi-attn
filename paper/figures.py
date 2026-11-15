@@ -1,5 +1,6 @@
 """Figures for the PI-Attn paper. Every value is read from results/ or copied from a table the
-paper prints next to the figure (which itself traces to results/). Run: python figures.py <results_dir> <out_dir>."""
+paper prints next to the figure (which itself traces to results/). Run: python figures.py <results_dir> <out_dir>
+[figure function names, e.g. fig_e2e; default: all]."""
 import json
 import re
 import sys
@@ -300,7 +301,7 @@ def fig_baselines():
 
 # ------------------------------------------------------------------ Figure 5: end to end
 def fig_e2e():
-    rows = [l for l in (RES / "a800/e2e_matrix/SUMMARY.md").read_text().splitlines() if l.startswith("| ") and "model" not in l and "---" not in l]
+    rows = [l for l in (RES / "a800_r5/e2e_matrix/SUMMARY.md").read_text().splitlines() if l.startswith("| ") and "model" not in l and "---" not in l]
     models = ["0.6B", "1.7B", "4B", "8B"]
     wls = ["64/256 c1", "512/256 c8", "512/256 c32", "2048/256 c16", "4096/128 c4"]
     M = np.full((4, 5), np.nan)
@@ -333,8 +334,16 @@ def fig_e2e():
     ax.set_title("a  Δ output throughput vs. original engine (%)", fontsize=8.3)
 
     ax = fig.add_subplot(gs[1])
-    L17 = [(64, 8.8), (512, -0.6), (2048, 0.1), (4096, 2.9), (16384, 12.2), (30000, 18.3)]
-    L8 = [(64, 3.6), (512, 3.6), (2048, 5.2), (4096, 6.3), (16384, 13.2)]
+    def ttft(model):  # (prompt tokens, change of time to first token in %) of the workloads without a shared prefix
+        txt = (RES / "a800_r5/e2e_extended/SUMMARY.md").read_text().split(f"### Qwen3-{model}")[1].split("###")[0]
+        pts = []
+        for l in txt.splitlines():
+            c = [x.strip() for x in l.strip("|").split("|")]
+            if len(c) == 5 and c[1] == "TTFT ms" and c[0].count("/") == 2:
+                pts.append((int(c[0].split("/")[0]), float(c[4].rstrip("%"))))
+        return pts
+    L17, L8 = ttft("1.7B"), ttft("8B")
+    assert [x for x, _ in L17] == [64, 512, 2048, 4096, 16384, 30000] and [x for x, _ in L8] == [64, 512, 2048, 4096, 16384]
     for pts, key, lab in [(L17, "PI", "Qwen3-1.7B"), (L8, "violet", "Qwen3-8B")]:
         xs, ys = zip(*pts)
         ax.plot(xs, ys, color=C[key], lw=1.6, marker="o", ms=4.2, mec=SURF, mew=1.0, label=lab, zorder=3)
@@ -479,5 +488,6 @@ def fig_gdn():
 
 for f in (fig_teaser, fig_attention, fig_gemm, fig_determinism, fig_baselines, fig_e2e, fig_rollout, fig_breakdown, fig_xgpu,
           fig_gdn):
-    f()
+    if not sys.argv[3:] or f.__name__ in sys.argv[3:]:
+        f()
 print("ok")

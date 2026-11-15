@@ -1,0 +1,4 @@
+Qwen3-0.6B: PI GEMM tiles tuned shapes=5 max_m=2080 seconds=3.925875177
+Qwen3-1.7B: PI GEMM tiles tuned shapes=5 max_m=2080 seconds=7.708376573
+Qwen3-4B: PI GEMM tiles tuned shapes=5 max_m=2080 seconds=9.954747331
+Qwen3-8B: PI GEMM tiles tuned shapes=5 max_m=2080 seconds=15.658603493

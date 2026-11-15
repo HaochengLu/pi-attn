@@ -1,0 +1,13 @@
+Qwen3-1.7B flashinfer launch 1 exit=0
+Qwen3-1.7B deterministic launch 1 exit=0
+Qwen3-1.7B flashinfer launch 2 exit=0
+Qwen3-1.7B deterministic launch 2 exit=0
+Qwen3-1.7B flashinfer launch 3 exit=0
+Qwen3-1.7B deterministic launch 3 exit=0
+Qwen3-8B flashinfer launch 1 exit=0
+Qwen3-8B deterministic launch 1 exit=0
+Qwen3-8B flashinfer launch 2 exit=0
+Qwen3-8B deterministic launch 2 exit=0
+Qwen3-8B flashinfer launch 3 exit=0
+Qwen3-8B deterministic launch 3 exit=0
+EXT_DONE

@@ -1,0 +1,40 @@
+[21:56] kernel-tests
+xgpu_hashes exit=0
+xgpu_compare exit=0
+HASHES gemm: PI identical 108/108; PI and vendor both identical 108/108; cases in new 108
+HASHES attention: PI identical 5/5; PI and vendor both identical 5/5; cases in new 5
+test_invariance exit=0
+checks failed: 0 []
+test_directed exit=0
+DIRECTED FAILURES: 0
+test_matrix exit=0
+TOTAL FAILURES: 0
+test_gemm exit=0
+INVARIANCE FAILURES: 0 []
+test_mutants exit=0
+UNCAUGHT MUTANTS: 0 []
+[22:05] engine-bits
+Qwen3-0.6B xgpu_rollout exit=0 | 64 rollouts: 64 with identical token ids; 13063/13063 log-probabilities bitwise equal | ROLLOUTS IDENTICAL TO REFERENCE: True
+Qwen3-0.6B detcheck exit=0 | DETERMINISTIC
+Qwen3-0.6B decode graphs captured for another launch plan: 4
+Qwen3-1.7B xgpu_rollout exit=0 | 64 rollouts: 64 with identical token ids; 14293/14293 log-probabilities bitwise equal | ROLLOUTS IDENTICAL TO REFERENCE: True
+Qwen3-1.7B detcheck exit=0 | DETERMINISTIC
+Qwen3-1.7B decode graphs captured for another launch plan: 4
+Qwen3-4B xgpu_rollout exit=0 | 64 rollouts: 64 with identical token ids; 13975/13975 log-probabilities bitwise equal | ROLLOUTS IDENTICAL TO REFERENCE: True
+Qwen3-4B detcheck exit=0 | DETERMINISTIC
+Qwen3-4B decode graphs captured for another launch plan: 4
+Qwen3-8B xgpu_rollout exit=0 | 64 rollouts: 64 with identical token ids; 14262/14262 log-probabilities bitwise equal | ROLLOUTS IDENTICAL TO REFERENCE: True
+Qwen3-8B detcheck exit=0 | DETERMINISTIC
+Qwen3-8B decode graphs captured for another launch plan: 4
+[22:36] kernel-benches
+attention exit=0
+decode_plan exit=0
+decode_plan hq32 exit=0
+prefill_order exit=0
+prefill exit=0
+[22:42] e2e-matrix
+[23:58] e2e-ablation
+[01:02] e2e-extended
+[01:42] e2e-highconc
+[02:01] done
+RUN_R5_DONE

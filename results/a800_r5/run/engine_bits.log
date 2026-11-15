@@ -1,0 +1,12 @@
+Qwen3-0.6B xgpu_rollout exit=0 | 64 rollouts: 64 with identical token ids; 13063/13063 log-probabilities bitwise equal | ROLLOUTS IDENTICAL TO REFERENCE: True
+Qwen3-0.6B detcheck exit=0 | DETERMINISTIC
+Qwen3-0.6B decode graphs captured for another launch plan: 4
+Qwen3-1.7B xgpu_rollout exit=0 | 64 rollouts: 64 with identical token ids; 14293/14293 log-probabilities bitwise equal | ROLLOUTS IDENTICAL TO REFERENCE: True
+Qwen3-1.7B detcheck exit=0 | DETERMINISTIC
+Qwen3-1.7B decode graphs captured for another launch plan: 4
+Qwen3-4B xgpu_rollout exit=0 | 64 rollouts: 64 with identical token ids; 13975/13975 log-probabilities bitwise equal | ROLLOUTS IDENTICAL TO REFERENCE: True
+Qwen3-4B detcheck exit=0 | DETERMINISTIC
+Qwen3-4B decode graphs captured for another launch plan: 4
+Qwen3-8B xgpu_rollout exit=0 | 64 rollouts: 64 with identical token ids; 14262/14262 log-probabilities bitwise equal | ROLLOUTS IDENTICAL TO REFERENCE: True
+Qwen3-8B detcheck exit=0 | DETERMINISTIC
+Qwen3-8B decode graphs captured for another launch plan: 4
