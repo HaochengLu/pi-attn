@@ -94,8 +94,10 @@ mod ffi {
             page_size: i32,
             sm_scale: f64,
             max_kv_len: i64,
+            grid_kv_len: i64,
             stream: *mut c_void,
         ) -> *const c_char;
+        pub fn pi_attn_prefill_wave_head(num_qo_heads: i32, num_kv_heads: i32, q_len: i32, prefix: i32) -> i32;
         pub fn pi_attn_prefill_plan(
             batch: i32,
             num_qo_heads: i32,
@@ -372,7 +374,9 @@ impl DecodeWorkspace {
 
 /// Decode attention for `q [batch, Hq, 128]` against the paged caches; writes `out [batch, Hq*128]`.
 /// `max_kv_len`: the longest request of the batch if the host knows it (0 = unknown). It only
-/// selects the kernel (`decode_plans`), never a value.
+/// selects the kernel (`decode_plans`), never a value. `tight_grid`: the launch's grid covers the fold groups
+/// of `max_kv_len` instead of the page table's capacity (eager launches whose bound is exact; a captured
+/// graph must cover the capacity).
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn decode(
     q: &Tensor,
@@ -383,6 +387,7 @@ pub(crate) fn decode(
     workspace: &DecodeWorkspace,
     num_kv_heads: i64,
     max_kv_len: i64,
+    tight_grid: bool,
     out: &Tensor,
 ) -> Result<(), String> {
     let (batch, num_heads) = (q.size()[0], q.size()[1]);
@@ -412,13 +417,45 @@ pub(crate) fn decode(
             page_size as i32,
             1.0 / (q.size()[2] as f64).sqrt(),
             max_kv_len,
+            if tight_grid { max_kv_len } else { 0 },
             stream_of(q)?,
         )
     });
     #[cfg(not(has_pi))]
     {
-        let _ = (k_cache, v_cache, seqlens, workspace, num_kv_heads, max_kv_len, out, num_heads);
+        let _ = (k_cache, v_cache, seqlens, workspace, num_kv_heads, max_kv_len, tight_grid, out, num_heads);
         Err("PI kernels were not built".into())
+    }
+}
+
+/// Requests at the end of a prefill-phase batch that add one token: the decode rows the scheduler appends
+/// after the new prompts, and prompts whose prefix cache left one token. The decode kernels give such a row
+/// the bits `prefill_kernel` gives it (one canonical sequence per row), in a fraction of the time: in a
+/// prefill launch a one-token request takes whole row-tile CTAs for its GQA rows and adds empty CTAs for every
+/// row tile of the longest request. So a batch is run as its prefix through prefill and this tail through decode.
+pub(crate) fn single_token_tail(q_lens: &[i64]) -> usize {
+    q_lens.iter().rev().take_while(|&&q| q == 1).count()
+}
+
+/// `PI_PREFILL_TAIL=0` in the environment keeps one-token requests in the prefill launch (A/B measurements;
+/// the same bits).
+pub(crate) fn decode_tail_enabled() -> bool {
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENABLED.get_or_init(|| std::env::var("PI_PREFILL_TAIL").map_or(true, |value| !value.starts_with('0')))
+}
+
+/// Tokens of a single request's prefill of `q_len` tokens over `prefix` cached ones to run as a first launch, the
+/// rest as a second (`prefill_wave_head` in pi_attn_kernels.cu: the first launch's CTAs fill whole waves of SMs);
+/// 0 = one launch. Scheduling only: a row's bits do not depend on the launch that runs it.
+pub(crate) fn prefill_wave_head(num_heads: i64, num_kv_heads: i64, q_len: i64, prefix: i64) -> i64 {
+    #[cfg(has_pi)]
+    return unsafe {
+        ffi::pi_attn_prefill_wave_head(num_heads as i32, num_kv_heads as i32, q_len as i32, prefix as i32)
+    } as i64;
+    #[cfg(not(has_pi))]
+    {
+        let _ = (num_heads, num_kv_heads, q_len, prefix);
+        0
     }
 }
 
@@ -598,5 +635,21 @@ mod tests {
         for size in crate::engine::segmented_graph::capture_sizes(2048).into_iter().chain(decode) {
             assert_eq!(unsafe { super::ffi::pi_linear_bucket(size as i32) }, size as i32, "graph size {size}");
         }
+    }
+}
+
+#[cfg(test)]
+mod schedule_tests {
+    use super::single_token_tail;
+
+    #[test]
+    fn single_token_tail_counts_only_the_trailing_run() {
+        assert_eq!(single_token_tail(&[]), 0);
+        assert_eq!(single_token_tail(&[2048]), 0);
+        assert_eq!(single_token_tail(&[1]), 1);
+        assert_eq!(single_token_tail(&[2048, 1, 1, 1]), 3);
+        assert_eq!(single_token_tail(&[1, 17]), 0);
+        assert_eq!(single_token_tail(&[1, 512, 1]), 1);
+        assert_eq!(single_token_tail(&[1, 1]), 2);
     }
 }

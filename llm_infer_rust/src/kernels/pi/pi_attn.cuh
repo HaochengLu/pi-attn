@@ -45,6 +45,9 @@ __device__ __forceinline__ uint32_t pack_bf16(float lo, float hi) {
 __device__ __forceinline__ float round_bf16(float x) {
   return __bfloat162float(__float2bfloat16_rn(x));
 }
+// The halves of a packed pair as floats (a bf16 is the upper half of the float it equals).
+__device__ __forceinline__ float bf16_lo(uint32_t w) { return __uint_as_float(w << 16); }
+__device__ __forceinline__ float bf16_hi(uint32_t w) { return __uint_as_float(w & 0xffff0000u); }
 
 __device__ __forceinline__ void mma_bf16(float (&d)[4], const uint32_t (&a)[4], uint32_t b0,
                                          uint32_t b1) {
@@ -85,6 +88,9 @@ __device__ __forceinline__ void cp_async16(void* dst, const void* src, int src_b
                "r"(src_bytes));
 }
 __device__ __forceinline__ void cp_async_commit() { asm volatile("cp.async.commit_group;"); }
+__device__ __forceinline__ void cp_async16(uint32_t dst_smem, const void* src, int src_bytes) {
+  asm volatile("cp.async.cg.shared.global [%0], [%1], 16, %2;" ::"r"(dst_smem), "l"(src), "r"(src_bytes));
+}
 template <int N>
 __device__ __forceinline__ void cp_async_wait() {
   asm volatile("cp.async.wait_group %0;" ::"n"(N));
@@ -161,6 +167,9 @@ struct OnlineState {
 // before the tile) then leaves the state bit-identical, as if skipped.
 // Row max exact; P = bf16(2^(v - m_new)); d = fma(d, 2^(m - m_new), sum P) with
 // the sum in the fixed order (own keys n = 0.., then lane xor 1, xor 2).
+// P is rounded once per pair, straight into the A-fragment word: cvt.rn.bf16x2.f32 rounds each half as
+// cvt.rn.bf16.f32 does (the same word as rounding each value, converting it back and packing the pair, for all
+// 2^32 inputs of either half: archive/ceiling_probes/a800_r6/pack), and the row sum adds the word's halves.
 __device__ __forceinline__ void online_step(OnlineState& st, float (&v)[kTileNS][4],
                                             uint32_t (&pa)[kTileKS][4]) {
   float mx[2] = {-INFINITY, -INFINITY};
@@ -181,14 +190,16 @@ __device__ __forceinline__ void online_step(OnlineState& st, float (&v)[kTileNS]
   float ls[2] = {0.f, 0.f};
 #pragma unroll
   for (int n = 0; n < kTileNS; ++n) {
-    float p[4];
+    float e[4];
 #pragma unroll
-    for (int i = 0; i < 4; ++i) {
-      p[i] = round_bf16(ex2(sub(v[n][i], mm[i >> 1])));
-      ls[i >> 1] = add(ls[i >> 1], p[i]);
-    }
-    pa[n >> 1][(n & 1) * 2 + 0] = pack_bf16(p[0], p[1]);
-    pa[n >> 1][(n & 1) * 2 + 1] = pack_bf16(p[2], p[3]);
+    for (int i = 0; i < 4; ++i) e[i] = ex2(sub(v[n][i], mm[i >> 1]));
+    const uint32_t w0 = pack_bf16(e[0], e[1]), w1 = pack_bf16(e[2], e[3]);
+    ls[0] = add(ls[0], bf16_lo(w0));
+    ls[0] = add(ls[0], bf16_hi(w0));
+    ls[1] = add(ls[1], bf16_lo(w1));
+    ls[1] = add(ls[1], bf16_hi(w1));
+    pa[n >> 1][(n & 1) * 2 + 0] = w0;
+    pa[n >> 1][(n & 1) * 2 + 1] = w1;
   }
 #pragma unroll
   for (int r = 0; r < 2; ++r) {
@@ -225,6 +236,35 @@ __device__ __forceinline__ void issue_tile(__nv_bfloat16* tile, const __nv_bfloa
   const __nv_bfloat16* src = cache + (row >= 0 ? row : 0) + c0 * 8;
 #pragma unroll
   for (int i = 0; i < 4; ++i) cp_async16(tile + swz(key, c0 + 4 * i), src + 32 * i, row >= 0 ? 16 : 0);
+}
+
+// issue_tile with the thread's addresses formed once (prefill_kernel). Chunk c0 + 4 i of key `key` is at byte
+// swz_bytes(key, c0 + 4 i) = key * 256 + (c0 ^ (key & 3)) * 16 + 64 (i ^ h), h = bit 2 of key: chunks i = 0, 2
+// are at `even`, `even` + 128 and chunks i = 1, 3 at `odd`, `odd` + 128.
+struct TileDst {
+  uint32_t even, odd;
+};
+__device__ __forceinline__ TileDst tile_dst(int tid) {
+  const uint32_t key = tid >> 2, c0 = tid & 3, base = key * (kHeadDim * 2) + ((c0 ^ (key & 3)) << 4), h = (key >> 2) & 1;
+  return {base + 64 * h, base + 64 * (1 - h)};
+}
+// The thread's key of a tile in a cache: byte offset of its first chunk and 16, or (0, 0): zero-fill, no read.
+struct TileSrc {
+  int64_t off;
+  int bytes;
+};
+// row: tile_row's.
+__device__ __forceinline__ TileSrc tile_src(int64_t row, int tid) {
+  const int ok = row >= 0;
+  return {ok ? (row + (tid & 3) * 8) * 2 : 0, ok << 4};
+}
+// tile: shared-memory address of the tile.
+__device__ __forceinline__ void issue_tile(uint32_t tile, TileDst d, const __nv_bfloat16* cache, TileSrc s) {
+  const char* src = reinterpret_cast<const char*>(cache) + s.off;
+  cp_async16(tile + d.even, src, s.bytes);
+  cp_async16(tile + d.odd, src + 64, s.bytes);
+  cp_async16(tile + d.even + 128, src + 128, s.bytes);
+  cp_async16(tile + d.odd + 128, src + 192, s.bytes);
 }
 
 }  // namespace pi_attn

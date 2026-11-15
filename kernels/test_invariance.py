@@ -43,8 +43,9 @@ VARIANTS += [5, 6, 7] if ext.WGMMA else []
 # the 138 KB of shared memory decode16_kernel takes (sm_80), 3 = decode16_kernel wherever it can run (batch * kv
 # heads <= SMs, GQA group <= 8), else decode_kernel, 4 = the same without helper CTAs.
 DECODE_VARIANTS = [1, 2] if ext.WGMMA else [1, 3, 4] if ext.decode16_fits() else []
-# Prefill grid orders of prefill_kernel forced one by one in the split check: 1 = ascending, 2 = longest first.
-PREFILL_ORDERS = (1, 2)
+# Prefill grid orders of prefill_kernel forced one by one in the split check: 1 = ascending, 2 = longest first,
+# 3 = descending.
+PREFILL_ORDERS = (1, 2, 3)
 # PI error vs float64 may exceed FlashInfer's by at most this factor (mean, max).
 ACC_SLACK = (1.05, 1.25)
 # Decode arrival counters, shared by every call as in the engine: each call must
@@ -215,8 +216,8 @@ def run_checks():
             fails.append(("chunk+prefix", L))
 
     # split / variant: prefill forced over 1..7 split CTAs per row tile, with every
-    # prefill kernel variant (Q in smem / registers, 4 / 8 warps) in either grid order, vs the planner's run;
-    # and the shuffled batch again in either order.
+    # prefill kernel variant (Q in smem / registers, 4 / 8 warps) in every grid order, vs the planner's run;
+    # and the shuffled batch again in every order.
     for VARIANT in VARIANTS:
         for KVSPLITS in (1, 2, 3, 7):
             for order in PREFILL_ORDERS if VARIANT <= 4 else (0,):

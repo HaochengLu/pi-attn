@@ -5,6 +5,7 @@
 #include <map>
 #include <queue>
 #include <tuple>
+#include <type_traits>
 #include <vector>
 
 #include "pi_attn.cuh"
@@ -34,6 +35,9 @@ __device__ __forceinline__ const int32_t* request_pages(const int32_t* kv_page_i
 // order. K and V each have two smem slots; iteration t loads K(t + 2) and V(t + 1),
 // a full iteration ahead, behind one barrier. Every warp runs every tile of its
 // range: a fully masked online step is an exact no-op (see online_step).
+// A warp runs the tiles whose keys all of its rows see in a loop without the causal mask (the same values
+// without the comparisons and selects) and the rest in the masked loop; each loop body is one straight-line
+// block, so the S(t + 1) MMA chains stay scheduled through tile t's softmax.
 //
 // QREG (sm_80): Q fragments live in registers and the fp32 folded totals (touched
 // once per fold group) in smem: 80 KB, two CTAs per SM on sm_80's 164 KB; with 8 warps
@@ -70,6 +74,26 @@ inline int prefill_warps(bool qreg, int batch, int num_qo_heads, int num_kv_head
   const int64_t ctas = (rows + 127) / 128 * num_kv_heads * batch;
   return ctas >= 2 * (int64_t)sms ? 8 : kPrefillWarps;
 }
+// Wave split of one request's prefill (scheduling only: a row's bits do not depend on the launch that runs it).
+// The CTAs of a chunk over a prefix at least as long all run about as long, and a launch fills the SMs in waves:
+// with `ctas` 128-row CTAs (or twice as many 64-row ones, two per SM) it runs ceil(ctas / SMs) of them and the
+// last leaves SMs idle (2048 tokens of 16 query / 8 kv heads: 256 CTAs on 108 SMs, a third wave of 40). When that
+// wave is at most half full, the request is run as two launches: its first `head` tokens, whose CTAs fill whole
+// waves, and the rest, a short extend that the planner splits over fold groups. Returns head, or 0 for one launch.
+// Measured on an A800 (results/a800_r6/kernels/wave_split.txt): 0.70-0.97x the one launch's time on every shape
+// the rule cuts; without a long prefix (causal triangle, longest-first grid) or beyond five waves a cut costs
+// 1-20%, so those run as one launch. Compute capability 8.0 only, the one measured.
+inline int prefill_wave_head(int cc_major, int cc_minor, int num_qo_heads, int num_kv_heads, int q_len, int prefix,
+                             int sms) {
+  if (!(cc_major == 8 && cc_minor == 0) || num_kv_heads <= 0 || sms <= 0 || prefix < q_len) return 0;
+  const int group = num_qo_heads / num_kv_heads;
+  if (group <= 0 || 128 % group) return 0;
+  const int64_t ctas = ((int64_t)q_len * group + 127) / 128 * num_kv_heads, rest = ctas % sms;
+  if (ctas < sms || ctas > 5 * (int64_t)sms || rest == 0 || 2 * rest > sms) return 0;
+  const int head = (int)((ctas - rest) / num_kv_heads) * (128 / group);
+  return head > 0 && head < q_len ? head : 0;
+}
+
 // Whether the planner may split a few-wave prefill against its causal tail. The
 // dispatch simulation below was fitted on sm_89; on sm_80 every split it picks measured
 // slower than one (archive/ceiling_probes/a800/prefill_split_planner.txt), and so did every one measured on
@@ -92,8 +116,27 @@ inline bool prefill_longest_first(int cc_major, int cc_minor, int batch, int num
   const int64_t kv_bytes = (int64_t)batch * max_groups * kGroupKeys * num_kv_heads * kHeadDim * 2 * 2;
   return cc_major == 8 && cc_minor == 0 && splits == 1 && kv_bytes <= l2_bytes;
 }
-inline dim3 prefill_grid(int row_tiles, int num_kv_heads, int batch_splits, bool longest_first) {
-  return longest_first ? dim3(num_kv_heads, batch_splits, row_tiles) : dim3(row_tiles, num_kv_heads, batch_splits);
+// Descending: the ascending grid with the row tiles of a (request, kv head) reversed, so that they stay together
+// (each K/V byte still comes from DRAM once) and the launch ends on its shortest CTAs.
+enum PrefillOrder { kPrefillAscending = 0, kPrefillLongestFirst = 1, kPrefillDescending = 2 };
+inline bool prefill_descending(int cc_major, int cc_minor, int batch, int splits) {
+  return cc_major == 8 && cc_minor == 0 && splits == 1;
+}
+inline int prefill_order(int cc_major, int cc_minor, int batch, int num_kv_heads, int max_groups, int splits,
+                         int64_t l2_bytes) {
+  if (prefill_longest_first(cc_major, cc_minor, batch, num_kv_heads, max_groups, splits, l2_bytes))
+    return kPrefillLongestFirst;
+  return prefill_descending(cc_major, cc_minor, batch, splits) ? kPrefillDescending : kPrefillAscending;
+}
+inline dim3 prefill_grid(int row_tiles, int num_kv_heads, int batch_splits, int order) {
+  return order == kPrefillLongestFirst ? dim3(num_kv_heads, batch_splits, row_tiles)
+                                       : dim3(row_tiles, num_kv_heads, batch_splits);
+}
+// The kernel's tile_flip argument for an order: -1 = the longest-first grid; otherwise the CTA at x runs row tile
+// |x - tile_flip| (0: ascending, row_tiles - 1: descending). One int, read once: as a second flag with a select on
+// gridDim it made the compiled step loop 2-3% slower (archive/ceiling_probes/a800_r6, codegen).
+inline int prefill_tile_flip(int order, int row_tiles) {
+  return order == kPrefillLongestFirst ? -1 : order == kPrefillDescending ? row_tiles - 1 : 0;
 }
 
 template <bool QREG, int WARPS = kPrefillWarps>
@@ -105,16 +148,19 @@ __global__ void __launch_bounds__(WARPS * 32, WARPS == 4 ? 2 : 1)
                     const int32_t* __restrict__ kv_lens, const int32_t* __restrict__ prefix_lens,
                     int num_qo_heads, int num_kv_heads, int page_size, int page_shift, float scale_log2,
                     int kv_splits, float* __restrict__ ws_o, float2* __restrict__ ws_ml, int max_groups,
-                    bool longest_first) {
+                    int tile_flip) {
   constexpr int kRows = WARPS * 16, kThreads = WARPS * 32;
+  constexpr uint32_t kSlotBytes = kTile * kHeadDim * 2;
   extern __shared__ __align__(16) __nv_bfloat16 smem[];
   __nv_bfloat16* sQ = smem;
   __nv_bfloat16* sK = sQ + kRows * kHeadDim;  // slots 0, 1 (kTile x 128 each)
   __nv_bfloat16* sV = sK + 2 * kTile * kHeadDim;  // slots 0, 1
   float* sTot = reinterpret_cast<float*>(sV + 2 * kTile * kHeadDim);  // QREG: [warp][n][i][lane]
+  const bool longest_first = tile_flip < 0;  // prefill_tile_flip
   const int bs = longest_first ? blockIdx.y : blockIdx.z;  // prefill_grid
   const int b = bs / kv_splits, split = bs % kv_splits;
-  const int kvh = longest_first ? blockIdx.x : blockIdx.y, tile = longest_first ? gridDim.z - 1 - blockIdx.z : blockIdx.x;
+  const int kvh = longest_first ? blockIdx.x : blockIdx.y;
+  const int tile = longest_first ? gridDim.z - 1 - blockIdx.z : abs((int)blockIdx.x - tile_flip);
   const int group = num_qo_heads / num_kv_heads;
   const int q0 = qo_indptr[b], q_len = qo_indptr[b + 1] - q0;
   const int rows_total = q_len * group;
@@ -133,6 +179,8 @@ __global__ void __launch_bounds__(WARPS * 32, WARPS == 4 ? 2 : 1)
     const int i = warp_first + g + r * 8;
     rpos[r] = i < rows_total ? prefix + i / group : -1;
   }
+  // The warp's first position, the smallest of its rows; -1 when it has padding rows.
+  const int warp_pos = warp_first + 15 < rows_total ? prefix + warp_first / group : -1;
   const int tile_groups = last_pos / kGroupKeys + 1;
   const int per_split = (tile_groups + kv_splits - 1) / kv_splits;
   const int g_begin = split * per_split, g_end = min(tile_groups, g_begin + per_split);
@@ -146,7 +194,6 @@ __global__ void __launch_bounds__(WARPS * 32, WARPS == 4 ? 2 : 1)
   const uint32_t q_addr = smem_u32(sQ) + swz_bytes(warp * 16 + (mat & 1) * 8 + r8, mat >> 1);
   const uint32_t k_addr = smem_u32(sK) + swz_bytes((mat >> 1) * 8 + r8, mat & 1);
   const uint32_t v_addr = smem_u32(sV) + swz_bytes((mat & 1) * 8 + r8, mat >> 1);
-  constexpr uint32_t kSlotBytes = kTile * kHeadDim * 2;
   // S = Q K^T of the tile in K slot `slot`, each element's k-steps in ascending order.
   uint32_t qa[QREG ? kKStepsQK : 1][4];
   auto qk = [&](float (&s)[kTileNS][4], int slot) {
@@ -182,20 +229,23 @@ __global__ void __launch_bounds__(WARPS * 32, WARPS == 4 ? 2 : 1)
     }
     cp_async16(sQ + swz(r, chunk), src, bytes);
   }
-  // Tile t uses K slot and V slot t & 1 (t_begin is even). row1 / row2: this
-  // thread's cache rows of tiles t + 1 and t + 2, each read an iteration before use.
-  // The first 128 threads copy the K/V tiles (issue_tile).
+  // Tile t uses K slot and V slot t & 1 (t_begin is even). src1 / src2: this thread's key of tiles t + 1 and
+  // t + 2 in the caches, each found an iteration before use; a tile past t_last or a key past kv_len is
+  // zero-filled without a read. The first 128 threads copy the K/V tiles (issue_tile), their shared-memory
+  // addresses formed once.
   const bool copier = tid < 128;
-  auto row_of = [&](int t) -> int64_t {
-    return copier ? tile_row(pages, page_size, page_shift, t, kv_len, num_kv_heads, kvh, tid) : -1;
+  const TileDst cdst = tile_dst(tid & 127);
+  const uint32_t k_tile = smem_u32(sK), v_tile = smem_u32(sV);
+  auto src_of = [&](int t) -> TileSrc {
+    return tile_src(copier && t <= t_last ? tile_row(pages, page_size, page_shift, t, kv_len, num_kv_heads, kvh, tid) : -1, tid);
   };
-  int64_t row1 = row_of(t_begin);
-  if (copier) issue_tile(sK, k_cache, row1, tid);
+  TileSrc src1 = src_of(t_begin);
+  if (copier) issue_tile(k_tile, cdst, k_cache, src1);
   cp_async_commit();  // Q + K(t_begin)
-  if (copier) issue_tile(sV, v_cache, row1, tid);
-  row1 = row_of(t_begin + 1);
-  int64_t row2 = row_of(t_begin + 2);
-  if (copier && t_begin + 1 <= t_last) issue_tile(sK + kTile * kHeadDim, k_cache, row1, tid);
+  if (copier) issue_tile(v_tile, cdst, v_cache, src1);
+  src1 = src_of(t_begin + 1);
+  TileSrc src2 = src_of(t_begin + 2);
+  if (copier) issue_tile(k_tile + kSlotBytes, cdst, k_cache, src1);
   cp_async_commit();  // V(t_begin) + K(t_begin + 1)
 
   // st: the current group; the folded total of the finished groups is (tot_m,
@@ -249,25 +299,34 @@ __global__ void __launch_bounds__(WARPS * 32, WARPS == 4 ? 2 : 1)
     st.reset();
   };
 
-  // One pipelined iteration: s holds S(t) on entry; sn receives S(t + 1).
-  auto step = [&](int t, float (&s)[kTileNS][4], float (&sn)[kTileNS][4]) {
-    const int slot = t & 1;
+  // One pipelined iteration: s holds S(t) on entry; sn receives S(t + 1). slot = t & 1. masked: std::true_type
+  // applies the causal mask; std::false_type is for a tile whose keys every row of the warp sees.
+  auto step = [&](int t, float (&s)[kTileNS][4], float (&sn)[kTileNS][4], const int slot, auto masked) {
     cp_async_wait<0>();  // V(t), K(t + 1)
     __syncthreads();     // ... for all threads; everyone is done with V(t - 1) and K(t)
-    if (copier && t + 1 <= t_last) issue_tile(sV + (slot ^ 1) * kTile * kHeadDim, v_cache, row1, tid);
-    if (copier && t + 2 <= t_last) issue_tile(sK + slot * kTile * kHeadDim, k_cache, row2, tid);
+    if (copier) {
+      issue_tile(v_tile + (slot ^ 1) * kSlotBytes, cdst, v_cache, src1);
+      issue_tile(k_tile + slot * kSlotBytes, cdst, k_cache, src2);
+    }
     cp_async_commit();
-    row1 = row2;
-    row2 = row_of(t + 3);
-    qk(sn, slot ^ 1);  // past t_last: stale slot data, never used
-    const int key0 = t * kTile;
+    src1 = src2;
+    src2 = src_of(t + 3);
+    qk(sn, slot ^ 1);  // past t_last: zeros or stale slot data, never used
+    if constexpr (decltype(masked)::value) {
+      const int key0 = t * kTile;
 #pragma unroll
-    for (int n = 0; n < kTileNS; ++n)
+      for (int n = 0; n < kTileNS; ++n)
 #pragma unroll
-      for (int i = 0; i < 4; ++i) {
-        const int key = key0 + n * 8 + t4 * 2 + (i & 1);
-        s[n][i] = key <= rpos[i >> 1] ? mul(s[n][i], scale_log2) : -INFINITY;
-      }
+        for (int i = 0; i < 4; ++i) {
+          const int key = key0 + n * 8 + t4 * 2 + (i & 1);
+          s[n][i] = key <= rpos[i >> 1] ? mul(s[n][i], scale_log2) : -INFINITY;
+        }
+    } else {
+#pragma unroll
+      for (int n = 0; n < kTileNS; ++n)
+#pragma unroll
+        for (int i = 0; i < 4; ++i) s[n][i] = mul(s[n][i], scale_log2);
+    }
     uint32_t pa[kTileKS][4];
     online_step(st, s, pa);
 #pragma unroll
@@ -290,9 +349,17 @@ __global__ void __launch_bounds__(WARPS * 32, WARPS == 4 ? 2 : 1)
     for (int ks = 0; ks < kKStepsQK; ++ks) ldmatrix_x4(qa[ks], q_addr ^ (ks << 5));
   }
   qk(sa, 0);
-  for (int t = t_begin; t <= t_last; t += 2) {
-    step(t, sa, sb);
-    if (t + 1 <= t_last) step(t + 1, sb, sa);
+  // Tiles [t_begin, t_plain): every key visible to every row of the warp. A warp's two loops run t_last - t_begin
+  // + 1 steps in all, as every other warp's do, so the barriers of the steps pair up across the CTA.
+  const int t_plain = min((warp_pos + 1) / kTile, t_last + 1);
+  int t = t_begin;
+  for (; t + 2 <= t_plain; t += 2) {
+    step(t, sa, sb, 0, std::false_type());
+    step(t + 1, sb, sa, 1, std::false_type());
+  }
+  for (; t <= t_last; t += 2) {
+    step(t, sa, sb, 0, std::true_type());
+    if (t + 1 <= t_last) step(t + 1, sb, sa, 1, std::true_type());
   }
   cp_async_wait<0>();
 }

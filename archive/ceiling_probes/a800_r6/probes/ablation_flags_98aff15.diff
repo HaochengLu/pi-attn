@@ -1,0 +1,92 @@
+--- a/llm_infer_rust/src/kernels/pi/pi_attn.cuh	2026-11-14 21:22:06.000000000 -0500
++++ b/llm_infer_rust/src/kernels/pi/pi_attn.cuh	2026-11-14 21:42:40.881479058 -0500
+@@ -184,7 +184,11 @@
+     float p[4];
+ #pragma unroll
+     for (int i = 0; i < 4; ++i) {
++#ifdef PROBE_NOEXP
++      p[i] = v[n][i] == -INFINITY ? 0.f : 0.5f;
++#else
+       p[i] = round_bf16(ex2(sub(v[n][i], mm[i >> 1])));
++#endif
+       ls[i >> 1] = add(ls[i >> 1], p[i]);
+     }
+     pa[n >> 1][(n & 1) * 2 + 0] = pack_bf16(p[0], p[1]);
+@@ -196,10 +200,20 @@
+     ls[r] = add(ls[r], __shfl_xor_sync(0xffffffffu, ls[r], 2));
+     st.d[r] = __fmaf_rn(st.d[r], scale[r], ls[r]);
+   }
++#if defined(PROBE_NORESCALE)
++#elif defined(PROBE_CONDRESCALE)
++  if (!__all_sync(0xffffffffu, scale[0] == 1.f && scale[1] == 1.f)) {
+ #pragma unroll
+   for (int n = 0; n < kNTilesO; ++n)
+ #pragma unroll
+     for (int i = 0; i < 4; ++i) st.o[n][i] = __fmaf_rn(st.o[n][i], scale[i >> 1], 0.f);  // -0 -> +0
++  }
++#else
++#pragma unroll
++  for (int n = 0; n < kNTilesO; ++n)
++#pragma unroll
++    for (int i = 0; i < 4; ++i) st.o[n][i] = __fmaf_rn(st.o[n][i], scale[i >> 1], 0.f);  // -0 -> +0
++#endif
+ }
+ 
+ // Thread tid of 128 copies key tid / 4 of a tile, 16-byte chunks tid % 4 + 4 i
+--- a/llm_infer_rust/src/kernels/pi/pi_attn_kernels.cu	2026-11-14 21:22:06.000000000 -0500
++++ b/llm_infer_rust/src/kernels/pi/pi_attn_kernels.cu	2026-11-14 21:42:40.881847725 -0500
+@@ -152,6 +152,13 @@
+   auto qk = [&](float (&s)[kTileNS][4], int slot) {
+ #pragma unroll
+     for (int n = 0; n < kTileNS; ++n) s[n][0] = s[n][1] = s[n][2] = s[n][3] = 0.f;
++#ifdef PROBE_NOQK
++#pragma unroll
++    for (int n = 0; n < kTileNS; ++n)
++#pragma unroll
++      for (int i = 0; i < 4; ++i) s[n][i] = (float)((slot * 7 + n * 3 + i + lane) & 15);
++    return;
++#endif
+ #pragma unroll
+     for (int ks = 0; ks < kKStepsQK; ++ks) {
+       uint32_t a[4];
+@@ -253,9 +260,17 @@
+   auto step = [&](int t, float (&s)[kTileNS][4], float (&sn)[kTileNS][4]) {
+     const int slot = t & 1;
+     cp_async_wait<0>();  // V(t), K(t + 1)
++#ifdef PROBE_NOSYNC
++    if (t < t_begin + 3)
++#endif
+     __syncthreads();     // ... for all threads; everyone is done with V(t - 1) and K(t)
+-    if (copier && t + 1 <= t_last) issue_tile(sV + (slot ^ 1) * kTile * kHeadDim, v_cache, row1, tid);
+-    if (copier && t + 2 <= t_last) issue_tile(sK + slot * kTile * kHeadDim, k_cache, row2, tid);
++#ifdef PROBE_NOLOAD
++    const bool pl = t < t_begin + 2;
++#else
++    const bool pl = true;
++#endif
++    if (pl && copier && t + 1 <= t_last) issue_tile(sV + (slot ^ 1) * kTile * kHeadDim, v_cache, row1, tid);
++    if (pl && copier && t + 2 <= t_last) issue_tile(sK + slot * kTile * kHeadDim, k_cache, row2, tid);
+     cp_async_commit();
+     row1 = row2;
+     row2 = row_of(t + 3);
+@@ -270,6 +285,7 @@
+       }
+     uint32_t pa[kTileKS][4];
+     online_step(st, s, pa);
++#ifndef PROBE_NOPV
+ #pragma unroll
+     for (int j = 0; j < kTileKS; ++j)
+ #pragma unroll
+@@ -279,6 +295,12 @@
+         mma_bf16(st.o[n], pa[j], bv[0], bv[1]);
+         mma_bf16(st.o[n + 1], pa[j], bv[2], bv[3]);
+       }
++#else
++#pragma unroll
++      for (int n = 0; n < kNTilesO; ++n)
++#pragma unroll
++        for (int i = 0; i < 4; ++i) st.o[n][i] = add(st.o[n][i], __uint_as_float(pa[n & 1][i]));
++#endif
+     if (t % kGroupTiles == kGroupTiles - 1 || t == t_last) finish_group(t / kGroupTiles, t == t_last);
+   };
+ 

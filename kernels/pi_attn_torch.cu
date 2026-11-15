@@ -44,9 +44,9 @@ static int sm_count(const at::Tensor& t) {
 // the same with 8 warps (128 rows) per CTA; sm_90a builds on compute capability 9.0 only: 5 = the wgmma kernel
 // of 64 rows per CTA, 6 / 7 = the warp-specialised wgmma kernel with 3 / 2 consumer warp groups (192 / 128 rows
 // per CTA; the device's choice is one of the three, prefill90w_wg); all give the same bits.
-// Prefill grid order of prefill_kernel: 0 = the engine's choice for this device and launch (prefill_longest_first),
-// 1 = ascending, 2 = longest first; the same bits.
-static int prefill_order = 0;
+// Prefill grid order of prefill_kernel: 0 = the engine's choice for this device and launch (prefill_order),
+// 1 = ascending, 2 = longest first, 3 = descending; the same bits.
+static int forced_prefill_order = 0;
 
 at::Tensor prefill(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Tensor qo_indptr,
                    at::Tensor kv_page_indptr, at::Tensor kv_page_indices, at::Tensor kv_lens,
@@ -90,9 +90,10 @@ at::Tensor prefill(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Ten
   auto stream = at::cuda::getCurrentCUDAStream();
   int l2_bytes = 0;
   cudaDeviceGetAttribute(&l2_bytes, cudaDevAttrL2CacheSize, q.get_device());
-  const bool lf = prefill_order ? prefill_order == 2
-                                : prefill_longest_first(major, minor, batch, hkv, max_groups, splits, l2_bytes);
-  dim3 grid = prefill_grid(tiles, hkv, batch * splits, lf);
+  const int order = forced_prefill_order == 1 ? kPrefillAscending : forced_prefill_order == 2 ? kPrefillLongestFirst
+                  : forced_prefill_order == 3 ? kPrefillDescending
+                  : prefill_order(major, minor, batch, hkv, max_groups, splits, l2_bytes);
+  dim3 grid = prefill_grid(tiles, hkv, batch * splits, order);
 #ifdef PI_SM90A
   if (ws) grid = prefill90w_grid(tiles, hkv, batch * splits);
   else if (wgmma) grid = dim3(tiles, hkv, batch * splits);
@@ -115,12 +116,12 @@ at::Tensor prefill(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Ten
     else launch(prefill90_kernel, prefill90_smem_bytes());
 #endif
   } else if (warps == 8) {
-    if (qreg) launch(prefill_kernel<true, 8>, prefill_smem_bytes<true, 8>(), lf);
-    else launch(prefill_kernel<false, 8>, prefill_smem_bytes<false, 8>(), lf);
+    if (qreg) launch(prefill_kernel<true, 8>, prefill_smem_bytes<true, 8>(), prefill_tile_flip(order, tiles));
+    else launch(prefill_kernel<false, 8>, prefill_smem_bytes<false, 8>(), prefill_tile_flip(order, tiles));
   } else if (qreg) {
-    launch(prefill_kernel<true>, prefill_smem_bytes<true>(), lf);
+    launch(prefill_kernel<true>, prefill_smem_bytes<true>(), prefill_tile_flip(order, tiles));
   } else {
-    launch(prefill_kernel<false>, prefill_smem_bytes<false>(), lf);
+    launch(prefill_kernel<false>, prefill_smem_bytes<false>(), prefill_tile_flip(order, tiles));
   }
   C10_CUDA_KERNEL_LAUNCH_CHECK();
   if (splits > 1) {
@@ -221,8 +222,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     decode_variant = (int)v;
   });
   m.def("set_prefill_order", [](int64_t v) {
-    TORCH_CHECK(v >= 0 && v <= 2, "prefill order: 0, 1 or 2");
-    prefill_order = (int)v;
+    TORCH_CHECK(v >= 0 && v <= 3, "prefill order: 0 to 3");
+    forced_prefill_order = (int)v;
   });
   // The kernel decode_plan gives a launch on this device (1, 2 or 3).
   m.def("decode_plan", [](int64_t batch, int64_t hkv, int64_t max_kv_len, int64_t kv_len_bound, int64_t hq) {
@@ -235,6 +236,15 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     return decode_plan(major, minor, (int)batch, (int)((max_kv_len + kGroupKeys - 1) / kGroupKeys), (int)hq, (int)hkv,
                        sms, kv_len_bound);
   }, py::arg("batch"), py::arg("hkv"), py::arg("max_kv_len"), py::arg("kv_len_bound"), py::arg("hq") = 0);
+  // Tokens of a single request's prefill that the engine runs as a first launch (prefill_wave_head; 0: one launch).
+  m.def("prefill_wave_head", [](int64_t hq, int64_t hkv, int64_t q_len, int64_t prefix) {
+    int dev = 0, major = 0, minor = 0, sms = 0;
+    cudaGetDevice(&dev);
+    cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, dev);
+    cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, dev);
+    cudaDeviceGetAttribute(&sms, cudaDevAttrMultiProcessorCount, dev);
+    return prefill_wave_head(major, minor, (int)hq, (int)hkv, (int)q_len, (int)prefix, sms);
+  });
   // Shared memory a prefill variant (1-4) needs per CTA; tests skip variants the GPU cannot run.
   m.def("prefill_smem_bytes", [](int64_t variant) {
     TORCH_CHECK(variant >= 1 && variant <= 4, "variant: 1 to 4");

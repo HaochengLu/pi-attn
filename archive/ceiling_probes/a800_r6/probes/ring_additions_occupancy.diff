@@ -1,0 +1,388 @@
+--- a/llm_infer_rust/src/kernels/pi/pi_attn.cuh	2026-11-15 13:04:13.367843382 -0500
++++ b/llm_infer_rust/src/kernels/pi/pi_attn.cuh	2026-11-14 22:39:56.535885415 -0500
+@@ -42,12 +42,12 @@
+   __nv_bfloat162 v = __floats2bfloat162_rn(lo, hi);
+   return *reinterpret_cast<uint32_t*>(&v);
+ }
+-__device__ __forceinline__ float round_bf16(float x) {
+-  return __bfloat162float(__float2bfloat16_rn(x));
+-}
+ // The halves of a packed pair as floats (a bf16 is the upper half of the float it equals).
+ __device__ __forceinline__ float bf16_lo(uint32_t w) { return __uint_as_float(w << 16); }
+ __device__ __forceinline__ float bf16_hi(uint32_t w) { return __uint_as_float(w & 0xffff0000u); }
++__device__ __forceinline__ float round_bf16(float x) {
++  return __bfloat162float(__float2bfloat16_rn(x));
++}
+ 
+ __device__ __forceinline__ void mma_bf16(float (&d)[4], const uint32_t (&a)[4], uint32_t b0,
+                                          uint32_t b1) {
+@@ -167,9 +167,6 @@
+ // before the tile) then leaves the state bit-identical, as if skipped.
+ // Row max exact; P = bf16(2^(v - m_new)); d = fma(d, 2^(m - m_new), sum P) with
+ // the sum in the fixed order (own keys n = 0.., then lane xor 1, xor 2).
+-// P is rounded once per pair, straight into the A-fragment word: cvt.rn.bf16x2.f32 rounds each half as
+-// cvt.rn.bf16.f32 does (the same word as rounding each value, converting it back and packing the pair, for all
+-// 2^32 inputs of either half: archive/ceiling_probes/a800_r6/pack), and the row sum adds the word's halves.
+ __device__ __forceinline__ void online_step(OnlineState& st, float (&v)[kTileNS][4],
+                                             uint32_t (&pa)[kTileKS][4]) {
+   float mx[2] = {-INFINITY, -INFINITY};
+@@ -193,6 +190,16 @@
+     float e[4];
+ #pragma unroll
+     for (int i = 0; i < 4; ++i) e[i] = ex2(sub(v[n][i], mm[i >> 1]));
++#ifdef R6_NOPACK
++    float p[4];
++#pragma unroll
++    for (int i = 0; i < 4; ++i) {
++      p[i] = round_bf16(e[i]);
++      ls[i >> 1] = add(ls[i >> 1], p[i]);
++    }
++    pa[n >> 1][(n & 1) * 2 + 0] = pack_bf16(p[0], p[1]);
++    pa[n >> 1][(n & 1) * 2 + 1] = pack_bf16(p[2], p[3]);
++#else
+     const uint32_t w0 = pack_bf16(e[0], e[1]), w1 = pack_bf16(e[2], e[3]);
+     ls[0] = add(ls[0], bf16_lo(w0));
+     ls[0] = add(ls[0], bf16_hi(w0));
+@@ -200,6 +207,7 @@
+     ls[1] = add(ls[1], bf16_hi(w1));
+     pa[n >> 1][(n & 1) * 2 + 0] = w0;
+     pa[n >> 1][(n & 1) * 2 + 1] = w1;
++#endif
+   }
+ #pragma unroll
+   for (int r = 0; r < 2; ++r) {
+@@ -238,9 +246,10 @@
+   for (int i = 0; i < 4; ++i) cp_async16(tile + swz(key, c0 + 4 * i), src + 32 * i, row >= 0 ? 16 : 0);
+ }
+ 
+-// issue_tile with the thread's addresses formed once (prefill_kernel). Chunk c0 + 4 i of key `key` is at byte
++
++// issue_tile with the thread's addresses formed once. Chunk c0 + 4 i of key `key` is at byte
+ // swz_bytes(key, c0 + 4 i) = key * 256 + (c0 ^ (key & 3)) * 16 + 64 (i ^ h), h = bit 2 of key: chunks i = 0, 2
+-// are at `even`, `even` + 128 and chunks i = 1, 3 at `odd`, `odd` + 128.
++// at `even`, `even` + 128 and chunks i = 1, 3 at `odd`, `odd` + 128.
+ struct TileDst {
+   uint32_t even, odd;
+ };
+@@ -248,12 +257,11 @@
+   const uint32_t key = tid >> 2, c0 = tid & 3, base = key * (kHeadDim * 2) + ((c0 ^ (key & 3)) << 4), h = (key >> 2) & 1;
+   return {base + 64 * h, base + 64 * (1 - h)};
+ }
+-// The thread's key of a tile in a cache: byte offset of its first chunk and 16, or (0, 0): zero-fill, no read.
++// The thread's key of a tile in a cache: byte offset of its first chunk and 16, or (0, 0) = zero-fill, no read.
+ struct TileSrc {
+   int64_t off;
+   int bytes;
+ };
+-// row: tile_row's.
+ __device__ __forceinline__ TileSrc tile_src(int64_t row, int tid) {
+   const int ok = row >= 0;
+   return {ok ? (row + (tid & 3) * 8) * 2 : 0, ok << 4};
+--- a/llm_infer_rust/src/kernels/pi/pi_attn_kernels.cu	2026-11-15 13:04:13.410266015 -0500
++++ b/llm_infer_rust/src/kernels/pi/pi_attn_kernels.cu	2026-11-14 23:03:15.057032292 -0500
+@@ -35,9 +35,6 @@
+ // order. K and V each have two smem slots; iteration t loads K(t + 2) and V(t + 1),
+ // a full iteration ahead, behind one barrier. Every warp runs every tile of its
+ // range: a fully masked online step is an exact no-op (see online_step).
+-// A warp runs the tiles whose keys all of its rows see in a loop without the causal mask (the same values
+-// without the comparisons and selects) and the rest in the masked loop; each loop body is one straight-line
+-// block, so the S(t + 1) MMA chains stay scheduled through tile t's softmax.
+ //
+ // QREG (sm_80): Q fragments live in registers and the fp32 folded totals (touched
+ // once per fold group) in smem: 80 KB, two CTAs per SM on sm_80's 164 KB; with 8 warps
+@@ -74,26 +71,6 @@
+   const int64_t ctas = (rows + 127) / 128 * num_kv_heads * batch;
+   return ctas >= 2 * (int64_t)sms ? 8 : kPrefillWarps;
+ }
+-// Wave split of one request's prefill (scheduling only: a row's bits do not depend on the launch that runs it).
+-// The CTAs of a chunk over a prefix at least as long all run about as long, and a launch fills the SMs in waves:
+-// with `ctas` 128-row CTAs (or twice as many 64-row ones, two per SM) it runs ceil(ctas / SMs) of them and the
+-// last leaves SMs idle (2048 tokens of 16 query / 8 kv heads: 256 CTAs on 108 SMs, a third wave of 40). When that
+-// wave is at most half full, the request is run as two launches: its first `head` tokens, whose CTAs fill whole
+-// waves, and the rest, a short extend that the planner splits over fold groups. Returns head, or 0 for one launch.
+-// Measured on an A800 (results/a800_r6/kernels/wave_split.txt): 0.70-0.97x the one launch's time on every shape
+-// the rule cuts; without a long prefix (causal triangle, longest-first grid) or beyond five waves a cut costs
+-// 1-20%, so those run as one launch. Compute capability 8.0 only, the one measured.
+-inline int prefill_wave_head(int cc_major, int cc_minor, int num_qo_heads, int num_kv_heads, int q_len, int prefix,
+-                             int sms) {
+-  if (!(cc_major == 8 && cc_minor == 0) || num_kv_heads <= 0 || sms <= 0 || prefix < q_len) return 0;
+-  const int group = num_qo_heads / num_kv_heads;
+-  if (group <= 0 || 128 % group) return 0;
+-  const int64_t ctas = ((int64_t)q_len * group + 127) / 128 * num_kv_heads, rest = ctas % sms;
+-  if (ctas < sms || ctas > 5 * (int64_t)sms || rest == 0 || 2 * rest > sms) return 0;
+-  const int head = (int)((ctas - rest) / num_kv_heads) * (128 / group);
+-  return head > 0 && head < q_len ? head : 0;
+-}
+-
+ // Whether the planner may split a few-wave prefill against its causal tail. The
+ // dispatch simulation below was fitted on sm_89; on sm_80 every split it picks measured
+ // slower than one (archive/ceiling_probes/a800/prefill_split_planner.txt), and so did every one measured on
+@@ -116,27 +93,8 @@
+   const int64_t kv_bytes = (int64_t)batch * max_groups * kGroupKeys * num_kv_heads * kHeadDim * 2 * 2;
+   return cc_major == 8 && cc_minor == 0 && splits == 1 && kv_bytes <= l2_bytes;
+ }
+-// Descending: the ascending grid with the row tiles of a (request, kv head) reversed, so that they stay together
+-// (each K/V byte still comes from DRAM once) and the launch ends on its shortest CTAs.
+-enum PrefillOrder { kPrefillAscending = 0, kPrefillLongestFirst = 1, kPrefillDescending = 2 };
+-inline bool prefill_descending(int cc_major, int cc_minor, int batch, int splits) {
+-  return cc_major == 8 && cc_minor == 0 && splits == 1;
+-}
+-inline int prefill_order(int cc_major, int cc_minor, int batch, int num_kv_heads, int max_groups, int splits,
+-                         int64_t l2_bytes) {
+-  if (prefill_longest_first(cc_major, cc_minor, batch, num_kv_heads, max_groups, splits, l2_bytes))
+-    return kPrefillLongestFirst;
+-  return prefill_descending(cc_major, cc_minor, batch, splits) ? kPrefillDescending : kPrefillAscending;
+-}
+-inline dim3 prefill_grid(int row_tiles, int num_kv_heads, int batch_splits, int order) {
+-  return order == kPrefillLongestFirst ? dim3(num_kv_heads, batch_splits, row_tiles)
+-                                       : dim3(row_tiles, num_kv_heads, batch_splits);
+-}
+-// The kernel's tile_flip argument for an order: -1 = the longest-first grid; otherwise the CTA at x runs row tile
+-// |x - tile_flip| (0: ascending, row_tiles - 1: descending). One int, read once: as a second flag with a select on
+-// gridDim it made the compiled step loop 2-3% slower (archive/ceiling_probes/a800_r6, codegen).
+-inline int prefill_tile_flip(int order, int row_tiles) {
+-  return order == kPrefillLongestFirst ? -1 : order == kPrefillDescending ? row_tiles - 1 : 0;
++inline dim3 prefill_grid(int row_tiles, int num_kv_heads, int batch_splits, bool longest_first) {
++  return longest_first ? dim3(num_kv_heads, batch_splits, row_tiles) : dim3(row_tiles, num_kv_heads, batch_splits);
+ }
+ 
+ template <bool QREG, int WARPS = kPrefillWarps>
+@@ -148,19 +106,38 @@
+                     const int32_t* __restrict__ kv_lens, const int32_t* __restrict__ prefix_lens,
+                     int num_qo_heads, int num_kv_heads, int page_size, int page_shift, float scale_log2,
+                     int kv_splits, float* __restrict__ ws_o, float2* __restrict__ ws_ml, int max_groups,
+-                    int tile_flip) {
++                    bool longest_first) {
+   constexpr int kRows = WARPS * 16, kThreads = WARPS * 32;
+-  constexpr uint32_t kSlotBytes = kTile * kHeadDim * 2;
++  constexpr uint32_t kSlotBytes = kTile * kHeadDim * 2, kQBytes = kRows * kHeadDim * 2;
++  // K and V tile slots per ring. QREG: once the Q fragments are in registers the tiles also take sQ, which
++  // makes a ring of 3 (64 rows: one more K and one more V slot) or 4 (128 rows), and a tile is issued kRing - 1
++  // steps before its use instead of one.
++#ifdef R6_NORING
++  constexpr int kRing = 2;
++#else
++  constexpr int kRing = QREG ? (WARPS == 8 ? 4 : 3) : 2;
++#endif
++  // Byte offset in the CTA's shared memory of the K (V) slot at ring position r: the tile t_begin + i sits at
++  // position i mod kRing. Positions 0, 1 are the slots of sK (sV); the others are in sQ.
++  auto k_off = [](uint32_t r) -> uint32_t {
++    return kRing == 4 ? (r < 2 ? kQBytes + r * kSlotBytes : (r - 2) * kSlotBytes) : r < 2 ? kQBytes + r * kSlotBytes : 0u;
++  };
++  auto v_off = [](uint32_t r) -> uint32_t {
++    return kRing == 4 ? (r < 2 ? kQBytes + (2 + r) * kSlotBytes : r * kSlotBytes) : r < 2 ? kQBytes + (2 + r) * kSlotBytes : kSlotBytes;
++  };
++  auto ring_next = [](uint32_t r) -> uint32_t { return kRing == 4 ? (r + 1) & 3 : kRing == 3 ? (r == 2 ? 0 : r + 1) : r ^ 1; };
+   extern __shared__ __align__(16) __nv_bfloat16 smem[];
+   __nv_bfloat16* sQ = smem;
+   __nv_bfloat16* sK = sQ + kRows * kHeadDim;  // slots 0, 1 (kTile x 128 each)
+   __nv_bfloat16* sV = sK + 2 * kTile * kHeadDim;  // slots 0, 1
+   float* sTot = reinterpret_cast<float*>(sV + 2 * kTile * kHeadDim);  // QREG: [warp][n][i][lane]
+-  const bool longest_first = tile_flip < 0;  // prefill_tile_flip
+   const int bs = longest_first ? blockIdx.y : blockIdx.z;  // prefill_grid
+   const int b = bs / kv_splits, split = bs % kv_splits;
+-  const int kvh = longest_first ? blockIdx.x : blockIdx.y;
+-  const int tile = longest_first ? gridDim.z - 1 - blockIdx.z : abs((int)blockIdx.x - tile_flip);
++#ifdef R6_DESC
++  const int kvh = longest_first ? blockIdx.x : blockIdx.y, tile = longest_first ? gridDim.z - 1 - blockIdx.z : gridDim.x - 1 - blockIdx.x;
++#else
++  const int kvh = longest_first ? blockIdx.x : blockIdx.y, tile = longest_first ? gridDim.z - 1 - blockIdx.z : blockIdx.x;
++#endif
+   const int group = num_qo_heads / num_kv_heads;
+   const int q0 = qo_indptr[b], q_len = qo_indptr[b + 1] - q0;
+   const int rows_total = q_len * group;
+@@ -192,11 +169,11 @@
+   // the kernel has no static smem, so the dynamic block and every tile in it are
+   // 256-byte aligned).
+   const uint32_t q_addr = smem_u32(sQ) + swz_bytes(warp * 16 + (mat & 1) * 8 + r8, mat >> 1);
+-  const uint32_t k_addr = smem_u32(sK) + swz_bytes((mat >> 1) * 8 + r8, mat & 1);
+-  const uint32_t v_addr = smem_u32(sV) + swz_bytes((mat & 1) * 8 + r8, mat >> 1);
+-  // S = Q K^T of the tile in K slot `slot`, each element's k-steps in ascending order.
++  const uint32_t k_addr = smem_u32(smem) + swz_bytes((mat >> 1) * 8 + r8, mat & 1);  // + the slot's offset
++  const uint32_t v_addr = smem_u32(smem) + swz_bytes((mat & 1) * 8 + r8, mat >> 1);
++  // S = Q K^T of the K tile at shared-memory offset `koff`, each element's k-steps in ascending order.
+   uint32_t qa[QREG ? kKStepsQK : 1][4];
+-  auto qk = [&](float (&s)[kTileNS][4], int slot) {
++  auto qk = [&](float (&s)[kTileNS][4], uint32_t koff) {
+ #pragma unroll
+     for (int n = 0; n < kTileNS; ++n) s[n][0] = s[n][1] = s[n][2] = s[n][3] = 0.f;
+ #pragma unroll
+@@ -211,7 +188,7 @@
+ #pragma unroll
+       for (int n = 0; n < kTileNS; n += 2) {
+         uint32_t bk[4];
+-        ldmatrix_x4(bk, ((k_addr + slot * kSlotBytes) ^ (ks << 5)) + n * 8 * kHeadDim * 2);
++        ldmatrix_x4(bk, ((k_addr + koff) ^ (ks << 5)) + n * 8 * kHeadDim * 2);
+         mma_bf16(s[n], a, bk[0], bk[1]);
+         mma_bf16(s[n + 1], a, bk[2], bk[3]);
+       }
+@@ -230,23 +207,22 @@
+     cp_async16(sQ + swz(r, chunk), src, bytes);
+   }
+   // Tile t uses K slot and V slot t & 1 (t_begin is even). src1 / src2: this thread's key of tiles t + 1 and
+-  // t + 2 in the caches, each found an iteration before use; a tile past t_last or a key past kv_len is
+-  // zero-filled without a read. The first 128 threads copy the K/V tiles (issue_tile), their shared-memory
+-  // addresses formed once.
++  // t + 2 in the caches, each found an iteration before use; past t_last or kv_len it is zero-filled without a
++  // read. The first 128 threads copy the K/V tiles (issue_tile), their shared-memory addresses formed once.
+   const bool copier = tid < 128;
+   const TileDst cdst = tile_dst(tid & 127);
+-  const uint32_t k_tile = smem_u32(sK), v_tile = smem_u32(sV);
++  const uint32_t smem0 = smem_u32(smem);
+   auto src_of = [&](int t) -> TileSrc {
+     return tile_src(copier && t <= t_last ? tile_row(pages, page_size, page_shift, t, kv_len, num_kv_heads, kvh, tid) : -1, tid);
+   };
+   TileSrc src1 = src_of(t_begin);
+-  if (copier) issue_tile(k_tile, cdst, k_cache, src1);
++  if (copier) issue_tile(smem0 + k_off(0), cdst, k_cache, src1);
+   cp_async_commit();  // Q + K(t_begin)
+-  if (copier) issue_tile(v_tile, cdst, v_cache, src1);
++  if (copier) issue_tile(smem0 + v_off(0), cdst, v_cache, src1);
+   src1 = src_of(t_begin + 1);
+-  TileSrc src2 = src_of(t_begin + 2);
+-  if (copier) issue_tile(k_tile + kSlotBytes, cdst, k_cache, src1);
++  if (copier) issue_tile(smem0 + k_off(1), cdst, k_cache, src1);
+   cp_async_commit();  // V(t_begin) + K(t_begin + 1)
++  TileSrc src2 = src1;  // set below, once the tiles before the first step are issued
+ 
+   // st: the current group; the folded total of the finished groups is (tot_m,
+   // tot_d, tot_o): o in registers, or (QREG) in this thread's smem slots.
+@@ -299,19 +275,41 @@
+     st.reset();
+   };
+ 
++#if defined(ADD_LDSM) || defined(ADD_HMMA) || defined(ADD_EX2) || defined(ADD_FFMA) || defined(ADD_INT) || defined(ADD_SHFL)
++  uint32_t junk_u[10];
++  float junk_f[16], junk_d[8][4];
++#pragma unroll
++  for (int x = 0; x < 10; ++x) junk_u[x] = tid * 77 + x;
++#pragma unroll
++  for (int x = 0; x < 16; ++x) junk_f[x] = 0.001f * (tid + x);
++#pragma unroll
++  for (int x = 0; x < 8; ++x) junk_d[x][0] = junk_d[x][1] = junk_d[x][2] = junk_d[x][3] = 0.f;
++#define R6_JUNK 1
++#endif
++  uint32_t ring = 0, k_cur = k_off(0), v_prev = v_off(kRing - 1);  // kRing > 2: position of tile t, see step
+   // One pipelined iteration: s holds S(t) on entry; sn receives S(t + 1). slot = t & 1. masked: std::true_type
+-  // applies the causal mask; std::false_type is for a tile whose keys every row of the warp sees.
++  // applies the causal mask; std::false_type is for tiles whose keys every row of the warp sees (the same values
++  // without the comparisons). Each kind is one straight-line block, so that the S(t + 1) MMA chains are scheduled
++  // through the softmax of tile t.
+   auto step = [&](int t, float (&s)[kTileNS][4], float (&sn)[kTileNS][4], const int slot, auto masked) {
+-    cp_async_wait<0>();  // V(t), K(t + 1)
+-    __syncthreads();     // ... for all threads; everyone is done with V(t - 1) and K(t)
++    cp_async_wait<kRing - 2>();  // V(t), K(t + 1)
++    __syncthreads();             // ... for all threads; everyone is done with V(t - 1) and K(t)
++    // Ring of two: tile t in slot t & 1 = `slot` (t_begin is even), addresses constant. Longer rings: the
++    // offsets of K(t) and V(t - 1), whose slots the tiles issued now take, are carried from step to step.
++    const uint32_t kq = kRing == 2 ? k_off(slot ^ 1) : k_off(ring_next(ring)), vp = kRing == 2 ? v_off(slot) : v_off(ring);
+     if (copier) {
+-      issue_tile(v_tile + (slot ^ 1) * kSlotBytes, cdst, v_cache, src1);
+-      issue_tile(k_tile + slot * kSlotBytes, cdst, k_cache, src2);
++      issue_tile(smem0 + (kRing == 2 ? v_off(slot ^ 1) : v_prev), cdst, v_cache, src1);  // V(t + kRing - 1)
++      issue_tile(smem0 + (kRing == 2 ? k_off(slot) : k_cur), cdst, k_cache, src2);       // K(t + kRing)
+     }
+     cp_async_commit();
+     src1 = src2;
+-    src2 = src_of(t + 3);
+-    qk(sn, slot ^ 1);  // past t_last: zeros or stale slot data, never used
++    src2 = src_of(t + kRing + 1);
++    if constexpr (kRing > 2) {
++      v_prev = vp;
++      k_cur = kq;
++      ring = ring_next(ring);
++    }
++    qk(sn, kq);  // past t_last: stale slot data, never used
+     if constexpr (decltype(masked)::value) {
+       const int key0 = t * kTile;
+ #pragma unroll
+@@ -329,12 +327,40 @@
+     }
+     uint32_t pa[kTileKS][4];
+     online_step(st, s, pa);
++#ifdef ADD_LDSM
++#pragma unroll
++    for (int x = 0; x < ADD_LDSM; ++x) {
++      uint32_t r[4];
++      ldmatrix_x4(r, ((k_addr + kq) ^ ((x & 7) << 5)) + (x & 8 ? 0x1000 : 0));
++      junk_u[x & 7] ^= r[0] ^ r[1] ^ r[2] ^ r[3];
++    }
++#endif
++#ifdef ADD_HMMA
++#pragma unroll
++    for (int x = 0; x < ADD_HMMA; ++x) mma_bf16(junk_d[x & 7], pa[x & 1], junk_u[8], junk_u[9]);
++#endif
++#ifdef ADD_EX2
++#pragma unroll
++    for (int x = 0; x < ADD_EX2; ++x) junk_f[x & 15] = ex2(junk_f[x & 15]);
++#endif
++#ifdef ADD_FFMA
++#pragma unroll
++    for (int x = 0; x < ADD_FFMA; ++x) junk_f[x & 15] = __fmaf_rn(junk_f[x & 15], scale_log2, 0.25f);
++#endif
++#ifdef ADD_INT
++#pragma unroll
++    for (int x = 0; x < ADD_INT; ++x) junk_u[x & 7] = (junk_u[x & 7] ^ (junk_u[(x + 1) & 7] >> 3));
++#endif
++#ifdef ADD_SHFL
++#pragma unroll
++    for (int x = 0; x < ADD_SHFL; ++x) junk_f[x & 15] = add(junk_f[x & 15], __shfl_xor_sync(0xffffffffu, junk_f[(x + 5) & 15], 1));
++#endif
+ #pragma unroll
+     for (int j = 0; j < kTileKS; ++j)
+ #pragma unroll
+       for (int n = 0; n < kNTilesO; n += 2) {
+         uint32_t bv[4];
+-        ldmatrix_x4_trans(bv, ((v_addr + slot * kSlotBytes) ^ (n << 4)) + j * 16 * kHeadDim * 2);
++        ldmatrix_x4_trans(bv, ((v_addr + vp) ^ (n << 4)) + j * 16 * kHeadDim * 2);
+         mma_bf16(st.o[n], pa[j], bv[0], bv[1]);
+         mma_bf16(st.o[n + 1], pa[j], bv[2], bv[3]);
+       }
+@@ -348,20 +374,45 @@
+ #pragma unroll
+     for (int ks = 0; ks < kKStepsQK; ++ks) ldmatrix_x4(qa[ks], q_addr ^ (ks << 5));
+   }
+-  qk(sa, 0);
++  if constexpr (kRing > 2) {
++    __syncthreads();  // every warp has its Q fragments: sQ now holds tiles
++#pragma unroll
++    for (int i = 1; i <= kRing - 2; ++i) {
++      if (copier) issue_tile(smem0 + v_off(i), cdst, v_cache, src1);
++      src1 = src_of(t_begin + i + 1);
++      if (copier) issue_tile(smem0 + k_off(i + 1), cdst, k_cache, src1);
++      cp_async_commit();  // V(t_begin + i) + K(t_begin + i + 1)
++    }
++  }
++  src2 = src_of(t_begin + kRing);
++  qk(sa, k_off(0));
+   // Tiles [t_begin, t_plain): every key visible to every row of the warp. A warp's two loops run t_last - t_begin
+-  // + 1 steps in all, as every other warp's do, so the barriers of the steps pair up across the CTA.
++  // + 1 steps in all, as every other warp's, so the barriers of the steps pair up across warps.
+   const int t_plain = min((warp_pos + 1) / kTile, t_last + 1);
+   int t = t_begin;
++#ifndef R6_NOSPLITLOOP
+   for (; t + 2 <= t_plain; t += 2) {
+     step(t, sa, sb, 0, std::false_type());
+     step(t + 1, sb, sa, 1, std::false_type());
+   }
++#endif
+   for (; t <= t_last; t += 2) {
+     step(t, sa, sb, 0, std::true_type());
+     if (t + 1 <= t_last) step(t + 1, sb, sa, 1, std::true_type());
+   }
+   cp_async_wait<0>();
++#ifdef R6_JUNK
++  {
++    float acc = 0.f; uint32_t ua = 0;
++#pragma unroll
++    for (int x = 0; x < 10; ++x) ua += junk_u[x];
++#pragma unroll
++    for (int x = 0; x < 16; ++x) acc += junk_f[x];
++#pragma unroll
++    for (int x = 0; x < 8; ++x) acc += junk_d[x][0] + junk_d[x][1] + junk_d[x][2] + junk_d[x][3];
++    if (__float_as_uint(acc) == 0x12345678u && ua == 0x9abcdef1u) out[0] = __float2bfloat16(acc);
++  }
++#endif
+ }
+ 
+ // Prefill merge (split mode). grid = (num_qo_heads, total q rows), 128 threads.

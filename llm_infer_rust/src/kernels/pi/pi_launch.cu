@@ -45,9 +45,10 @@ struct DeviceInfo {
   bool prefill_tail_splits = false;  // prefill planner (prefill_tail_splits)
   bool prefill_wgmma = false;  // sm_90a build on compute capability 9.0: prefill90w_kernel
   int l2_bytes = 0;
-  // prefill_kernel's grid order: 0 = prefill_longest_first's choice per launch; PI_PREFILL_ORDER=1 / 2 in the
-  // environment: ascending / longest first everywhere (A/B measurements; same bits)
+  // prefill_kernel's grid order: 0 = prefill_order's choice per launch; PI_PREFILL_ORDER=1 / 2 / 3 in the
+  // environment: ascending / longest first / descending everywhere (A/B measurements; same bits)
   int prefill_order = 0;
+  bool prefill_wave = true;  // PI_PREFILL_WAVE=0 in the environment: no wave split (A/B measurements; same bits)
 };
 
 DeviceInfo device_info() {
@@ -72,7 +73,9 @@ DeviceInfo device_info() {
   info.prefill_tail_splits = prefill_tail_splits(major, minor);
   info.prefill_wgmma = prefill_wgmma(major, minor);
   const char* order = std::getenv("PI_PREFILL_ORDER");
-  info.prefill_order = order && (order[0] == '1' || order[0] == '2') ? order[0] - '0' : 0;
+  info.prefill_order = order && order[0] >= '1' && order[0] <= '3' ? order[0] - '0' : 0;
+  const char* wave = std::getenv("PI_PREFILL_WAVE");
+  info.prefill_wave = !(wave && wave[0] == '0');
   cudaDeviceGetAttribute(&info.l2_bytes, cudaDevAttrL2CacheSize, device);
   cache[device] = info;
   return info;
@@ -106,7 +109,9 @@ void pi_set_device(int device) {
 // host (0 = unknown: the table's capacity). The kernel (decode_plan) depends only on
 // (batch, heads, table_stride, max_kv_len) and the grid on (batch, table_stride), so a CUDA
 // graph is fixed per batch and per kernel: pi_attn_decode_plan tells which bounds
-// share one.
+// share one. grid_kv_len: 0, or (eager launches only, never a captured graph) a bound of seqlens that replaces the
+// table's capacity in the grid and the workspace layout: the launch then has no CTAs for fold groups no request
+// of it reaches.
 static_assert(kDecodeWarps == 4, "pi.rs sizes the decode ml and counter workspaces for 4 warps");
 int pi_attn_decode_groups(int64_t max_kv_len) {
   return (int)((max_kv_len + kGroupKeys - 1) / kGroupKeys);
@@ -138,11 +143,11 @@ const char* pi_attn_decode(const void* q, const void* k_cache, const void* v_cac
                            const int32_t* page_table, int64_t table_stride, const int32_t* seqlens,
                            float* ws_o, float* ws_ml, int* counters, int64_t ws_rows, void* out, int batch,
                            int num_qo_heads, int num_kv_heads, int page_size, double sm_scale,
-                           int64_t max_kv_len, void* stream) {
+                           int64_t max_kv_len, int64_t grid_kv_len, void* stream) {
   if (num_kv_heads <= 0 || num_qo_heads % num_kv_heads || num_qo_heads / num_kv_heads > 16)
     return fail("PI attention needs num_qo_heads = g * num_kv_heads with g <= 16");
   if (batch == 0) return nullptr;
-  const int64_t capacity = table_stride * page_size;
+  const int64_t capacity = grid_kv_len > 0 ? std::min(grid_kv_len, table_stride * page_size) : table_stride * page_size;
   const int max_groups = pi_attn_decode_groups(capacity);
   if (ws_rows < (int64_t)batch * max_groups)
     return fail("PI decode workspace smaller than batch * fold groups per request");
@@ -203,6 +208,14 @@ void pi_attn_prefill_plan(int batch, int num_qo_heads, int num_kv_heads, int max
                max_groups, warps * 16, warps == 8 ? 1 : 2);
 }
 
+// Tokens of a single request's prefill of q_len tokens over `prefix` cached ones that the engine runs as a first
+// launch, the rest as a second (prefill_wave_head in pi_attn_kernels.cu); 0: one launch.
+int pi_attn_prefill_wave_head(int num_qo_heads, int num_kv_heads, int q_len, int prefix) {
+  const DeviceInfo info = device_info();
+  if (!info.prefill_wave || info.prefill_wgmma) return 0;
+  return prefill_wave_head(info.cc_major, info.cc_minor, num_qo_heads, num_kv_heads, q_len, prefix, info.sms);
+}
+
 // q/out: [total_q, Hq, 128] bf16 contiguous; qo_indptr: [batch + 1] int32;
 // prefix_lens: [batch] int32 (KV of request b = prefix + q_len, already in cache);
 // page table dense [batch, table_stride]. ws_o/ws_ml ([total_q, Hq, max_groups, 128|2]
@@ -222,10 +235,10 @@ const char* pi_attn_prefill(const void* q, const void* k_cache, const void* v_ca
   const DeviceInfo info = device_info();
   const int warps = prefill_warps(info.prefill_qreg, batch, num_qo_heads, num_kv_heads, max_q_len, info.sms);
   int tiles = (int)(((int64_t)max_q_len * group + warps * 16 - 1) / (warps * 16)), threads = warps * 32;
-  const bool lf = info.prefill_order ? info.prefill_order == 2
-                                     : prefill_longest_first(info.cc_major, info.cc_minor, batch, num_kv_heads,
-                                                             max_groups, splits, info.l2_bytes);
-  dim3 grid = prefill_grid(tiles, num_kv_heads, batch * splits, lf);
+  const int order = info.prefill_order == 1 ? kPrefillAscending : info.prefill_order == 2 ? kPrefillLongestFirst
+                  : info.prefill_order == 3 ? kPrefillDescending
+                  : prefill_order(info.cc_major, info.cc_minor, batch, num_kv_heads, max_groups, splits, info.l2_bytes);
+  dim3 grid = prefill_grid(tiles, num_kv_heads, batch * splits, order);
 #ifdef PI_SM90A
   if (info.prefill_wgmma) grid = dim3(tiles, num_kv_heads, batch * splits);  // prefill90_kernel
   int nwg = 0;  // consumer warp groups of prefill90w_kernel; 0: another kernel
@@ -245,9 +258,9 @@ const char* pi_attn_prefill(const void* q, const void* k_cache, const void* v_ca
         (float)(sm_scale * 1.4426950408889634), splits, ws_o, (float2*)ws_ml, max_groups, order...);
   };
   if (warps == 8) {
-    launch(prefill_kernel<true, 8>, prefill_smem_bytes<true, 8>(), lf);
+    launch(prefill_kernel<true, 8>, prefill_smem_bytes<true, 8>(), prefill_tile_flip(order, tiles));
   } else if (info.prefill_qreg) {
-    launch(prefill_kernel<true>, prefill_smem_bytes<true>(), lf);
+    launch(prefill_kernel<true>, prefill_smem_bytes<true>(), prefill_tile_flip(order, tiles));
   } else {
 #ifdef PI_SM90A
     if (nwg == 3) launch(prefill90w_kernel<3>, prefill90w_smem_bytes<3>());
@@ -255,7 +268,7 @@ const char* pi_attn_prefill(const void* q, const void* k_cache, const void* v_ca
     else if (info.prefill_wgmma) launch(prefill90_kernel, prefill90_smem_bytes());
     else
 #endif
-    launch(prefill_kernel<false>, prefill_smem_bytes<false>(), lf);
+    launch(prefill_kernel<false>, prefill_smem_bytes<false>(), prefill_tile_flip(order, tiles));
   }
   if (auto e = check_launch("pi prefill")) return e;
   if (splits > 1) {
