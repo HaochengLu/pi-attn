@@ -46,6 +46,8 @@ DECODE_VARIANTS = [1, 2] if ext.WGMMA else [1, 3, 4] if ext.decode16_fits() else
 # Prefill grid orders of prefill_kernel forced one by one in the split check: 1 = ascending, 2 = longest first,
 # 3 = descending.
 PREFILL_ORDERS = (1, 2, 3)
+# The tile loops of prefill_kernel forced in the same check: 1 = the masked loop alone, 2 = with the unmasked loop.
+PREFILL_LOOPS = (1, 2)
 # PI error vs float64 may exceed FlashInfer's by at most this factor (mean, max).
 ACC_SLACK = (1.05, 1.25)
 # Decode arrival counters, shared by every call as in the engine: each call must
@@ -221,17 +223,23 @@ def run_checks():
     for VARIANT in VARIANTS:
         for KVSPLITS in (1, 2, 3, 7):
             for order in PREFILL_ORDERS if VARIANT <= 4 else (0,):
-                ext.set_prefill_order(order)
-                for L in lens:
-                    if not same(prefill(pool, [(seqs[L][0], pages[L], L)])[0], alone[L]):
-                        fails.append(("split", VARIANT, L, KVSPLITS, order))
+                # every order with one loop variant, alternating; both variants in the first order
+                for loop in (PREFILL_LOOPS if order == PREFILL_ORDERS[0] else (1 + (order + KVSPLITS) % 2,)) if VARIANT <= 4 else (0,):
+                    ext.set_prefill_order(order)
+                    ext.set_prefill_loop(loop)
+                    for L in lens:
+                        if not same(prefill(pool, [(seqs[L][0], pages[L], L)])[0], alone[L]):
+                            fails.append(("split", VARIANT, L, KVSPLITS, order, loop))
     KVSPLITS, VARIANT = 0, 0
     for order in PREFILL_ORDERS:
-        ext.set_prefill_order(order)
-        for L, out in zip(order_list, prefill(pool, [(seqs[L][0], pages[L], L) for L in order_list])):
-            if not same(out, alone[L]):
-                fails.append(("batch", "order", order, L))
+        for loop in PREFILL_LOOPS:
+            ext.set_prefill_order(order)
+            ext.set_prefill_loop(loop)
+            for L, out in zip(order_list, prefill(pool, [(seqs[L][0], pages[L], L) for L in order_list])):
+                if not same(out, alone[L]):
+                    fails.append(("batch", "order", order, loop, L))
     ext.set_prefill_order(0)
+    ext.set_prefill_loop(0)
 
     # path + batch: decode token p (cache holds 0..p) vs prefill row p, for every position of
     # every request (a one-ulp fp32 difference reaches the bf16 output only rarely, so the check

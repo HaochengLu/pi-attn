@@ -376,7 +376,8 @@ impl DecodeWorkspace {
 /// `max_kv_len`: the longest request of the batch if the host knows it (0 = unknown). It only
 /// selects the kernel (`decode_plans`), never a value. `tight_grid`: the launch's grid covers the fold groups
 /// of `max_kv_len` instead of the page table's capacity (eager launches whose bound is exact; a captured
-/// graph must cover the capacity).
+/// graph must cover the capacity). `rows = (first, count)`: the rows of `q` and `out` the launch covers (the
+/// page table and `seqlens` are those of exactly these requests).
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn decode(
     q: &Tensor,
@@ -388,11 +389,16 @@ pub(crate) fn decode(
     num_kv_heads: i64,
     max_kv_len: i64,
     tight_grid: bool,
+    rows: (i64, i64),
     out: &Tensor,
 ) -> Result<(), String> {
-    let (batch, num_heads) = (q.size()[0], q.size()[1]);
+    let (batch, num_heads) = (rows.1, q.size()[1]);
     require(page_table, Kind::Int, "page table")?;
     require(seqlens, Kind::Int, "sequence lengths")?;
+    let row_bytes = (q.size()[1] * q.size()[2] * 2) as usize;  // bf16
+    if rows.0 < 0 || q.size()[0] < rows.0 + rows.1 || out.size()[0] < rows.0 + rows.1 || seqlens.size()[0] < batch {
+        return Err("decode rows outside the query".into());
+    }
     if page_table.size()[0] < batch || page_table.stride()[1] != 1 {
         return Err("decode page table smaller than the batch".into());
     }
@@ -400,7 +406,7 @@ pub(crate) fn decode(
     #[cfg(has_pi)]
     return check(unsafe {
         ffi::pi_attn_decode(
-            q.data_ptr(),
+            q.data_ptr().cast::<u8>().add(rows.0 as usize * row_bytes).cast(),
             k_cache.data_ptr(),
             v_cache.data_ptr(),
             page_table.data_ptr().cast(),
@@ -410,7 +416,7 @@ pub(crate) fn decode(
             workspace.ml.data_ptr().cast(),
             workspace.counters.data_ptr().cast(),
             workspace.rows(),
-            out.data_ptr(),
+            out.data_ptr().cast::<u8>().add(rows.0 as usize * row_bytes).cast(),
             batch as i32,
             num_heads as i32,
             num_kv_heads as i32,
@@ -423,7 +429,7 @@ pub(crate) fn decode(
     });
     #[cfg(not(has_pi))]
     {
-        let _ = (k_cache, v_cache, seqlens, workspace, num_kv_heads, max_kv_len, tight_grid, out, num_heads);
+        let _ = (k_cache, v_cache, seqlens, workspace, num_kv_heads, max_kv_len, tight_grid, out, num_heads, row_bytes);
         Err("PI kernels were not built".into())
     }
 }
@@ -432,7 +438,7 @@ pub(crate) fn decode(
 /// after the new prompts, and prompts whose prefix cache left one token. The decode kernels give such a row
 /// the bits `prefill_kernel` gives it (one canonical sequence per row), in a fraction of the time: in a
 /// prefill launch a one-token request takes whole row-tile CTAs for its GQA rows and adds empty CTAs for every
-/// row tile of the longest request. So a batch is run as its prefix through prefill and this tail through decode.
+/// row tile of the longest request.
 pub(crate) fn single_token_tail(q_lens: &[i64]) -> usize {
     q_lens.iter().rev().take_while(|&&q| q == 1).count()
 }
@@ -455,6 +461,22 @@ pub(crate) fn prefill_wave_head(num_heads: i64, num_kv_heads: i64, q_len: i64, p
     #[cfg(not(has_pi))]
     {
         let _ = (num_heads, num_kv_heads, q_len, prefix);
+        0
+    }
+}
+
+/// How many requests at the end of a prefill-phase batch run through the decode kernel: the one-token tail when
+/// that pays for its launch, else none. Measured on an A800 (results/a800_r6/kernels/mixed_batch.txt and the
+/// engine runs of archive/ceiling_probes/a800_r6): a tail of eight or more requests always pays (0.62-0.92x the
+/// one launch's time); a shorter one pays when it leaves a single prompt of at least 1024 tokens, which then
+/// runs on its own grid (0.72-0.83x), or nothing at all; four prompts of 512 tokens with four decode rows were
+/// 0-9% slower in two launches. Scheduling only.
+pub(crate) fn decode_tail(q_lens: &[i64]) -> usize {
+    let tail = single_token_tail(q_lens);
+    let head = q_lens.len() - tail;
+    if tail >= 8 || head == 0 || (tail > 0 && head == 1 && q_lens[0] >= 1024) {
+        tail
+    } else {
         0
     }
 }
@@ -512,8 +534,8 @@ pub(crate) fn plan_prefill(
     }
 }
 
-/// Prefill/extend attention for `q [total_q, Hq, 128]`; K/V of every token are
-/// already in the paged caches. Writes `out` (`[total_q, Hq*128]`, contiguous).
+/// Prefill/extend attention for the `plan.total_q` rows of `q [.., Hq, 128]` from row `token_start` on; K/V of
+/// every token are already in the paged caches. Writes the same rows of `out` (`[.., Hq*128]`, contiguous).
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn prefill(
     q: &Tensor,
@@ -524,14 +546,17 @@ pub(crate) fn prefill(
     prefix_lens: &Tensor,
     plan: &PrefillPlan,
     num_kv_heads: i64,
+    token_start: i64,
     out: &Tensor,
 ) -> Result<(), String> {
     require(qo_indptr, Kind::Int, "cu_seqlens_q")?;
     require(prefix_lens, Kind::Int, "prefix_lens")?;
     require(page_table, Kind::Int, "page table")?;
-    if page_table.stride()[1] != 1 || q.size()[0] != plan.total_q as i64 {
+    let end = token_start + plan.total_q as i64;
+    if page_table.stride()[1] != 1 || token_start < 0 || q.size()[0] < end || out.size()[0] < end {
         return Err("prefill metadata does not match the query".into());
     }
+    let row_bytes = (q.size()[1] * q.size()[2] * 2) as usize;  // bf16
     let (ws_o, ws_ml) = plan
         .workspace
         .as_ref()
@@ -541,14 +566,14 @@ pub(crate) fn prefill(
     #[cfg(has_pi)]
     return check(unsafe {
         ffi::pi_attn_prefill(
-            q.data_ptr(),
+            q.data_ptr().cast::<u8>().add(token_start as usize * row_bytes).cast(),
             k_cache.data_ptr(),
             v_cache.data_ptr(),
             qo_indptr.data_ptr().cast(),
             page_table.data_ptr().cast(),
             page_table.stride()[0],
             prefix_lens.data_ptr().cast(),
-            out.data_ptr(),
+            out.data_ptr().cast::<u8>().add(token_start as usize * row_bytes).cast(),
             prefix_lens.size()[0] as i32,
             plan.total_q,
             q.size()[1] as i32,
@@ -565,7 +590,7 @@ pub(crate) fn prefill(
     });
     #[cfg(not(has_pi))]
     {
-        let _ = (k_cache, v_cache, num_kv_heads, out, ws_o, ws_ml);
+        let _ = (k_cache, v_cache, num_kv_heads, out, ws_o, ws_ml, row_bytes);
         Err("PI kernels were not built".into())
     }
 }
@@ -640,7 +665,7 @@ mod tests {
 
 #[cfg(test)]
 mod schedule_tests {
-    use super::single_token_tail;
+    use super::{decode_tail, single_token_tail};
 
     #[test]
     fn single_token_tail_counts_only_the_trailing_run() {
@@ -651,5 +676,16 @@ mod schedule_tests {
         assert_eq!(single_token_tail(&[1, 17]), 0);
         assert_eq!(single_token_tail(&[1, 512, 1]), 1);
         assert_eq!(single_token_tail(&[1, 1]), 2);
+    }
+
+    #[test]
+    fn decode_tail_takes_the_tail_only_where_it_pays() {
+        assert_eq!(decode_tail(&[2048, 1]), 1);
+        assert_eq!(decode_tail(&[512, 1, 1, 1]), 0);
+        assert_eq!(decode_tail(&[512, 512, 512, 512, 1, 1, 1, 1]), 0);
+        assert_eq!(decode_tail(&[512, 512, 1, 1, 1, 1, 1, 1, 1, 1]), 8);
+        assert_eq!(decode_tail(&[1, 1]), 2);
+        assert_eq!(decode_tail(&[2048]), 0);
+        assert_eq!(decode_tail(&[]), 0);
     }
 }

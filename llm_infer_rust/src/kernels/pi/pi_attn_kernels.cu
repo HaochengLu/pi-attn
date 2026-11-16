@@ -35,9 +35,10 @@ __device__ __forceinline__ const int32_t* request_pages(const int32_t* kv_page_i
 // order. K and V each have two smem slots; iteration t loads K(t + 2) and V(t + 1),
 // a full iteration ahead, behind one barrier. Every warp runs every tile of its
 // range: a fully masked online step is an exact no-op (see online_step).
-// A warp runs the tiles whose keys all of its rows see in a loop without the causal mask (the same values
+// PLAIN: a warp runs the tiles whose keys all of its rows see in a loop without the causal mask (the same values
 // without the comparisons and selects) and the rest in the masked loop; each loop body is one straight-line
-// block, so the S(t + 1) MMA chains stay scheduled through tile t's softmax.
+// block, so the S(t + 1) MMA chains stay scheduled through tile t's softmax. Without it every tile runs the
+// masked loop. The launcher takes PLAIN where it measured faster (prefill_plain_loop).
 //
 // QREG (sm_80): Q fragments live in registers and the fp32 folded totals (touched
 // once per fold group) in smem: 80 KB, two CTAs per SM on sm_80's 164 KB; with 8 warps
@@ -139,7 +140,15 @@ inline int prefill_tile_flip(int order, int row_tiles) {
   return order == kPrefillLongestFirst ? -1 : order == kPrefillDescending ? row_tiles - 1 : 0;
 }
 
-template <bool QREG, int WARPS = kPrefillWarps>
+// Whether a launch runs the kernel with the unmasked tile loop. Measured on an A800 against the masked loop alone
+// (archive/ceiling_probes/a800_r6, loop variants): 0.966-0.986x on one-split launches of 2048 tokens or more
+// and of eight 1024-token requests, 0.985-1.015x at 1024 tokens; on shorter prompts and on split launches the
+// second loop costs up to 9% (64 to 256 tokens, 16 x 128, extends over long prefixes).
+inline bool prefill_plain_loop(int cc_major, int cc_minor, int max_q_len, int splits) {
+  return cc_major == 8 && cc_minor == 0 && splits == 1 && max_q_len >= 1024;
+}
+
+template <bool QREG, int WARPS = kPrefillWarps, bool PLAIN = false>
 __global__ void __launch_bounds__(WARPS * 32, WARPS == 4 ? 2 : 1)
     prefill_kernel(const __nv_bfloat16* __restrict__ q, __nv_bfloat16* __restrict__ out,
                     const __nv_bfloat16* __restrict__ k_cache, const __nv_bfloat16* __restrict__ v_cache,
@@ -230,14 +239,13 @@ __global__ void __launch_bounds__(WARPS * 32, WARPS == 4 ? 2 : 1)
     cp_async16(sQ + swz(r, chunk), src, bytes);
   }
   // Tile t uses K slot and V slot t & 1 (t_begin is even). src1 / src2: this thread's key of tiles t + 1 and
-  // t + 2 in the caches, each found an iteration before use; a tile past t_last or a key past kv_len is
-  // zero-filled without a read. The first 128 threads copy the K/V tiles (issue_tile), their shared-memory
-  // addresses formed once.
+  // t + 2 in the caches, each found an iteration before use; a key past kv_len is zero-filled without a read.
+  // The first 128 threads copy the K/V tiles (issue_tile), their shared-memory addresses formed once.
   const bool copier = tid < 128;
   const TileDst cdst = tile_dst(tid & 127);
   const uint32_t k_tile = smem_u32(sK), v_tile = smem_u32(sV);
   auto src_of = [&](int t) -> TileSrc {
-    return tile_src(copier && t <= t_last ? tile_row(pages, page_size, page_shift, t, kv_len, num_kv_heads, kvh, tid) : -1, tid);
+    return tile_src(copier ? tile_row(pages, page_size, page_shift, t, kv_len, num_kv_heads, kvh, tid) : -1, tid);
   };
   TileSrc src1 = src_of(t_begin);
   if (copier) issue_tile(k_tile, cdst, k_cache, src1);
@@ -245,7 +253,7 @@ __global__ void __launch_bounds__(WARPS * 32, WARPS == 4 ? 2 : 1)
   if (copier) issue_tile(v_tile, cdst, v_cache, src1);
   src1 = src_of(t_begin + 1);
   TileSrc src2 = src_of(t_begin + 2);
-  if (copier) issue_tile(k_tile + kSlotBytes, cdst, k_cache, src1);
+  if (copier && t_begin + 1 <= t_last) issue_tile(k_tile + kSlotBytes, cdst, k_cache, src1);
   cp_async_commit();  // V(t_begin) + K(t_begin + 1)
 
   // st: the current group; the folded total of the finished groups is (tot_m,
@@ -305,13 +313,13 @@ __global__ void __launch_bounds__(WARPS * 32, WARPS == 4 ? 2 : 1)
     cp_async_wait<0>();  // V(t), K(t + 1)
     __syncthreads();     // ... for all threads; everyone is done with V(t - 1) and K(t)
     if (copier) {
-      issue_tile(v_tile + (slot ^ 1) * kSlotBytes, cdst, v_cache, src1);
-      issue_tile(k_tile + slot * kSlotBytes, cdst, k_cache, src2);
+      if (t + 1 <= t_last) issue_tile(v_tile + (slot ^ 1) * kSlotBytes, cdst, v_cache, src1);
+      if (t + 2 <= t_last) issue_tile(k_tile + slot * kSlotBytes, cdst, k_cache, src2);
     }
     cp_async_commit();
     src1 = src2;
     src2 = src_of(t + 3);
-    qk(sn, slot ^ 1);  // past t_last: zeros or stale slot data, never used
+    qk(sn, slot ^ 1);  // past t_last: stale slot data, never used
     if constexpr (decltype(masked)::value) {
       const int key0 = t * kTile;
 #pragma unroll
@@ -351,11 +359,13 @@ __global__ void __launch_bounds__(WARPS * 32, WARPS == 4 ? 2 : 1)
   qk(sa, 0);
   // Tiles [t_begin, t_plain): every key visible to every row of the warp. A warp's two loops run t_last - t_begin
   // + 1 steps in all, as every other warp's do, so the barriers of the steps pair up across the CTA.
-  const int t_plain = min((warp_pos + 1) / kTile, t_last + 1);
   int t = t_begin;
-  for (; t + 2 <= t_plain; t += 2) {
-    step(t, sa, sb, 0, std::false_type());
-    step(t + 1, sb, sa, 1, std::false_type());
+  if constexpr (PLAIN) {
+    const int t_plain = min((warp_pos + 1) / kTile, t_last + 1);
+    for (; t + 2 <= t_plain; t += 2) {
+      step(t, sa, sb, 0, std::false_type());
+      step(t + 1, sb, sa, 1, std::false_type());
+    }
   }
   for (; t <= t_last; t += 2) {
     step(t, sa, sb, 0, std::true_type());

@@ -47,6 +47,9 @@ static int sm_count(const at::Tensor& t) {
 // Prefill grid order of prefill_kernel: 0 = the engine's choice for this device and launch (prefill_order),
 // 1 = ascending, 2 = longest first, 3 = descending; the same bits.
 static int forced_prefill_order = 0;
+// The tile loops of prefill_kernel: 0 = the engine's choice for this device and launch (prefill_plain_loop),
+// 1 = the masked loop alone, 2 = with the unmasked loop; the same bits.
+static int forced_prefill_loop = 0;
 
 at::Tensor prefill(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Tensor qo_indptr,
                    at::Tensor kv_page_indptr, at::Tensor kv_page_indices, at::Tensor kv_lens,
@@ -94,6 +97,7 @@ at::Tensor prefill(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Ten
                   : forced_prefill_order == 3 ? kPrefillDescending
                   : prefill_order(major, minor, batch, hkv, max_groups, splits, l2_bytes);
   dim3 grid = prefill_grid(tiles, hkv, batch * splits, order);
+  const bool plain = forced_prefill_loop ? forced_prefill_loop == 2 : prefill_plain_loop(major, minor, (int)max_q_len, splits);
 #ifdef PI_SM90A
   if (ws) grid = prefill90w_grid(tiles, hkv, batch * splits);
   else if (wgmma) grid = dim3(tiles, hkv, batch * splits);
@@ -116,12 +120,16 @@ at::Tensor prefill(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Ten
     else launch(prefill90_kernel, prefill90_smem_bytes());
 #endif
   } else if (warps == 8) {
-    if (qreg) launch(prefill_kernel<true, 8>, prefill_smem_bytes<true, 8>(), prefill_tile_flip(order, tiles));
+    if (qreg && plain) launch(prefill_kernel<true, 8, true>, prefill_smem_bytes<true, 8>(), prefill_tile_flip(order, tiles));
+    else if (qreg) launch(prefill_kernel<true, 8>, prefill_smem_bytes<true, 8>(), prefill_tile_flip(order, tiles));
+    else if (plain) launch(prefill_kernel<false, 8, true>, prefill_smem_bytes<false, 8>(), prefill_tile_flip(order, tiles));
     else launch(prefill_kernel<false, 8>, prefill_smem_bytes<false, 8>(), prefill_tile_flip(order, tiles));
   } else if (qreg) {
-    launch(prefill_kernel<true>, prefill_smem_bytes<true>(), prefill_tile_flip(order, tiles));
+    if (plain) launch(prefill_kernel<true, 4, true>, prefill_smem_bytes<true>(), prefill_tile_flip(order, tiles));
+    else launch(prefill_kernel<true>, prefill_smem_bytes<true>(), prefill_tile_flip(order, tiles));
   } else {
-    launch(prefill_kernel<false>, prefill_smem_bytes<false>(), prefill_tile_flip(order, tiles));
+    if (plain) launch(prefill_kernel<false, 4, true>, prefill_smem_bytes<false>(), prefill_tile_flip(order, tiles));
+    else launch(prefill_kernel<false>, prefill_smem_bytes<false>(), prefill_tile_flip(order, tiles));
   }
   C10_CUDA_KERNEL_LAUNCH_CHECK();
   if (splits > 1) {
@@ -224,6 +232,10 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("set_prefill_order", [](int64_t v) {
     TORCH_CHECK(v >= 0 && v <= 3, "prefill order: 0 to 3");
     forced_prefill_order = (int)v;
+  });
+  m.def("set_prefill_loop", [](int64_t v) {
+    TORCH_CHECK(v >= 0 && v <= 2, "prefill loop: 0, 1 or 2");
+    forced_prefill_loop = (int)v;
   });
   // The kernel decode_plan gives a launch on this device (1, 2 or 3).
   m.def("decode_plan", [](int64_t batch, int64_t hkv, int64_t max_kv_len, int64_t kv_len_bound, int64_t hq) {

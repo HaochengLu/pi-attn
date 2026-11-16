@@ -46,7 +46,7 @@ PY
   sm90-build)
     # compiles the wgmma kernels of this tree (Hopper); nothing of it runs on this GPU
     out=$PI_RESULTS/sm90_build; mkdir -p $out; cd $ROOT/llm_infer_rust
-    { FLASHINFER_CUDA_ARCH=90a CARGO_TARGET_DIR=$ROOT/build/sm90a cargo build --release --locked > $out/cargo_sm90a.log 2>&1; echo "engine sm_90a build exit=$? | $(tail -1 $out/cargo_sm90a.log)"
+    { FLASHINFER_CUDA_ARCH=90 CARGO_TARGET_DIR=$ROOT/build/sm90a cargo build --release --locked > $out/cargo_sm90.log 2>&1; echo "engine sm_90a build exit=$? | $(tail -1 $out/cargo_sm90.log)"
       (cd $ROOT/kernels && PI_ATTN_ARCH=90 PI_ATTN_SUFFIX=_r6check python -c "from build import build; build(); print('ok')" > $out/ext_sm90a.log 2>&1); echo "kernel extension sm_90a build exit=$?"; } 2>&1 | tee $log/sm90_build.log | tee -a $log/run.out ;;
   engine-bits)
     out=$PI_RESULTS/engine_bits; mkdir -p $out; port=18197

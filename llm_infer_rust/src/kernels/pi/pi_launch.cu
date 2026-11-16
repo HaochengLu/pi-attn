@@ -257,10 +257,13 @@ const char* pi_attn_prefill(const void* q, const void* k_cache, const void* v_ca
         num_qo_heads, num_kv_heads, page_size, page_shift_of(page_size),
         (float)(sm_scale * 1.4426950408889634), splits, ws_o, (float2*)ws_ml, max_groups, order...);
   };
+  const bool plain = prefill_plain_loop(info.cc_major, info.cc_minor, max_q_len, splits);
   if (warps == 8) {
-    launch(prefill_kernel<true, 8>, prefill_smem_bytes<true, 8>(), prefill_tile_flip(order, tiles));
+    if (plain) launch(prefill_kernel<true, 8, true>, prefill_smem_bytes<true, 8>(), prefill_tile_flip(order, tiles));
+    else launch(prefill_kernel<true, 8>, prefill_smem_bytes<true, 8>(), prefill_tile_flip(order, tiles));
   } else if (info.prefill_qreg) {
-    launch(prefill_kernel<true>, prefill_smem_bytes<true>(), prefill_tile_flip(order, tiles));
+    if (plain) launch(prefill_kernel<true, 4, true>, prefill_smem_bytes<true>(), prefill_tile_flip(order, tiles));
+    else launch(prefill_kernel<true>, prefill_smem_bytes<true>(), prefill_tile_flip(order, tiles));
   } else {
 #ifdef PI_SM90A
     if (nwg == 3) launch(prefill90w_kernel<3>, prefill90w_smem_bytes<3>());

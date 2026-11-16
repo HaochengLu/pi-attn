@@ -1,5 +1,5 @@
 """Bit equality of two builds of the prefill and decode kernels: r6_eq.py <ref tree> <new tree> [seeds]
-(trees: directories of $R6 with kernels/). Every prefill variant the GPU runs, split counts, both grid orders,
+(trees: directories of $R6 with kernels/). Every prefill variant the GPU runs, split counts, grid orders 1-3 and both loop variants of the new build,
 variable lengths, prefixes; inputs: Gaussian at several magnitudes and special values injected into Q, K and V
 (+-0, subnormals, largest and smallest normals; in Q and K also +-inf and NaN). Each launch of the new build is
 compared with the same launch of the reference build and with the reference build's first launch of the shape.
@@ -53,10 +53,11 @@ for seed in range(SEEDS):
             base = None
             for var in (0, 1, 2, 3, 4):
                 for sp in (0, 1, 2, 3, 7):
-                    for order in (1, 2):
+                    for order in (1, 2, 3) if hasattr(new, 'set_prefill_loop') else (1, 2):
                         outs = []
                         for e in (ref, new):
-                            e.set_prefill_order(order)
+                            e.set_prefill_order(order if hasattr(e, 'set_prefill_loop') or order < 3 else 1)  # the reference build has no order 3
+                            if hasattr(e, "set_prefill_loop"): e.set_prefill_loop(1 + (total + order) % 2)  # masked loop alone / with the unmasked loop
                             outs.append(bits(e.prefill(q, k, v, qo, indptr, perm, lens, mq, mk, 1 / math.sqrt(D), sp, var)))
                         if base is None: base = outs[0]
                         total += 1
@@ -64,5 +65,5 @@ for seed in range(SEEDS):
                             bad += 1
                             if bad <= 10: print("MISMATCH", regime, qlens[:4], prefixes[:4], hq, var, sp, order, int((outs[0] != outs[1]).sum()), int((outs[1] != base).sum()), flush=True)
         print(f"seed {seed} regime {regime}: {total} launch pairs so far, {bad} mismatches", flush=True)
-print(f"EQ prefill {sys.argv[2]} vs {sys.argv[1]} (variants 0-4, splits 0/1/2/3/7, both grid orders, 8 input regimes, {len(SHAPES)} shapes, {SEEDS} seeds): {total} launch pairs, each also against the reference build's first launch of the shape, {bad} mismatches")
+print(f"EQ prefill {sys.argv[2]} vs {sys.argv[1]} (variants 0-4, splits 0/1/2/3/7, grid orders 1-3 and both loop variants of the new build, 8 input regimes, {len(SHAPES)} shapes, {SEEDS} seeds): {total} launch pairs, each also against the reference build's first launch of the shape, {bad} mismatches")
 sys.exit(1 if bad else 0)

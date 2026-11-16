@@ -302,18 +302,20 @@ enum BackendPlan {
     PiPrefill(Vec<PiPrefillPart>, Option<PiDecodeTail>),
 }
 
-/// One prefill launch: the batch's requests but the tail (`own` = None), or, for a single request cut by
-/// `kernels::pi::prefill_wave_head`, the tokens from `token_start` on with their own `(cu_seqlens_q, prefix_lens)`.
+/// One prefill launch over the rows of q from `token_start` on. `meta`: its `(cu_seqlens_q, block table,
+/// prefix_lens)` when they are not the batch's own (a batch with a tail: views of the leading requests; a single
+/// request cut by `kernels::pi::prefill_wave_head`: the cut's lengths), made once per batch.
 struct PiPrefillPart {
     plan: crate::kernels::pi::PrefillPlan,
     token_start: i64,
-    own: Option<(Tensor, Tensor)>,
+    meta: Option<(Tensor, Tensor, Tensor)>,
 }
 
 /// The one-token requests at the end of a prefill-phase batch (`kernels::pi::single_token_tail`), run by the
 /// decode kernel: their KV lengths on the device, the longest of them and the decode workspace.
 struct PiDecodeTail {
     requests: i64,
+    table: Tensor,
     seqlens: Tensor,
     max_kv_len: i64,
     workspace: std::rc::Rc<crate::kernels::pi::DecodeWorkspace>,
@@ -489,23 +491,24 @@ impl AttentionBackend for PiAttentionBackend {
         }
         let q_lens: Vec<i64> = prefill.boundaries.windows(2).map(|w| w[1] - w[0]).collect();
         let tail = if crate::kernels::pi::decode_tail_enabled() {
-            crate::kernels::pi::single_token_tail(&q_lens)
+            crate::kernels::pi::decode_tail(&q_lens)
         } else {
             0
         };
         let head = q_lens.len() - tail;
+        let table = metadata
+            .block_table
+            .as_ref()
+            .ok_or_else(|| model_error("PI attention requires block_table"))?;
+        let prefixes = metadata
+            .prefix_lens
+            .as_ref()
+            .ok_or_else(|| model_error("PI prefill requires prefix_lens"))?;
         let decode_tail = if tail > 0 {
-            let table = metadata
-                .block_table
-                .as_ref()
-                .ok_or_else(|| model_error("PI attention requires block_table"))?;
-            let prefixes = metadata
-                .prefix_lens
-                .as_ref()
-                .ok_or_else(|| model_error("PI prefill requires prefix_lens"))?;
             let groups = crate::kernels::pi::decode_groups(table.stride()[0].max(table.size()[1]), page_size);
             Some(PiDecodeTail {
                 requests: tail as i64,
+                table: table.narrow(0, head as i64, tail as i64),
                 // A request's KV holds its prefix and the token it adds.
                 seqlens: (prefixes.narrow(0, head as i64, tail as i64) + 1i64).to_kind(Kind::Int).contiguous(),
                 max_kv_len: prefill.prefixes[head..].iter().copied().max().unwrap_or(0) + 1,
@@ -531,15 +534,25 @@ impl AttentionBackend for PiAttentionBackend {
                 parts.push(PiPrefillPart {
                     plan: plan(&[tokens], &[prefix]),
                     token_start: start,
-                    own: Some((ints([0, tokens]), ints([prefix, 0]).narrow(0, 0, 1))),
+                    meta: Some((ints([0, tokens]), table.narrow(0, 0, 1), ints([prefix, 0]).narrow(0, 0, 1))),
                 });
                 start += tokens;
             }
         } else if head > 0 {
+            let meta = if tail > 0 {
+                let cumulative = metadata
+                    .cu_seqlens_q
+                    .as_ref()
+                    .ok_or_else(|| model_error("PI prefill requires cu_seqlens_q"))?;
+                let head = head as i64;
+                Some((cumulative.narrow(0, 0, head + 1), table.narrow(0, 0, head), prefixes.narrow(0, 0, head)))
+            } else {
+                None
+            };
             parts.push(PiPrefillPart {
                 plan: plan(&q_lens[..head], &prefill.prefixes[..head]),
                 token_start: 0,
-                own: None,
+                meta,
             });
         }
         Ok(BackendPlan::PiPrefill(parts, decode_tail))
@@ -589,7 +602,7 @@ fn pi_forward(
             // The step's longest request selects the decode kernel (never a value).
             let max_kv_len = metadata.max_seqlen.unwrap_or(0) as i64;
             crate::kernels::pi::decode(
-                &q, k_cache, v_cache, table, lengths, workspace, num_kv_heads, max_kv_len, false, out,
+                &q, k_cache, v_cache, table, lengths, workspace, num_kv_heads, max_kv_len, false, (0, q.size()[0]), out,
             )
         }
         BackendPlan::PiPrefill(parts, tail) => {
@@ -602,43 +615,44 @@ fn pi_forward(
                 .as_ref()
                 .ok_or_else(|| model_error("PI prefill requires prefix_lens"))?;
             // The batch is [head requests | one-token tail]; a tail request's row is its only token, so the
-            // tail's rows are the last `requests` rows of q and out, and its page-table rows the last ones.
+            // tail's rows are the last `requests` rows of q and out.
             let tail_rows = tail.as_ref().map_or(0, |tail| tail.requests);
-            let (tokens, requests) = (q.size()[0] - tail_rows, table.size()[0] - tail_rows);
+            let tokens = q.size()[0] - tail_rows;
             let mut head = Ok(());
             for part in parts {
-                let part_tokens = part.plan.total_q as i64;
-                let (part_cumulative, part_prefixes) = match &part.own {
-                    Some((cumulative, prefixes)) => (cumulative.shallow_clone(), prefixes.shallow_clone()),
-                    None => (cumulative.narrow(0, 0, requests + 1), prefixes.narrow(0, 0, requests)),
+                let (part_cumulative, part_table, part_prefixes) = match &part.meta {
+                    Some((cumulative, table, prefixes)) => (cumulative, table, prefixes),
+                    None => (cumulative, table, prefixes),
                 };
                 head = head.and_then(|()| {
                     crate::kernels::pi::prefill(
-                        &q.narrow(0, part.token_start, part_tokens),
+                        &q,
                         k_cache,
                         v_cache,
-                        &part_cumulative,
-                        &table.narrow(0, 0, requests),
-                        &part_prefixes,
+                        part_cumulative,
+                        part_table,
+                        part_prefixes,
                         &part.plan,
                         num_kv_heads,
-                        &out.narrow(0, part.token_start, part_tokens),
+                        part.token_start,
+                        out,
                     )
                 });
             }
             debug_assert_eq!(parts.iter().map(|part| part.plan.total_q as i64).sum::<i64>(), tokens);
             match (head, tail) {
                 (Ok(()), Some(tail)) => crate::kernels::pi::decode(
-                    &q.narrow(0, tokens, tail_rows),
+                    &q,
                     k_cache,
                     v_cache,
-                    &table.narrow(0, requests, tail_rows),
+                    &tail.table,
                     &tail.seqlens,
                     &tail.workspace,
                     num_kv_heads,
                     tail.max_kv_len,
                     true,
-                    &out.narrow(0, tokens, tail_rows),
+                    (tokens, tail_rows),
+                    out,
                 ),
                 (head, _) => head,
             }
@@ -2134,7 +2148,7 @@ mod tests {
         cache.bind_kv_cache(keys.shallow_clone(), values.shallow_clone()).unwrap();
         // Two requests on interleaved, non-contiguous pages.
         let table = Tensor::arange(512, (Kind::Int, device)).view([256, 2]).transpose(0, 1).contiguous();
-        // [17, 1], [300, 1] and [1, 1] end in one-token requests, which the plan hands to the decode kernel.
+        // [1, 1] and [2048, 1] end in one-token requests that the plan hands to the decode kernel (decode_tail).
         for (q_lens, prefixes) in [
             ([17i64, 1], [0i64, 0]),
             ([129, 33], [0, 0]),
@@ -2163,7 +2177,7 @@ mod tests {
             let BackendPlan::PiPrefill(_, tail) = &batch.plan else {
                 panic!("PI prefill plan expected");
             };
-            let tail_requests = q_lens.iter().rev().take_while(|&&q| q == 1).count() as i64;
+            let tail_requests = crate::kernels::pi::decode_tail(&q_lens) as i64;
             assert_eq!(tail.as_ref().map_or(0, |tail| tail.requests), tail_requests);
             let prefill = batch.forward(&q, &q, &q, &cache).unwrap();
             let reference = pi_reference(&q, &keys, &values, &table, &q_lens, &prefixes);

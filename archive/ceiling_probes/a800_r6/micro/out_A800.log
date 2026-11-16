@@ -1,0 +1,155 @@
+== pack_exhaustive
+PACK NVIDIA A800-SXM4-80GB: 4294967296 first operands (each also as the second operand of a hashed pattern), 16777214 NaN inputs: 0 mismatches
+== mma_negzero
+NEGZERO NVIDIA A800-SXM4-80GB | directed, 16 equal products, acc +0: 0 of 100352 outputs are -0
+NEGZERO NVIDIA A800-SXM4-80GB | directed, one product, acc +0: 0 of 100352 outputs are -0
+NEGZERO NVIDIA A800-SXM4-80GB | random small/special, acc +0: 0 of 13421772800 outputs are -0
+NEGZERO NVIDIA A800-SXM4-80GB | random small/special, acc random (not -0): 0 of 13421772800 outputs are -0
+NEGZERO NVIDIA A800-SXM4-80GB | control: random small/special, acc -0: 0 of 13421772800 outputs are -0
+NEGZERO TOTAL (accumulator not -0): 0
+== mma_rate
+clock 1410 MHz; cycles per HMMA: per warp (latency view) | per SM (throughput view)
+acc= 1 fma/mma=0 warps/SM= 1:    0.431 ms   30.41 cyc/HMMA/warp   30.41 cyc/HMMA/SM
+acc= 1 fma/mma=0 warps/SM= 2:    0.431 ms   30.42 cyc/HMMA/warp   15.21 cyc/HMMA/SM
+acc= 1 fma/mma=0 warps/SM= 4:    0.432 ms   30.43 cyc/HMMA/warp    7.61 cyc/HMMA/SM
+acc= 1 fma/mma=0 warps/SM= 8:    0.436 ms   30.76 cyc/HMMA/warp    3.84 cyc/HMMA/SM
+acc= 1 fma/mma=0 warps/SM=16:    0.588 ms   41.45 cyc/HMMA/warp    2.59 cyc/HMMA/SM
+acc= 2 fma/mma=0 warps/SM= 1:    0.448 ms   15.79 cyc/HMMA/warp   15.79 cyc/HMMA/SM
+acc= 2 fma/mma=0 warps/SM= 2:    0.448 ms   15.79 cyc/HMMA/warp    7.89 cyc/HMMA/SM
+acc= 2 fma/mma=0 warps/SM= 4:    0.448 ms   15.80 cyc/HMMA/warp    3.95 cyc/HMMA/SM
+acc= 2 fma/mma=0 warps/SM= 8:    0.577 ms   20.34 cyc/HMMA/warp    2.54 cyc/HMMA/SM
+acc= 2 fma/mma=0 warps/SM=16:    1.146 ms   40.41 cyc/HMMA/warp    2.53 cyc/HMMA/SM
+acc= 4 fma/mma=0 warps/SM= 1:    0.595 ms   10.48 cyc/HMMA/warp   10.48 cyc/HMMA/SM
+acc= 4 fma/mma=0 warps/SM= 2:    0.595 ms   10.49 cyc/HMMA/warp    5.24 cyc/HMMA/SM
+acc= 4 fma/mma=0 warps/SM= 4:    0.595 ms   10.49 cyc/HMMA/warp    2.62 cyc/HMMA/SM
+acc= 4 fma/mma=0 warps/SM= 8:    1.157 ms   20.40 cyc/HMMA/warp    2.55 cyc/HMMA/SM
+acc= 4 fma/mma=0 warps/SM=16:    2.307 ms   40.66 cyc/HMMA/warp    2.54 cyc/HMMA/SM
+acc= 8 fma/mma=0 warps/SM= 1:    1.156 ms   10.19 cyc/HMMA/warp   10.19 cyc/HMMA/SM
+acc= 8 fma/mma=0 warps/SM= 2:    1.156 ms   10.19 cyc/HMMA/warp    5.10 cyc/HMMA/SM
+acc= 8 fma/mma=0 warps/SM= 4:    1.157 ms   10.20 cyc/HMMA/warp    2.55 cyc/HMMA/SM
+acc= 8 fma/mma=0 warps/SM= 8:    2.281 ms   20.10 cyc/HMMA/warp    2.51 cyc/HMMA/SM
+acc= 8 fma/mma=0 warps/SM=16:    4.554 ms   40.13 cyc/HMMA/warp    2.51 cyc/HMMA/SM
+acc=16 fma/mma=0 warps/SM= 1:    2.279 ms   10.04 cyc/HMMA/warp   10.04 cyc/HMMA/SM
+acc=16 fma/mma=0 warps/SM= 2:    2.280 ms   10.04 cyc/HMMA/warp    5.02 cyc/HMMA/SM
+acc=16 fma/mma=0 warps/SM= 4:    2.280 ms   10.05 cyc/HMMA/warp    2.51 cyc/HMMA/SM
+acc=16 fma/mma=0 warps/SM= 8:    3.676 ms   16.20 cyc/HMMA/warp    2.02 cyc/HMMA/SM
+acc=16 fma/mma=0 warps/SM=16:    7.348 ms   32.38 cyc/HMMA/warp    2.02 cyc/HMMA/SM
+acc= 4 fma/mma=2 warps/SM= 1:    0.629 ms   11.09 cyc/HMMA/warp   11.09 cyc/HMMA/SM
+acc= 4 fma/mma=2 warps/SM= 2:    0.630 ms   11.10 cyc/HMMA/warp    5.55 cyc/HMMA/SM
+acc= 4 fma/mma=2 warps/SM= 4:    0.630 ms   11.10 cyc/HMMA/warp    2.78 cyc/HMMA/SM
+acc= 4 fma/mma=2 warps/SM= 8:    1.232 ms   21.72 cyc/HMMA/warp    2.71 cyc/HMMA/SM
+acc= 4 fma/mma=2 warps/SM=16:    2.459 ms   43.33 cyc/HMMA/warp    2.71 cyc/HMMA/SM
+acc= 4 fma/mma=4 warps/SM= 1:    0.647 ms   11.41 cyc/HMMA/warp   11.41 cyc/HMMA/SM
+acc= 4 fma/mma=4 warps/SM= 2:    0.647 ms   11.41 cyc/HMMA/warp    5.70 cyc/HMMA/SM
+acc= 4 fma/mma=4 warps/SM= 4:    0.648 ms   11.42 cyc/HMMA/warp    2.85 cyc/HMMA/SM
+acc= 4 fma/mma=4 warps/SM= 8:    1.225 ms   21.60 cyc/HMMA/warp    2.70 cyc/HMMA/SM
+acc= 4 fma/mma=4 warps/SM=16:    2.463 ms   43.42 cyc/HMMA/warp    2.71 cyc/HMMA/SM
+acc= 4 fma/mma=8 warps/SM= 1:    1.110 ms   19.57 cyc/HMMA/warp   19.57 cyc/HMMA/SM
+acc= 4 fma/mma=8 warps/SM= 2:    1.111 ms   19.58 cyc/HMMA/warp    9.79 cyc/HMMA/SM
+acc= 4 fma/mma=8 warps/SM= 4:    1.111 ms   19.58 cyc/HMMA/warp    4.90 cyc/HMMA/SM
+acc= 4 fma/mma=8 warps/SM= 8:    2.209 ms   38.94 cyc/HMMA/warp    4.87 cyc/HMMA/SM
+acc= 4 fma/mma=8 warps/SM=16:    4.449 ms   78.41 cyc/HMMA/warp    4.90 cyc/HMMA/SM
+acc=16 fma/mma=2 warps/SM= 1:    2.450 ms   10.79 cyc/HMMA/warp   10.79 cyc/HMMA/SM
+acc=16 fma/mma=2 warps/SM= 2:    2.451 ms   10.80 cyc/HMMA/warp    5.40 cyc/HMMA/SM
+acc=16 fma/mma=2 warps/SM= 4:    2.452 ms   10.80 cyc/HMMA/warp    2.70 cyc/HMMA/SM
+acc=16 fma/mma=2 warps/SM= 8:    4.857 ms   21.40 cyc/HMMA/warp    2.68 cyc/HMMA/SM
+acc=16 fma/mma=2 warps/SM=16:    9.575 ms   42.19 cyc/HMMA/warp    2.64 cyc/HMMA/SM
+acc=16 fma/mma=4 warps/SM= 1:    2.572 ms   11.33 cyc/HMMA/warp   11.33 cyc/HMMA/SM
+acc=16 fma/mma=4 warps/SM= 2:    2.572 ms   11.33 cyc/HMMA/warp    5.67 cyc/HMMA/SM
+acc=16 fma/mma=4 warps/SM= 4:    2.575 ms   11.34 cyc/HMMA/warp    2.84 cyc/HMMA/SM
+acc=16 fma/mma=4 warps/SM= 8:    4.997 ms   22.02 cyc/HMMA/warp    2.75 cyc/HMMA/SM
+acc=16 fma/mma=4 warps/SM=16:   10.442 ms   46.01 cyc/HMMA/warp    2.88 cyc/HMMA/SM
+acc=16 fma/mma=8 warps/SM= 1:    4.426 ms   19.50 cyc/HMMA/warp   19.50 cyc/HMMA/SM
+acc=16 fma/mma=8 warps/SM= 2:    4.425 ms   19.50 cyc/HMMA/warp    9.75 cyc/HMMA/SM
+acc=16 fma/mma=8 warps/SM= 4:    4.427 ms   19.51 cyc/HMMA/warp    4.88 cyc/HMMA/SM
+acc=16 fma/mma=8 warps/SM= 8:    8.747 ms   38.54 cyc/HMMA/warp    4.82 cyc/HMMA/SM
+acc=16 fma/mma=8 warps/SM=16:   17.736 ms   78.15 cyc/HMMA/warp    4.88 cyc/HMMA/SM
+== op_rate
+FFMA                   warps/SM= 1:    0.498 ms    2.19 cyc/iter-slot/warp    8.77 cyc per slot per SMSP-pair(=x4/w)
+FFMA                   warps/SM= 4:    0.498 ms    2.19 cyc/iter-slot/warp    2.19 cyc per slot per SMSP-pair(=x4/w)
+FFMA                   warps/SM= 8:    0.918 ms    4.05 cyc/iter-slot/warp    2.02 cyc per slot per SMSP-pair(=x4/w)
+FFMA                   warps/SM=16:    1.834 ms    8.08 cyc/iter-slot/warp    2.02 cyc per slot per SMSP-pair(=x4/w)
+int x3                 warps/SM= 1:    1.420 ms    6.26 cyc/iter-slot/warp   25.03 cyc per slot per SMSP-pair(=x4/w)
+int x3                 warps/SM= 4:    1.421 ms    6.26 cyc/iter-slot/warp    6.26 cyc per slot per SMSP-pair(=x4/w)
+int x3                 warps/SM= 8:    2.773 ms   12.22 cyc/iter-slot/warp    6.11 cyc per slot per SMSP-pair(=x4/w)
+int x3                 warps/SM=16:    5.543 ms   24.43 cyc/iter-slot/warp    6.11 cyc per slot per SMSP-pair(=x4/w)
+EX2                    warps/SM= 1:    1.872 ms    8.25 cyc/iter-slot/warp   32.99 cyc per slot per SMSP-pair(=x4/w)
+EX2                    warps/SM= 4:    1.872 ms    8.25 cyc/iter-slot/warp    8.25 cyc per slot per SMSP-pair(=x4/w)
+EX2                    warps/SM= 8:    3.657 ms   16.12 cyc/iter-slot/warp    8.06 cyc per slot per SMSP-pair(=x4/w)
+EX2                    warps/SM=16:    7.300 ms   32.17 cyc/iter-slot/warp    8.04 cyc per slot per SMSP-pair(=x4/w)
+LDSM+4int              warps/SM= 1:    8.024 ms   35.36 cyc/iter-slot/warp  141.42 cyc per slot per SMSP-pair(=x4/w)
+LDSM+4int              warps/SM= 4:    8.046 ms   35.45 cyc/iter-slot/warp   35.45 cyc per slot per SMSP-pair(=x4/w)
+LDSM+4int              warps/SM= 8:    8.791 ms   38.74 cyc/iter-slot/warp   19.37 cyc per slot per SMSP-pair(=x4/w)
+LDSM+4int              warps/SM=16:   14.793 ms   65.18 cyc/iter-slot/warp   16.30 cyc per slot per SMSP-pair(=x4/w)
+F2FP+shl               warps/SM= 1:    0.604 ms    2.66 cyc/iter-slot/warp   10.65 cyc per slot per SMSP-pair(=x4/w)
+F2FP+shl               warps/SM= 4:    0.605 ms    2.66 cyc/iter-slot/warp    2.66 cyc per slot per SMSP-pair(=x4/w)
+F2FP+shl               warps/SM= 8:    1.139 ms    5.02 cyc/iter-slot/warp    2.51 cyc per slot per SMSP-pair(=x4/w)
+F2FP+shl               warps/SM=16:    2.273 ms   10.02 cyc/iter-slot/warp    2.50 cyc per slot per SMSP-pair(=x4/w)
+FMNMX+mul              warps/SM= 1:    0.508 ms    2.24 cyc/iter-slot/warp    8.96 cyc per slot per SMSP-pair(=x4/w)
+FMNMX+mul              warps/SM= 4:    0.509 ms    2.24 cyc/iter-slot/warp    2.24 cyc per slot per SMSP-pair(=x4/w)
+FMNMX+mul              warps/SM= 8:    0.951 ms    4.19 cyc/iter-slot/warp    2.09 cyc per slot per SMSP-pair(=x4/w)
+FMNMX+mul              warps/SM=16:    1.888 ms    8.32 cyc/iter-slot/warp    2.08 cyc per slot per SMSP-pair(=x4/w)
+HMMA                   warps/SM= 1:    1.852 ms    8.16 cyc/iter-slot/warp   32.63 cyc per slot per SMSP-pair(=x4/w)
+HMMA                   warps/SM= 4:    1.853 ms    8.16 cyc/iter-slot/warp    8.16 cyc per slot per SMSP-pair(=x4/w)
+HMMA                   warps/SM= 8:    3.678 ms   16.21 cyc/iter-slot/warp    8.10 cyc per slot per SMSP-pair(=x4/w)
+HMMA                   warps/SM=16:    7.353 ms   32.40 cyc/iter-slot/warp    8.10 cyc per slot per SMSP-pair(=x4/w)
+HMMA+4FFMA+4int        warps/SM= 1:    2.642 ms   11.64 cyc/iter-slot/warp   46.57 cyc per slot per SMSP-pair(=x4/w)
+HMMA+4FFMA+4int        warps/SM= 4:    2.644 ms   11.65 cyc/iter-slot/warp   11.65 cyc per slot per SMSP-pair(=x4/w)
+HMMA+4FFMA+4int        warps/SM= 8:    4.883 ms   21.52 cyc/iter-slot/warp   10.76 cyc per slot per SMSP-pair(=x4/w)
+HMMA+4FFMA+4int        warps/SM=16:    9.876 ms   43.52 cyc/iter-slot/warp   10.88 cyc per slot per SMSP-pair(=x4/w)
+HMMA+8int              warps/SM= 1:    1.931 ms    8.51 cyc/iter-slot/warp   34.03 cyc per slot per SMSP-pair(=x4/w)
+HMMA+8int              warps/SM= 4:    1.931 ms    8.51 cyc/iter-slot/warp    8.51 cyc per slot per SMSP-pair(=x4/w)
+HMMA+8int              warps/SM= 8:    3.770 ms   16.61 cyc/iter-slot/warp    8.31 cyc per slot per SMSP-pair(=x4/w)
+HMMA+8int              warps/SM=16:    7.538 ms   33.21 cyc/iter-slot/warp    8.30 cyc per slot per SMSP-pair(=x4/w)
+HMMA+2LDSM+4FFMA+2int  warps/SM= 1:    5.831 ms   25.69 cyc/iter-slot/warp  102.78 cyc per slot per SMSP-pair(=x4/w)
+HMMA+2LDSM+4FFMA+2int  warps/SM= 4:    7.764 ms   34.21 cyc/iter-slot/warp   34.21 cyc per slot per SMSP-pair(=x4/w)
+HMMA+2LDSM+4FFMA+2int  warps/SM= 8:   15.094 ms   66.51 cyc/iter-slot/warp   33.25 cyc per slot per SMSP-pair(=x4/w)
+HMMA+2LDSM+4FFMA+2int  warps/SM=16:    0.003 ms    0.01 cyc/iter-slot/warp    0.00 cyc per slot per SMSP-pair(=x4/w)
+== lat
+FFMA             warps/SM= 4:    0.942 ms    4.15 cyc per link per warp
+FFMA             warps/SM= 8:    0.946 ms    4.17 cyc per link per warp
+FFMA             warps/SM=16:    1.846 ms    8.13 cyc per link per warp
+EX2+FMUL         warps/SM= 4:    5.263 ms   23.19 cyc per link per warp
+EX2+FMUL         warps/SM= 8:    5.263 ms   23.19 cyc per link per warp
+EX2+FMUL         warps/SM=16:    7.525 ms   33.16 cyc per link per warp
+SHFL+FADD        warps/SM= 4:    6.875 ms   30.29 cyc per link per warp
+SHFL+FADD        warps/SM= 8:    6.877 ms   30.30 cyc per link per warp
+SHFL+FADD        warps/SM=16:    6.885 ms   30.34 cyc per link per warp
+FMNMX+FMUL       warps/SM= 4:    2.306 ms   10.16 cyc per link per warp
+FMNMX+FMUL       warps/SM= 8:    2.317 ms   10.21 cyc per link per warp
+FMNMX+FMUL       warps/SM=16:    2.348 ms   10.35 cyc per link per warp
+F2FP+SHL+FADD    warps/SM= 4:    3.238 ms   14.27 cyc per link per warp
+F2FP+SHL+FADD    warps/SM= 8:    3.252 ms   14.33 cyc per link per warp
+F2FP+SHL+FADD    warps/SM=16:    3.684 ms   16.23 cyc per link per warp
+FADD             warps/SM= 4:    0.943 ms    4.15 cyc per link per warp
+FADD             warps/SM= 8:    0.946 ms    4.17 cyc per link per warp
+FADD             warps/SM=16:    1.845 ms    8.13 cyc per link per warp
+int x2-3         warps/SM= 4:    2.767 ms   12.19 cyc per link per warp
+int x2-3         warps/SM= 8:    2.796 ms   12.32 cyc per link per warp
+int x2-3         warps/SM=16:    5.584 ms   24.60 cyc per link per warp
+STS+LDS+FADD     warps/SM= 4:    7.777 ms   34.27 cyc per link per warp
+STS+LDS+FADD     warps/SM= 8:    7.784 ms   34.30 cyc per link per warp
+STS+LDS+FADD     warps/SM=16:    7.917 ms   34.88 cyc per link per warp
+BAR+FADD         warps/SM= 4:    6.652 ms   29.31 cyc per link per warp
+BAR+FADD         warps/SM= 8:    8.474 ms   37.34 cyc per link per warp
+BAR+FADD         warps/SM=16:   12.119 ms   53.40 cyc per link per warp
+== smem_rate
+SMEM ldmatrix.x4                        warps/SM= 4:   16.25 cycles per load per warp,  16.25 per load per sub-partition
+SMEM ldmatrix.x4                        warps/SM= 8:   32.26 cycles per load per warp,  16.13 per load per sub-partition
+SMEM ldmatrix.x4                        warps/SM=16:   64.35 cycles per load per warp,  16.09 per load per sub-partition
+SMEM ld.shared 16 B                     warps/SM= 4:    2.50 cycles per load per warp,   2.50 per load per sub-partition
+SMEM ld.shared 16 B                     warps/SM= 8:    2.97 cycles per load per warp,   1.48 per load per sub-partition
+SMEM ld.shared 16 B                     warps/SM=16:    5.54 cycles per load per warp,   1.38 per load per sub-partition
+SMEM ldmatrix.x4 + 1 HMMA               warps/SM= 4:   16.38 cycles per load per warp,  16.38 per load per sub-partition
+SMEM ldmatrix.x4 + 1 HMMA               warps/SM= 8:   32.38 cycles per load per warp,  16.19 per load per sub-partition
+SMEM ldmatrix.x4 + 1 HMMA               warps/SM=16:   65.00 cycles per load per warp,  16.25 per load per sub-partition
+SMEM ld.shared 16 B + 1 HMMA            warps/SM= 4:    8.39 cycles per load per warp,   8.39 per load per sub-partition
+SMEM ld.shared 16 B + 1 HMMA            warps/SM= 8:   16.21 cycles per load per warp,   8.11 per load per sub-partition
+SMEM ld.shared 16 B + 1 HMMA            warps/SM=16:   32.33 cycles per load per warp,   8.08 per load per sub-partition
+SMEM ldmatrix.x4 + 2 HMMA               warps/SM= 4:   16.66 cycles per load per warp,  16.66 per load per sub-partition
+SMEM ldmatrix.x4 + 2 HMMA               warps/SM= 8:   32.96 cycles per load per warp,  16.48 per load per sub-partition
+SMEM ldmatrix.x4 + 2 HMMA               warps/SM=16:   67.66 cycles per load per warp,  16.91 per load per sub-partition
+SMEM ld.shared 16 B + 2 HMMA            warps/SM= 4:   16.71 cycles per load per warp,  16.71 per load per sub-partition
+SMEM ld.shared 16 B + 2 HMMA            warps/SM= 8:   32.67 cycles per load per warp,  16.34 per load per sub-partition
+SMEM ld.shared 16 B + 2 HMMA            warps/SM=16:   65.15 cycles per load per warp,  16.29 per load per sub-partition
+NVIDIA A800-SXM4-80GB, 1410 MHz
