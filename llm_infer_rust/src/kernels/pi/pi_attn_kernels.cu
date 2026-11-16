@@ -112,10 +112,15 @@ inline bool prefill_tail_splits(int cc_major, int cc_minor) {
 // level streams them from DRAM again (4-9% more time), and split launches (short extends over long prefixes,
 // whose CTAs all run about as long) measured 1-27% slower. So: compute capability 8.0, one split, and K/V within
 // L2 (archive/ceiling_probes/a800_r5/prefill_order). max_groups: prefill_plan's.
+// Round 6: and only when the new tokens are at least an eighth of the keys. A short extend over a long prefix has
+// CTAs of about one length, so the order has nothing to gain, and it lost: 512 tokens over 8192 (34 MiB of K/V)
+// 9-12% and 256 over 2048 4-9% against ascending, while 1024 over 4096 still gains 3-19%
+// (archive/ceiling_probes/a800_r6, logs/order_extends_A800.log).
 inline bool prefill_longest_first(int cc_major, int cc_minor, int batch, int num_kv_heads, int max_groups, int splits,
-                                  int64_t l2_bytes) {
+                                  int64_t l2_bytes, int max_q_len) {
   const int64_t kv_bytes = (int64_t)batch * max_groups * kGroupKeys * num_kv_heads * kHeadDim * 2 * 2;
-  return cc_major == 8 && cc_minor == 0 && splits == 1 && kv_bytes <= l2_bytes;
+  return cc_major == 8 && cc_minor == 0 && splits == 1 && kv_bytes <= l2_bytes &&
+         (int64_t)max_groups * kGroupKeys <= 8 * (int64_t)max_q_len;
 }
 // Descending: the ascending grid with the row tiles of a (request, kv head) reversed, so that they stay together
 // (each K/V byte still comes from DRAM once) and the launch ends on its shortest CTAs.
@@ -124,8 +129,8 @@ inline bool prefill_descending(int cc_major, int cc_minor, int batch, int splits
   return cc_major == 8 && cc_minor == 0 && splits == 1;
 }
 inline int prefill_order(int cc_major, int cc_minor, int batch, int num_kv_heads, int max_groups, int splits,
-                         int64_t l2_bytes) {
-  if (prefill_longest_first(cc_major, cc_minor, batch, num_kv_heads, max_groups, splits, l2_bytes))
+                         int64_t l2_bytes, int max_q_len) {
+  if (prefill_longest_first(cc_major, cc_minor, batch, num_kv_heads, max_groups, splits, l2_bytes, max_q_len))
     return kPrefillLongestFirst;
   return prefill_descending(cc_major, cc_minor, batch, splits) ? kPrefillDescending : kPrefillAscending;
 }

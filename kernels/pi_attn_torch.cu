@@ -95,7 +95,7 @@ at::Tensor prefill(at::Tensor q, at::Tensor k_cache, at::Tensor v_cache, at::Ten
   cudaDeviceGetAttribute(&l2_bytes, cudaDevAttrL2CacheSize, q.get_device());
   const int order = forced_prefill_order == 1 ? kPrefillAscending : forced_prefill_order == 2 ? kPrefillLongestFirst
                   : forced_prefill_order == 3 ? kPrefillDescending
-                  : prefill_order(major, minor, batch, hkv, max_groups, splits, l2_bytes);
+                  : prefill_order(major, minor, batch, hkv, max_groups, splits, l2_bytes, (int)max_q_len);
   dim3 grid = prefill_grid(tiles, hkv, batch * splits, order);
   const bool plain = forced_prefill_loop ? forced_prefill_loop == 2 : prefill_plain_loop(major, minor, (int)max_q_len, splits);
 #ifdef PI_SM90A

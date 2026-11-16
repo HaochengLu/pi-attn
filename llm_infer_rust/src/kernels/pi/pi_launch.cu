@@ -237,7 +237,8 @@ const char* pi_attn_prefill(const void* q, const void* k_cache, const void* v_ca
   int tiles = (int)(((int64_t)max_q_len * group + warps * 16 - 1) / (warps * 16)), threads = warps * 32;
   const int order = info.prefill_order == 1 ? kPrefillAscending : info.prefill_order == 2 ? kPrefillLongestFirst
                   : info.prefill_order == 3 ? kPrefillDescending
-                  : prefill_order(info.cc_major, info.cc_minor, batch, num_kv_heads, max_groups, splits, info.l2_bytes);
+                  : prefill_order(info.cc_major, info.cc_minor, batch, num_kv_heads, max_groups, splits, info.l2_bytes,
+                                  max_q_len);
   dim3 grid = prefill_grid(tiles, num_kv_heads, batch * splits, order);
 #ifdef PI_SM90A
   if (info.prefill_wgmma) grid = dim3(tiles, num_kv_heads, batch * splits);  // prefill90_kernel
