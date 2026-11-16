@@ -1,0 +1,10 @@
+# fin4.log
+seed 1 regime nonfinite_v: 20400 launch pairs so far, 0 mismatches
+EQ prefill repo vs probe (variants 0-4, splits 0/1/2/3/7, grid orders 1-3 and both loop variants of the new build, 8 input regimes, 17 shapes, 2 seeds): 20400 launch pairs, each also against the reference build's first launch of the shape, 0 mismatches
+PRE hq=16 b= 1 q=   64 prefix=    0: fi      9.7 | base     10.8 (1.11, 1.000) | a10ns     10.7 (1.10, 0.991) | a10     11.3 (1.16, 1.046) | fin     10.7 (1.10, 0.991) | 1410 MHz
+PRE hq=16 b= 4 q=  512 prefix=    0: fi     55.8 | base     64.0 (1.15, 1.000) | a10ns     62.8 (1.13, 0.981) | a10     62.6 (1.12, 0.978) | fin     62.8 (1.13, 0.981) | 1410 MHz
+PRE hq=16 b= 1 q= 2048 prefix=    0: fi    171.3 | base    159.0 (0.93, 1.000) | a10ns    155.1 (0.91, 0.975) | a10    152.1 (0.89, 0.957) | fin    152.1 (0.89, 0.957) | 1410 MHz
+PRE hq=16 b=32 q=  512 prefix=    0: fi    295.5 | base    450.1 (1.52, 1.000) | a10ns    437.9 (1.48, 0.973) | a10    434.5 (1.47, 0.965) | fin    437.9 (1.48, 0.973) | 1410 MHz
+PRE hq=16 b=32 q= 2048 prefix=    0: fi   3224.8 | base   4575.1 (1.42, 1.000) | a10ns   4491.3 (1.39, 0.982) | a10   4402.3 (1.37, 0.962) | fin   4401.8 (1.36, 0.962) | 1395 MHz
+PRE hq=16 b= 1 q=16384 prefix=    0: fi   6043.0 | base   8095.6 (1.34, 1.000) | a10ns   7617.6 (1.26, 0.941) | a10   7402.6 (1.22, 0.914) | fin   7411.3 (1.23, 0.915) | 1380 MHz
+PRE hq=16 b= 1 q=  128 prefix= 4096: fi     51.1 | base     65.8 (1.29, 1.000) | a10ns     66.7 (1.31, 1.014) | a10     68.5 (1.34, 1.041) | fin     67.1 (1.31, 1.020) | 1410 MHz

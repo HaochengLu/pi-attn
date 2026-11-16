@@ -1,0 +1,11 @@
+baseline: fails=0 [] nan_or_negzero=False
+V all -0: fails=0 [] nan_or_negzero=False
+V half -0 half negative: fails=0 [] nan_or_negzero=False
+huge scale 40 (ftz/alpha=0): fails=0 [] nan_or_negzero=False
+huge scale 40, L=4500: fails=0 [] nan_or_negzero=False
+zero Q (max ties): fails=0 [] nan_or_negzero=False
+page 64: fails=0 [] nan_or_negzero=False
+page 1: fails=0 [] nan_or_negzero=False
+hq=16 hkv=1 (group 16): fails=0 [] nan_or_negzero=False
+group 32 rejected: GQA group size must be <= 16 (one 16-row MMA group per kv head)
+DIRECTED FAILURES: 0

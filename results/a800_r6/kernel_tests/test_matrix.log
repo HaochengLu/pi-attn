@@ -1,0 +1,18 @@
+L=4096 hq=16 hkv=8: PI err mean 8.084e-05 max 7.901e-03 | FlashInfer err mean 8.296e-05 max 7.901e-03 | bf16(exact) err mean 5.515e-05
+hq=16 hkv=8 qscale=1.0: failures 0 | err vs fp64 mean 8.08e-05 max 7.90e-03 []
+L=4096 hq=16 hkv=8: PI err mean 7.466e-04 max 1.458e-02 | FlashInfer err mean 7.709e-04 max 1.458e-02 | bf16(exact) err mean 7.258e-04
+hq=16 hkv=8 qscale=6.0: failures 0 | err vs fp64 mean 7.47e-04 max 1.46e-02 []
+L=4096 hq=32 hkv=8: PI err mean 8.066e-05 max 8.708e-03 | FlashInfer err mean 8.278e-05 max 8.708e-03 | bf16(exact) err mean 5.501e-05
+hq=32 hkv=8 qscale=1.0: failures 0 | err vs fp64 mean 8.07e-05 max 8.71e-03 []
+L=4096 hq=32 hkv=8: PI err mean 7.467e-04 max 1.561e-02 | FlashInfer err mean 7.707e-04 max 1.561e-02 | bf16(exact) err mean 7.260e-04
+hq=32 hkv=8 qscale=6.0: failures 0 | err vs fp64 mean 7.47e-04 max 1.56e-02 []
+L=4096 hq=8 hkv=8: PI err mean 8.122e-05 max 8.571e-03 | FlashInfer err mean 8.330e-05 max 8.571e-03 | bf16(exact) err mean 5.566e-05
+hq=8 hkv=8 qscale=1.0: failures 0 | err vs fp64 mean 8.12e-05 max 8.57e-03 []
+L=4096 hq=8 hkv=8: PI err mean 7.455e-04 max 1.397e-02 | FlashInfer err mean 7.702e-04 max 1.397e-02 | bf16(exact) err mean 7.247e-04
+hq=8 hkv=8 qscale=6.0: failures 0 | err vs fp64 mean 7.45e-04 max 1.40e-02 []
+L=4096 hq=32 hkv=4: PI err mean 8.123e-05 max 8.757e-03 | FlashInfer err mean 8.334e-05 max 8.757e-03 | bf16(exact) err mean 5.573e-05
+hq=32 hkv=4 qscale=1.0: failures 0 | err vs fp64 mean 8.12e-05 max 8.76e-03 []
+L=4096 hq=32 hkv=4: PI err mean 7.470e-04 max 1.589e-02 | FlashInfer err mean 7.718e-04 max 1.589e-02 | bf16(exact) err mean 7.265e-04
+hq=32 hkv=4 qscale=6.0: failures 0 | err vs fp64 mean 7.47e-04 max 1.59e-02 []
+long ctx 32768/20001: failures 0 []
+TOTAL FAILURES: 0

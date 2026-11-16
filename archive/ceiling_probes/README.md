@@ -199,3 +199,11 @@ streams a different copy from a >= 600 MB pool).
     - no reduction split for narrow long-K GEMMs (stream-K over segments and tile pairs
       narrows it; 1.7B down at M = 8 is 1.16x cuBLAS).
     `a800/README.md`.
+23. `a800_r5/`: A800 round 5. Component ablation at 8 requests, the longest-first prefill grid, the 16-warp decode
+    kernel and the mma operand swap. `a800_r5/README.md`.
+24. `a800_r6/`: A800 round 6, the long-prompt and high-concurrency prefill gaps. Both were attention; the
+    high-concurrency one was the prefill launch running the scheduler's decode rows (now the decode kernel's), and a
+    third of the long-prompt one was wave quantisation (now a cut at the last whole wave). What is left of a
+    prefill step is bound by the tensor cores and the scalar pipes together: neither `ldmatrix` nor the 32-key
+    step is the culprit (a 64-key step would buy 1-3%). Rings, three CTAs per SM, partially filled CTAs,
+    fragment staging and in-step branches measured and not shipped. `a800_r6/README.md`.

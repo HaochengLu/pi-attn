@@ -1,45 +1,48 @@
-# A800 round 6: where prefill time goes, three scheduling levers, and what is left (2026-11-15)
+# A800 round 6: where prefill time goes, what scheduling recovers, and what is left (2026-11-16)
 
 One A800-SXM4-80GB (sm_80, 108 SMs of four sub-partitions, 40 MiB L2), driver 535.129.03, CUDA 12.6, starting from
-98aff15. SM clock 1380-1410 MHz under load in every log (the `MHz` column); comparisons are within one process or
-one interleaved session. Hardware counters are not available in the container (`ncu`: ERR_NVGPUCTRPERM), so every
-attribution is a timing ablation, a micro-benchmark, or the compiled SASS. Kernel times are microseconds per call,
-one CUDA graph over a ring of per-layer K/V caches larger than L2 (`bench_attention.timeit`).
+98aff15. SM clock 1380-1410 MHz under load in the kernel logs (the `MHz` column); comparisons are within one
+process or one interleaved session. Hardware counters are not available in the container (`ncu`:
+ERR_NVGPUCTRPERM), so every attribution is a timing ablation, a micro-benchmark, or the compiled SASS. Kernel
+times are microseconds per call, one CUDA graph over a ring of per-layer K/V caches larger than L2
+(`bench_attention.timeit`), unless a section says eager.
 
-The two gaps this round set out to shrink (paper §5.3, `results/a800_r5`): time to first token +11-18% on 16K-30K
-prompts, and prefill-heavy Qwen3-0.6B at 64 requests at -6.4% throughput.
+The two gaps this round set out to shrink (`results/a800_r5`): time to first token +11-18% on 16K-30K prompts, and
+prefill-heavy Qwen3-0.6B at 64 requests at -6.4% throughput. Where they ended: `results/a800_r6/README.md`.
 
 | # | question | answer | shipped |
 |---|---|---|---|
 | 1 | Which half of PI causes the two gaps? | Attention, all of it: with PI attention alone 16K / 30K time to first token is +13.9% / +19.8% and 0.6B 2048/128 c64 is -5.9%; with the PI GEMM alone -1.7% / -1.3% and -0.1%. | - |
 | 2 | What do the engine's prefill-phase batches at 64 requests look like? | One new 2048-token prompt and 58 decode rows (one-token requests). In one prefill launch the decode rows took 464 128-row CTAs for 2 real rows each, beside 14,384 empty CTAs. | the one-token tail of a batch runs through the decode kernel: 742 -> 464 us per layer (FlashInfer 500) |
-| 3 | Why is a long chunk over a long prefix 1.3x FlashInfer? | A third of it is wave quantisation: 256 equal CTAs on 108 SMs run three waves with the third 37% full. | `prefill_wave_head`: the tokens whose CTAs fill whole waves, then the rest as an extend: 0.70-0.97x on every shape the rule cuts |
-| 4 | Grid order when K/V exceed L2? | Descending within a (request, kv head) band: 0.965-1.002x of ascending. | for one-split launches that are not longest-first |
-| 5 | What bounds a 32-key step? | Two units, each about three quarters loaded and imperfectly overlapped: the tensor cores (64 HMMA per warp, 8.1 cycles each per sub-partition) and the scalar pipes (about 320 other instructions per warp, a contract-fixed 177 of them floating point). No single component removed buys more than 20%. | integer and move overhead of the step cut from 588 to about 450 instructions: 3-4% |
-| 6 | Is `ldmatrix` the bottleneck (0.5 per MMA against FlashInfer's 0.31)? | No. Alone it costs 20 cycles per sub-partition, but under two HMMA per load it is hidden; replacing all 32 by 16-byte `ld.shared` (wrong bits) changes the kernel by -0.8% to +2%. | - |
+| 3 | Why is a long chunk over a long prefix 1.3x FlashInfer? | A third of it is wave quantisation: 256 equal CTAs on 108 SMs run three waves with the third 37% full. | `prefill_wave_head`: the tokens whose CTAs fill whole waves, then the rest as an extend: 0.78-0.98x on the shapes the rule cuts |
+| 4 | Grid order when K/V exceed L2, and for short extends? | Descending within a (request, kv head) band: 0.97-1.00x of ascending. Longest-first on a short extend near the L2 size: 4-12% slower than ascending. | descending for one-split launches that are not longest-first; longest-first only when the new tokens are at least an eighth of the keys |
+| 5 | What bounds a 32-key step? | Two units, each about three quarters loaded and imperfectly overlapped: the tensor cores (64 HMMA per warp, 8.1 cycles each per sub-partition) and the scalar pipes (some 320 other instructions per warp, a contract-fixed 177 of them floating point). No single component removed buys more than 20%. | integer and move overhead of the step cut from 588 to about 450 instructions: 3-4% on long launches |
+| 6 | Is `ldmatrix` the bottleneck (0.5 per MMA against FlashInfer's 0.31)? | No. Alone it costs 16 cycles per sub-partition, but beside two HMMA per load nothing; replacing all 32 by 16-byte `ld.shared` (wrong bits) changes the kernel by -0.8% to +2%. | - |
 | 7 | What would a 64-key online step (a contract change) buy? | 1-3% from halving the per-step softmax work; with the barrier and copy cadence it also halves, at most about 6%. | no (report only) |
 
 Not shipped, all bit-identical unless marked: deeper K/V prefetch through rings that reuse the Q tile (0-3% slower),
 a conditional rescale (+4.8% on random scores), a mask fast path inside the step (+1.5-3%), copies split between
-warp groups (+7%), three CTAs per SM (18-40% slower), CTAs with fewer active warps to fit waves (2-6% slower),
-fragment-order staging for `ld.shared` loads (wrong-bits bound: no gain, +3-6% with its staging cost).
+warp groups (+7%), three CTAs per SM (18-40% slower), CTAs with fewer active warps to fit waves (2-6% slower, wrong
+output), fragment-order staging for `ld.shared` loads (wrong-bits bound: no gain, +3-6% with its staging cost), the
+unmasked tile loop on short or split launches (up to 9% slower; shipped as a variant for the launches it helps).
 
-Bits of the shipped kernel against the 98aff15 build (`logs/eq_final_A800.log`):
+Bits of the shipped kernel against the 98aff15 build (`logs/eq_final_A800.log`, `micro/out_A800.log`):
 
-    EQ prefill repo vs probe (variants 0-4, splits 0/1/2/3/7, both grid orders, 8 input regimes, 17 shapes, 2 seeds): 13600 launch pairs, each also against the reference build's first launch of the shape, 0 mismatches
+    EQ prefill repo vs probe (variants 0-4, splits 0/1/2/3/7, grid orders 1-3 and both loop variants of the new build, 8 input regimes, 17 shapes, 2 seeds): 20400 launch pairs, each also against the reference build's first launch of the shape, 0 mismatches
     PACK NVIDIA A800-SXM4-80GB: 4294967296 first operands (each also as the second operand of a hashed pattern), 16777214 NaN inputs: 0 mismatches
 
-The suites, kernel hashes, rollouts and detcheck on the shipped tree are in `results/a800_r6/`.
+(The equality run is of the tree one scheduling commit before the final one; the kernel's device code is the
+same.) The suites, kernel hashes, rollouts and detcheck on the shipped tree are in `results/a800_r6/`.
 
 ## Files
 
 | path | what |
 |---|---|
-| `engine/` | `abl0/` (component ablation on the round-5 engine), `ab1/` (FlashInfer mode, round-5 binary, decode tail only), `c128/` (512/256 at 128 requests three times in one server), `ab2/` (FlashInfer mode, round-5 binary, the shipped engine): per-launch JSON, loadgen logs, SM clocks, `SUMMARY.md` |
-| `scripts/` | `r6_abl.sh`, `r6_abl_sum.py` (engine A/B launcher and summary), `r6_probe_bench.py` (probe builds interleaved in one process), `r6_eq.py` (bit equality of two builds), `r6_nan_diag.py` (#8), `stepcount.py`, `warpsim.py` (SASS of a step: instruction histogram; an in-order single-warp timing model) |
+| `engine/` | per-launch JSON, loadgen logs, SM clocks and `SUMMARY.md` of the engine A/B runs: `abl0/` (component ablation of the round-5 engine), `ab1/` (FlashInfer mode, round-5 binary, decode tail alone), `c128/` (512/256 at 128 requests three times in one server), `ab2/` (the first complete tree), `ab3/`, `ab4/`, `ab5/` (short prompts; `deterministic@base` = the round-5 binary, `@kern` = the round-5 engine with the round-6 kernel) |
+| `scripts/` | `r6_abl.sh`, `r6_abl_sum.py` (engine A/B launcher and summary), `r6_probe_bench.py` (probe builds interleaved in one process), `r6_eq.py` (bit equality of two builds), `r6_eager.py` (eager launches between other kernels), `r6_nan_diag.py` (#8), `stepcount.py`, `warpsim.py` (SASS of a step: instruction histogram; an in-order single-warp timing model) |
 | `probes/` | `ablation_flags_98aff15.diff` (removal flags on the round-5 kernel), `ring_additions_occupancy.diff` (K/V rings, added-instruction flags, three CTAs per SM; against the shipped kernel), `step64_warps_ldshared.diff` (the 64-key-step, active-warp and `ld.shared` probes) |
 | `micro/` | `mma_rate.cu`, `op_rate.cu`, `lat.cu`, `smem_rate.cu` (throughput and latency per instruction kind by warps per SM), `mma_negzero.cu`, `pack_exhaustive.cu`, `run.sh`, `out_A800.log` |
-| `logs/` | one log per probe, named in the sections below |
+| `logs/` | one log per probe, named in the sections below; the columns of a `PRE` line are builds, `(x FlashInfer, x the line's first build)` |
 
 ## 1. Attribution in the engine (`engine/abl0/SUMMARY.md`)
 
@@ -62,7 +65,7 @@ through their prefill kernel. The 0.6B server log at 64 requests alternates `pre
 prefill_tokens=2048` with single-prompt batches. `prefill_kernel`'s grid is dense in (row tile, kv head, request):
 32 row tiles x 8 x 59 = 15,104 CTAs of which 720 work, and each decode row runs every key tile on eight warps for
 its two GQA rows. The decode kernels give a one-token request the same bits (one canonical sequence per row), so
-the engine now runs the trailing one-token requests of a batch through `pi_attn_decode`, on a grid for their longest
+the engine runs the trailing one-token requests of a batch through `pi_attn_decode`, on a grid for their longest
 request instead of the page table's capacity, and the rest through prefill.
 `logs/mixed_batches_A800.log` (us per layer, 16 query heads; the two PI outputs asserted bitwise equal):
 
@@ -79,15 +82,20 @@ request instead of the page table's capacity, and the rest through prefill.
 | 4 x 512 + 4 at 300 | 61.2 | 73.6 (1.20) | 76.1 (1.24) |
 | 1 x 30 + 31 at 600 | 62.5 | 109.6 (1.75) | 66.7 (1.07) |
 
-The one loss (four rows of 300 keys beside four prompts, +3%) is the second launch; the rule has no threshold.
-The shipped tree's numbers, with the tail's grid sized as the engine sizes it: `results/a800_r6/kernels/mixed_batch.txt`.
+In the engine a second eager launch costs more than in a graph: with every tail in its own launch, 0.6B 512/256
+at 8 requests (four prompts with up to four decode rows per batch) took 35.1-35.4 ms to first token against
+34.4-34.6 with the tail left in the prefill launch (`logs/short_prompt_ttft_A800.log`, `new` against
+`notailwave`). The shipped rule (`decode_tail`) therefore takes the tail when it has eight or more requests, or
+leaves a single prompt of at least 1024 tokens (which then runs alone, on the longest-first grid or cut by #3), or
+nothing. The shipped tree's numbers: `results/a800_r6/kernels/mixed_batch.txt`.
 
-## 3. Wave split
+## 3. Wave cut
 
 A 2048-token chunk of a 16-head model is 256 128-row CTAs, one per SM. Over a long prefix they all run about as
-long, so the launch is three waves of 108, 108 and 40. `logs/wave_heads_A800.log` times the launch against every
-cut into a head whose CTAs are a whole number of waves or half-waves and the rest as an extend (which the planner
-splits over fold groups); the split is asserted bitwise equal. One launch = 1.000:
+long, so the launch is three waves of 108, 108 and 40. `logs/wave_two_launches_A800.log` has the first measurement
+(2048 tokens as 1728 + 320); `logs/wave_heads_A800.log` times the launch against every cut into a head whose CTAs
+are a whole number of waves or half-waves and the rest as an extend (which the planner splits over fold groups),
+the split asserted bitwise equal. One launch = 1.000:
 
 | chunk + prefix, heads | CTAs (waves) | whole-wave head | other heads |
 |---|---|---|---|
@@ -106,20 +114,27 @@ splits over fold groups); the split is asserted bitwise equal. One launch = 1.00
 | 4096 + 12288, 32 | 1024 (9.48) | 3872: 1.031 | 0.991-1.105 |
 | 8192 + 0, 16 | 1024 (9.48) | 7744: 1.077 | 1.008-1.129 |
 
-The rule (`prefill_wave_head`): one request, a prefix at least as long as the chunk, one to five waves, a last wave
-at most half full; cut at the last whole wave. It cuts ten of the 34 shapes of the log's two head counts, all of
-them faster (0.70-0.97x), and leaves the 24 others, of which three would have gained (1024 + 7168 and 1280 + 8192 with
-16 heads, 512 + 8192 with 32, all cut by the shipped rule after this log: the first version required 128-row CTAs).
-A 32-head model's 2048-token chunk (512 CTAs, a last wave of 80) is not cut: every head measured slower.
+The rule that this log's `rule` column used fired on any launch of 128-row CTAs with a last wave at most half
+full. The shipped rule (`prefill_wave_head`) is what the table shows: one request, a prefix at least as long as the
+chunk, one to five waves counted in 128-row CTAs, a last wave at most half full; cut at the last whole wave. On the
+shipped tree it cuts twelve of the 34 shapes, all faster (`results/a800_r6/kernels/wave_split.txt`). A 32-head
+model's 2048-token chunk (512 CTAs, a last wave of 80) is not cut: every head measured slower.
 
 Partially filled SMs do not help: an eight-warp CTA with seven, six or five warps computing takes 1.02-1.06x the
-full CTA's time, not less (`logs/step64_warps_A800.log`), so CTAs of fewer rows to fill the waves were not built.
+full CTA's time, not less (`logs/step64_warps_A800.log`, `w7` / `w6` / `w5`), so CTAs of fewer rows to fill the
+waves were not built.
 
 ## 4. Grid order
 
-`results/a800_r6/kernels/prefill_order.txt` has the shipped rule; the probe (`logs/order_A800.log`, 32 shapes x 2 head
-counts, the shipped kernel): descending / ascending 0.965-1.002x wherever the rule does not take longest-first and
-the launch is one split (1 x 16384: 0.965, 1 x 30000: 0.978, 4 x 2048 + 2048: 0.979, 64 x 2048: 1.001).
+`logs/order_A800.log` (32 shapes x 2 head counts, an early build of the round-6 kernel): descending / ascending
+0.965-1.002x wherever the launch is one split and not longest-first (1 x 16384: 0.965, 1 x 30000: 0.978,
+4 x 2048 + 2048: 0.979, 64 x 2048: 1.001).
+
+The first complete run of `results/a800_r6` then showed the round-5 longest-first rule losing on a short extend
+with K/V near the L2 size: 512 tokens over 8192 keys with 32 heads (34 MiB), 838.7 us longest-first against 751.7
+ascending and 735.4 descending. `logs/order_extends_A800.log`: longest-first / ascending is 1.08-1.12 there, 1.04-1.11
+for 256 over 2048, 0.99-1.00 for 512 over 4096, and 0.81-0.97 for 1024 over 4096. The rule now takes longest-first
+only when the new tokens are at least an eighth of the keys; the second half of the log is the rule after that.
 
 The order is one more kernel argument. Passed as a second flag with a select on `gridDim` it made the compiled step
 loop 2-3% slower on every shape (`logs/codegen_A800.log`: `fin`, `alt4`, `alt7` against `o3nr`, the same step
@@ -128,15 +143,17 @@ without the argument); as one int that the CTA subtracts from its x index (`pref
 
 ## 5. What a step costs
 
-The 128-row CTA runs a 32-key step in about 2,180 cycles in steady state (fit over 32 x 1024 and 32 x 2048:
-0.0143 us per CTA step and 0.086 us per CTA on 108 SMs; `logs/fit_A800.log`); a 64-row CTA alone on an SM, one warp
-per sub-partition, still needs 1,780 (1,440 without loads and barrier), and two per SM 2,385 (`logs/lone_A800.log`).
+The 128-row CTA runs a 32-key step in about 2,180 cycles in steady state on the round-5 kernel (fit over 32 x 1024
+and 32 x 2048: 0.0143 us per CTA step and 0.086 us per CTA on 108 SMs; `logs/fit_A800.log`); a 64-row CTA alone on
+an SM, one warp per sub-partition, still needs 1,780 (1,440 without loads and barrier), and two per SM 2,385
+(`logs/lone_A800.log`).
 
 Micro-benchmarks (`micro/out_A800.log`), cycles per instruction per sub-partition once two or more warps share it:
-HMMA m16n8k16 8.1 (latency 31), FFMA or FADD 2.0 (latency 4), EX2 8.1 (19), `ldmatrix.x4` 20, `ld.shared` of 16
-bytes 1.4-2.5, SHFL latency 26; `ldmatrix.x4` with two HMMA per load 16.4, the two HMMA alone 16.2.
+HMMA m16n8k16 8.1 (latency 31), FFMA or FADD 2.0 (latency 4), EX2 8.1 (19), `ldmatrix.x4` 16, `ld.shared` of 16
+bytes 1.4-2.5, SHFL latency 26; `ldmatrix.x4` with two HMMA per load 16.5, the two HMMA with `ld.shared` 16.3.
 
-Removal (wrong bits; `logs/ablation_removal_A800.log`, `logs/skeleton_A800.log`), time against the round-5 kernel:
+Removal (wrong bits; `logs/ablation_removal_A800.log`, `logs/fit_A800.log`, `logs/skeleton_A800.log`), time against the
+round-5 kernel:
 
 | removed | 1 x 8192 | 1 x 16384 | 32 x 512 | 32 x 2048 |
 |---|---|---|---|---|
@@ -151,31 +168,44 @@ Removal (wrong bits; `logs/ablation_removal_A800.log`, `logs/skeleton_A800.log`)
 | all of the above (mask, max, shuffles, sums left) | | | | 0.56 |
 
 The parts do not add: either half alone takes three quarters of the time. Added work (`logs/ablation_addition_A800.log`,
-per step and warp, against the shipped step): 16 `ldmatrix` consumed at once +24%, 16 HMMA +16%, 64 FFMA +9%,
-128 integer instructions +12%, 16 EX2 +1.4%, 4 SHFL +1.2%.
+per step and warp, against the step with the unmasked loop): 16 `ldmatrix` consumed at once +20-24%, 16 HMMA
++15-16%, 64 FFMA +8-9%, 128 integer instructions +12-19%, 16 EX2 +1.4%, 4 SHFL +1.2-2.2%.
 
 The compiled step of the round-5 kernel was 588 instructions on a copying warp, 283 of them integer arithmetic,
 moves and branches: each tile copy re-formed its swizzled addresses (about 45 instructions), the mask cost four
-per element, and P was rounded twice. The shipped step is 448-454 (`scripts/stepcount.py`): addresses formed once
-per thread, tiles every row of the warp sees in a loop of their own, one rounding per pair. 0.96-0.97x on every
-shape (`logs/step_variants_A800.log`: `o2` against `base`; `o2ns` without the loop split, `o2np` without the pack).
+per element, and P was rounded twice. With addresses formed once per thread, one rounding per pair and the tiles
+every row of the warp sees in a loop of their own the step is 448-454 (`scripts/stepcount.py`):
+`logs/step_variants_A800.log`, `o2` against `base` 0.96-0.97x (`o2ns` without the second loop, `o2np` without the
+pack). Skipping the copies of tiles past the CTA's range instead of zero-filling them took another 1.5-2.5% off
+long launches (`logs/codegen_A800.log`, `alt9`).
+
+The second loop is not free: `logs/loop_variants_A800.log` (`a10` with it, `a10ns` without): 0.966-0.986x on
+one-split launches of 2048 tokens or more and on 8 x 1024, 0.985-1.015x at 1024 tokens, 1.01-1.05x at 64-256
+tokens, up to 1.09x on 16 x 128 and 1.02-1.04x on split extends. It is a template parameter of the kernel, and
+`prefill_plain_loop` takes it for one-split launches of at least 1024 tokens.
 
 A branch inside the step is not the same thing as a second loop: with the mask fast path as an `if`, the compiler
-emits the 32 QK MMAs back to back and the softmax after the join (`logs/first_attempt_A800.log`, `o_mask`: +1.5-3%).
+emits the 32 QK MMAs back to back and the softmax after the join (`logs/first_attempt_A800.log`, `o_mask`: +1.5-3%;
+`o_split`, the copies shared between warp groups: +7%).
+
+Rings (`logs/rings_A800.log`, `o3` against `o3nr`): K and V in three- or four-slot rings that take over the Q tile
+once Q is in registers, each tile issued two or three steps ahead: 0-3% slower. Three CTAs per SM
+(`logs/three_ctas_per_sm_A800.log`, the non-QREG kernel under `__launch_bounds__(128, 3)` with the totals in local
+memory): 1.18-1.40x.
 
 ## 6. ldmatrix
 
 Two fits said `ldmatrix` (0.5 per MMA; FlashInfer's 32-row warps need 0.31) explains the gap to FlashInfer. The
 probe says no: `logs/ldshared_A800.log` replaces every K and V `ldmatrix` of the step by a 16-byte `ld.shared`
 (garbage fragments): 0.992-1.021x; with the four `ldmatrix` and four stores per warp that a fragment-order staging
-stage would add, 1.026-1.065x. Under two MMAs per load the tensor cores, not the load, set the pace.
+stage would add, 1.026-1.065x. Beside two MMAs per load the tensor cores, not the load, set the pace.
 
 ## 7. A 64-key step
 
 `probes/step64_warps_ldshared.diff`, `PROBE_STEP64` (wrong bits): every second tile runs without the row-max
 exchange, the scale, the rescale of o and the cross-lane sum, which is what the second half of a 64-key step would
 still cost. 1 x 16384: 0.988, 32 x 2048: 0.990, 2048 + 14336: 0.988, 104 equal CTAs over 8192 keys: 0.969
-(`logs/step64_warps_A800.log`). The probe keeps a barrier and a copy per 32 keys; removing the barrier outright
+(`logs/step64_warps_A800.log`, `s64`). The probe keeps a barrier and a copy per 32 keys; removing the barrier outright
 was worth 2% (#5), so a 64-key step is worth about 1-3% and at most about 6% of prefill kernel time, i.e. at most
 about two points of the long-prompt time to first token. It would change every attention bit.
 
@@ -184,14 +214,36 @@ about two points of the long-prompt time to first token. It would change every a
 `scripts/r6_nan_diag.py`: with +-inf or NaN injected into V (2% of the elements), the 64-row and the 128-row
 prefill variants of 98aff15 disagree on 93-388 output elements of early tokens (finite in one, NaN in the other).
 A masked key has P = 0, and 0 x inf is NaN in the PV MMA, so a row's output depends on which later keys share its
-CTA. With finite K/V (0 x finite = 0, added to an accumulator that is never -0: `mma_negzero.cu`, 0 of 2.7e10) the
-masked keys change nothing, which is what the contract and every test assume. Not changed here; the guarantee
-should be read as one for finite K and V.
+CTA. With finite K/V (0 x finite = 0, added to an accumulator that is never -0: `mma_negzero.cu`, 0 of 2.7e10
+outputs) the masked keys change nothing, which is what the contract and every test assume. Not changed here; the
+guarantee should be read as one for finite K and V.
+
+## 9. Short prompts
+
+The first complete run of the round-6 tree had batch-1 time to first token on 64-token prompts 0.2-0.3 ms above
+round 5 on every model. Two causes were found and removed, and one suspect cleared:
+
+- The unmasked tile loop on short launches. `logs/loop_variants_A800.log`: 1 x 64 at 11.3 us per layer with it
+  against 10.7 without and 10.8 for the round-5 kernel; in the engine the round-5 engine with that kernel was 0.14 ms
+  slower to the first token than the round-5 binary (`logs/short_prompt_ttft_A800.log`, `kern` against `base`). It
+  became the per-launch variant of #5. Zero-filling the tiles past a CTA's range, which the first version did
+  instead of skipping their copies, was removed at the same time.
+- The decode tail of short batches (#2).
+- Not the tensor views. The first version made five tensor views per layer on the host; replacing them by row
+  offsets and views made once per batch did not move the number (`engine/ab3/`), but stayed.
+
+`logs/eager_A800.log` (`scripts/r6_eager.py`): eager launches with a GEMM between them, as the engine issues them.
+
+What is left is not a difference between the trees: `engine/ab5/`, the round-5 binary, the round-5 engine with the
+shipped kernel and the shipped tree interleaved, three launches, 64/256 at batch 1 twice per server, in the
+long-context and in the matrix server configuration. The first pass takes 6.5-6.8 ms in all three (FlashInfer mode
+5.7-5.9), the second 6.3-6.4 (6.0-6.1). A server's first workload is 0.3 ms slower in PI mode in every binary, and
+the three binaries are within 0.1-0.2 ms of each other in either pass, in no fixed order.
 
 ## Critic pass
 
 Before calling the kernel bound, an independent review of the round's numbers proposed four untried, bit-identical
-ideas. Chunk alignment to the SM count became the wave split (#3). `ldmatrix` one fragment ahead of its MMAs: the
+ideas. Chunk alignment to the SM count became the wave cut (#3). `ldmatrix` one fragment ahead of its MMAs: the
 compiler already schedules the loads 15-40 instructions early (`scripts/warpsim.py` finds no wait on a load).
 Fragment-order staging: #6. An S-producer warp for 32 rows: not built; its premise was the `ldmatrix` cost that #6
 refutes.

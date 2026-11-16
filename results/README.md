@@ -17,9 +17,12 @@ exception:
 
 `a800_r5/` (see its README) is a later A800 session on the tree with the round-5 class-A scheduling changes
 (a 16-warp decode kernel with the mma operands swapped, chosen per step; longest-first prefill grids): the kernel
-tests, hashes, engine rollouts and detcheck again, the attention benches, and the §5.3 end-to-end stages. The
-paper's §5.3 throughput, component, long-context and high-concurrency numbers, Figure 5 and the attention kernel
-numbers come from `a800_r5/`; everything else in the table below is `a800/`.
+tests, hashes, engine rollouts and detcheck again, the attention benches, and the §5.3 end-to-end stages.
+`a800_r6/` (see its README) is the same again on the tree with the round-6 prefill schedule (the decode rows of a
+prefill-phase batch through the decode kernel, the wave cut of long chunks, descending grids, a leaner step). The
+paper's §5.3 throughput, component, long-context and high-concurrency numbers, Figure 5 and the prefill kernel
+numbers come from `a800_r6/`, the decode kernel numbers from `a800_r5/`; everything else in the table below is
+`a800/`.
 
 `a800/baselines_38c32da_tokens/` keeps the previous A800 run's detcheck table (engine 38c32da,
 SGLang and vLLM 0.11.2, token ids only), which Section 7.1 cites for token-level counts.
@@ -34,7 +37,9 @@ SGLang and vLLM 0.11.2, token ids only), which Section 7.1 cites for token-level
 | §5.1 kernel hashes, A800 vs RTX 4090 D | `xgpu/` | `eval/xgpu_hashes.py`, `eval/xgpu_compare.py` |
 | §5.1 agreement with fp32 | `fp32_agreement/<model>.json` | `eval/fp32_agreement.sh` (`eval/hf_agreement.py`) |
 | §5.2 rollout log-probabilities | `rollout/<model>.json` (report), `rollout/<model>.log`, `rollout/<model>.gen.json` | `eval/rollout.sh` (`eval/rollout_logprobs.py`) |
-| §5.3 throughput matrix, components, long context, high concurrency, attention kernels: current numbers | `../a800_r5/` (`e2e_matrix/`, `e2e_ablation/`, `e2e_extended/`, `e2e_highconc/`, `kernels/`) | `../a800_r5/run_r5.sh` (the scripts below with `PI_RESULTS`) |
+| §5.3 throughput matrix, components, long context, high concurrency, prefill kernels: current numbers | `../a800_r6/` (`e2e_matrix/`, `e2e_ablation/`, `e2e_extended/`, `e2e_highconc/`, `kernels/`) | `../a800_r6/run_r6.sh` (the scripts below with `PI_RESULTS`) |
+| §3, §5.3, Appendix B: decode tail, wave cut, grid order, what bounds a prefill step | `../a800_r6/kernels/{mixed_batch,wave_split,prefill_order}.txt`, `../../archive/ceiling_probes/a800_r6/` | see their READMEs |
+| §5.3 the same before round 6, decode kernels: current numbers | `../a800_r5/` | `../a800_r5/run_r5.sh` |
 | §3, Appendix B: class-A decode kernel choice, prefill grid order, mma operand symmetry | `../a800_r5/kernels/decode_plan.txt`, `../a800_r5/kernels/prefill_order.txt`, `../../archive/ceiling_probes/a800_r5/` | see their READMEs |
 | §5.3 throughput matrix (before round 5) | `e2e_matrix/SUMMARY.md`, one JSON per launch | `eval/e2e_matrix.sh`, `eval/summarize_matrix.py` |
 | §5.3 components (PI attention vs row-invariant GEMM; before round 5) | `e2e_ablation/SUMMARY.md`, one JSON per launch | `eval/e2e_ablation.sh`, `eval/summarize_ablation.py` |

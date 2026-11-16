@@ -1,0 +1,12 @@
+# o2bench.log
+PRE hq=16 b= 1 q= 8192 prefix=    0: fi   1658.9 | base   2007.1 (1.21, 1.000) | o2   1928.9 (1.16, 0.961) | o2ns   1981.7 (1.19, 0.987) | o2np   1969.0 (1.19, 0.981) | 1395 MHz
+PRE hq=16 b= 1 q=16384 prefix=    0: fi   6050.9 | base   8099.3 (1.34, 1.000) | o2   7764.4 (1.28, 0.959) | o2ns   8029.6 (1.33, 0.991) | o2np   7962.2 (1.32, 0.983) | 1395 MHz
+PRE hq=16 b=32 q=  512 prefix=    0: fi    297.3 | base    451.0 (1.52, 1.000) | o2    436.6 (1.47, 0.968) | o2ns    445.0 (1.50, 0.987) | o2np    445.7 (1.50, 0.988) | 1410 MHz
+PRE hq=16 b=32 q= 2048 prefix=    0: fi   3237.9 | base   4612.1 (1.42, 1.000) | o2   4438.5 (1.37, 0.962) | o2ns   4551.9 (1.41, 0.987) | o2np   4544.9 (1.40, 0.985) | 1395 MHz
+PRE hq=16 b= 8 q= 1024 prefix=    0: fi    259.8 | base    345.4 (1.33, 1.000) | o2    344.5 (1.33, 0.997) | o2ns    348.4 (1.34, 1.009) | o2np    347.9 (1.34, 1.007) | 1395 MHz
+PRE hq=16 b= 1 q= 2048 prefix=    0: fi    170.0 | base    159.1 (0.94, 1.000) | o2    153.7 (0.90, 0.966) | o2ns    158.6 (0.93, 0.997) | o2np    157.9 (0.93, 0.992) | 1410 MHz
+PRE hq=16 b= 1 q=  512 prefix= 8192: fi    256.4 | base    395.1 (1.54, 1.000) | o2    381.8 (1.49, 0.966) | o2ns    390.8 (1.52, 0.989) | o2np    384.4 (1.50, 0.973) | 1395 MHz
+PRE hq=16 b= 1 q=  832 prefix= 7360: fi    358.6 | base    435.3 (1.21, 1.000) | o2    420.7 (1.17, 0.966) | o2ns    428.7 (1.20, 0.985) | o2np    421.0 (1.17, 0.967) | 1395 MHz
+seed 0 regime special30: 5950 launch pairs so far, 0 mismatches
+seed 0 regime nonfinite_v: 6800 launch pairs so far, 0 mismatches
+EQ prefill opt vs probe (variants 0-4, splits 0/1/2/3/7, both grid orders, 8 input regimes, 17 shapes, 1 seeds): 6800 launch pairs, each also against the reference build's first launch of the shape, 0 mismatches

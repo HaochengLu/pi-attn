@@ -1,0 +1,54 @@
+# alt1.log
+PRE hq=16 b= 1 q= 8192 prefix=    0: fi   1656.8 | base   1992.8 (1.20, 1.000) | o3nr   1939.4 (1.17, 0.973) | fin   1971.0 (1.19, 0.989) | alt   1970.9 (1.19, 0.989) | 1380 MHz
+PRE hq=16 b= 1 q=16384 prefix=    0: fi   6047.5 | base   8107.7 (1.34, 1.000) | o3nr   7808.9 (1.29, 0.963) | fin   7704.5 (1.27, 0.950) | alt   7696.4 (1.27, 0.949) | 1395 MHz
+PRE hq=16 b=32 q=  512 prefix=    0: fi    294.4 | base    451.1 (1.53, 1.000) | o3nr    438.0 (1.49, 0.971) | fin    448.9 (1.52, 0.995) | alt    448.8 (1.52, 0.995) | 1410 MHz
+PRE hq=16 b=32 q= 2048 prefix=    0: fi   3240.6 | base   4615.5 (1.42, 1.000) | o3nr   4443.9 (1.37, 0.963) | fin   4552.4 (1.40, 0.986) | alt   4552.2 (1.40, 0.986) | 1395 MHz
+PRE hq=16 b= 1 q= 2048 prefix=14336: fi   1704.3 | base   2262.9 (1.33, 1.000) | o3nr   2171.4 (1.27, 0.960) | fin   2192.7 (1.29, 0.969) | alt   2192.5 (1.29, 0.969) | 1410 MHz
+PRE hq=16 b= 8 q= 1024 prefix=    0: fi    258.8 | base    348.5 (1.35, 1.000) | o3nr    342.5 (1.32, 0.983) | fin    348.8 (1.35, 1.001) | alt    349.6 (1.35, 1.003) | 1395 MHz
+# alt2.log
+PRE hq=16 b= 1 q= 8192 prefix=    0: fi   1654.2 | base   1999.9 (1.21, 1.000) | o3nr   1939.7 (1.17, 0.970) | fin   1971.2 (1.19, 0.986) | alt2   1973.8 (1.19, 0.987) | 1395 MHz
+PRE hq=16 b=32 q=  512 prefix=    0: fi    297.0 | base    453.1 (1.53, 1.000) | o3nr    438.3 (1.48, 0.967) | fin    449.3 (1.51, 0.992) | alt2    448.7 (1.51, 0.990) | 1410 MHz
+PRE hq=16 b=32 q= 2048 prefix=    0: fi   3238.1 | base   4601.5 (1.42, 1.000) | o3nr   4444.0 (1.37, 0.966) | fin   4546.2 (1.40, 0.988) | alt2   4548.6 (1.40, 0.989) | 1395 MHz
+PRE hq=16 b= 8 q= 1024 prefix=    0: fi    259.8 | base    349.5 (1.35, 1.000) | o3nr    342.5 (1.32, 0.980) | fin    349.4 (1.34, 1.000) | alt2    345.9 (1.33, 0.990) | 1395 MHz
+PRE hq=16 b= 1 q= 2048 prefix=14336: fi   1704.8 | base   2265.2 (1.33, 1.000) | o3nr   2174.4 (1.28, 0.960) | fin   2195.4 (1.29, 0.969) | alt2   2197.6 (1.29, 0.970) | 1410 MHz
+# alt3.log
+PRE hq=16 b= 1 q= 8192 prefix=    0: fi   1655.1 | o3nr   1919.5 (1.16, 1.000) | fin   1971.3 (1.19, 1.027) | alt3   1972.9 (1.19, 1.028) | 1395 MHz
+PRE hq=16 b=32 q=  512 prefix=    0: fi    294.7 | o3nr    442.5 (1.50, 1.000) | fin    449.2 (1.52, 1.015) | alt3    448.6 (1.52, 1.014) | 1410 MHz
+PRE hq=16 b=32 q= 2048 prefix=    0: fi   3231.0 | o3nr   4444.3 (1.38, 1.000) | fin   4540.7 (1.41, 1.022) | alt3   4555.1 (1.41, 1.025) | 1395 MHz
+PRE hq=16 b= 8 q= 1024 prefix=    0: fi    259.5 | o3nr    339.1 (1.31, 1.000) | fin    346.2 (1.33, 1.021) | alt3    346.2 (1.33, 1.021) | 1365 MHz
+PRE hq=16 b= 1 q= 2048 prefix=14336: fi   1703.2 | o3nr   2174.0 (1.28, 1.000) | fin   2195.4 (1.29, 1.010) | alt3   2196.9 (1.29, 1.011) | 1410 MHz
+# alt4.log
+PRE hq=16 b= 1 q= 8192 prefix=    0: fi   1657.0 | o3nr   1919.5 (1.16, 1.000) | fin   1980.0 (1.19, 1.032) | alt4   1975.3 (1.19, 1.029) | 1395 MHz
+PRE hq=16 b=32 q=  512 prefix=    0: fi    296.4 | o3nr    441.9 (1.49, 1.000) | fin    449.2 (1.52, 1.017) | alt4    449.4 (1.52, 1.017) | 1410 MHz
+PRE hq=16 b=32 q= 2048 prefix=    0: fi   3234.6 | o3nr   4443.9 (1.37, 1.000) | fin   4546.8 (1.41, 1.023) | alt4   4560.6 (1.41, 1.026) | 1395 MHz
+PRE hq=16 b= 8 q= 1024 prefix=    0: fi    259.5 | o3nr    338.4 (1.30, 1.000) | fin    349.6 (1.35, 1.033) | alt4    345.9 (1.33, 1.022) | 1395 MHz
+# alt567.log
+PRE hq=16 b= 1 q= 8192 prefix=    0: fi   1661.1 | o3nr   1918.7 (1.16, 1.000) | fin   1971.8 (1.19, 1.028) | alt5   1933.9 (1.16, 1.008) | alt6   1927.0 (1.16, 1.004) | alt7   1973.6 (1.19, 1.029) | 1395 MHz
+PRE hq=16 b=32 q=  512 prefix=    0: fi    296.9 | o3nr    442.6 (1.49, 1.000) | fin    448.3 (1.51, 1.013) | alt5    438.2 (1.48, 0.990) | alt6    438.2 (1.48, 0.990) | alt7    448.6 (1.51, 1.014) | 1410 MHz
+PRE hq=16 b=32 q= 2048 prefix=    0: fi   3235.7 | o3nr   4443.4 (1.37, 1.000) | fin   4550.0 (1.41, 1.024) | alt5   4444.2 (1.37, 1.000) | alt6   4443.3 (1.37, 1.000) | alt7   4555.4 (1.41, 1.025) | 1395 MHz
+PRE hq=16 b= 8 q= 1024 prefix=    0: fi    259.1 | o3nr    339.3 (1.31, 1.000) | fin    345.9 (1.34, 1.019) | alt5    342.3 (1.32, 1.009) | alt6    342.4 (1.32, 1.009) | alt7    349.4 (1.35, 1.030) | 1395 MHz
+# alt8.log
+PRE hq=16 b= 1 q= 8192 prefix=    0: fi   1655.0 | o3nr   1919.4 (1.16, 1.000) | fin   1985.4 (1.20, 1.034) | alt8   1934.4 (1.17, 1.008) | 1395 MHz
+PRE hq=16 b=32 q=  512 prefix=    0: fi    296.6 | o3nr    442.6 (1.49, 1.000) | fin    449.3 (1.51, 1.015) | alt8    440.9 (1.49, 0.996) | 1410 MHz
+PRE hq=16 b=32 q= 2048 prefix=    0: fi   3236.7 | o3nr   4443.6 (1.37, 1.000) | fin   4544.0 (1.40, 1.023) | alt8   4463.6 (1.38, 1.005) | 1395 MHz
+PRE hq=16 b= 8 q= 1024 prefix=    0: fi    259.5 | o3nr    338.9 (1.31, 1.000) | fin    345.9 (1.33, 1.021) | alt8    339.8 (1.31, 1.003) | 1380 MHz
+PRE hq=16 b= 1 q=16384 prefix=    0: fi   6041.7 | o3nr   7811.2 (1.29, 1.000) | fin   7703.1 (1.27, 0.986) | alt8   7566.7 (1.25, 0.969) | 1395 MHz
+# alt9.log
+EAGER hq=16 b=1 q=  64: probe    39.1 us per layer (GEMM + prefill) | alt9    33.3 | alt9/probe 0.852 ; delta -5.8 us
+EAGER hq=16 b=1 q=  16: probe    29.7 us per layer (GEMM + prefill) | alt9    29.8 | alt9/probe 1.003 ; delta +0.1 us
+EAGER hq=16 b=1 q= 512: probe    49.8 us per layer (GEMM + prefill) | alt9    49.7 | alt9/probe 0.998 ; delta -0.1 us
+EAGER hq=16 b=4 q= 512: probe    85.1 us per layer (GEMM + prefill) | alt9    83.9 | alt9/probe 0.986 ; delta -1.2 us
+EAGER hq=16 b=1 q=2048: probe   179.6 us per layer (GEMM + prefill) | alt9   173.9 | alt9/probe 0.968 ; delta -5.7 us
+EAGER hq=16 b=8 q= 512: probe   136.6 us per layer (GEMM + prefill) | alt9   134.4 | alt9/probe 0.984 ; delta -2.2 us
+EAGER hq=32 b=1 q=  64: probe    31.7 us per layer (GEMM + prefill) | alt9    33.3 | alt9/probe 1.051 ; delta +1.6 us
+EAGER hq=32 b=1 q=  16: probe    30.1 us per layer (GEMM + prefill) | alt9    30.3 | alt9/probe 1.005 ; delta +0.2 us
+EAGER hq=32 b=1 q= 512: probe    56.8 us per layer (GEMM + prefill) | alt9    57.1 | alt9/probe 1.005 ; delta +0.3 us
+EAGER hq=32 b=4 q= 512: probe   131.4 us per layer (GEMM + prefill) | alt9   133.1 | alt9/probe 1.012 ; delta +1.6 us
+EAGER hq=32 b=1 q=2048: probe   309.6 us per layer (GEMM + prefill) | alt9   298.1 | alt9/probe 0.963 ; delta -11.6 us
+EAGER hq=32 b=8 q= 512: probe   239.1 us per layer (GEMM + prefill) | alt9   237.3 | alt9/probe 0.992 ; delta -1.8 us
+PRE hq=16 b= 1 q= 8192 prefix=    0: fi   1660.1 | base   1991.8 (1.20, 1.000) | fin   1951.5 (1.18, 0.980) | alt9   1903.5 (1.15, 0.956) | 1380 MHz
+PRE hq=16 b=32 q=  512 prefix=    0: fi    296.6 | base    451.1 (1.52, 1.000) | fin    440.8 (1.49, 0.977) | alt9    434.9 (1.47, 0.964) | 1410 MHz
+PRE hq=16 b=32 q= 2048 prefix=    0: fi   3234.9 | base   4575.0 (1.41, 1.000) | fin   4463.6 (1.38, 0.976) | alt9   4400.3 (1.36, 0.962) | 1395 MHz
+PRE hq=16 b= 1 q=16384 prefix=    0: fi   6063.7 | base   8086.7 (1.33, 1.000) | fin   7580.2 (1.25, 0.937) | alt9   7402.4 (1.22, 0.915) | 1380 MHz
+PRE hq=16 b= 1 q=   64 prefix=    0: fi      9.8 | base     10.9 (1.11, 1.000) | fin     11.3 (1.15, 1.037) | alt9     11.4 (1.16, 1.046) | 1410 MHz
+PRE hq=16 b= 4 q=  512 prefix=    0: fi     55.8 | base     64.0 (1.15, 1.000) | fin     63.4 (1.14, 0.991) | alt9     62.6 (1.12, 0.978) | 1410 MHz

@@ -1,0 +1,26 @@
+# wave1.log
+PRE hq=16 b= 1 q= 2048 prefix=28000: fi   3187.5 | fin   4125.8 (1.29, 1.000) | 1410 MHz
+PRE hq=16 b= 1 q= 1728 prefix=28000: fi   2148.0 | fin   2860.8 (1.33, 1.000) | 1395 MHz
+PRE hq=16 b= 1 q=  320 prefix=29728: fi    467.6 | fin    828.3 (1.77, 1.000) | 1380 MHz
+PRE hq=16 b= 1 q= 2048 prefix=14336: fi   1705.9 | fin   2194.6 (1.29, 1.000) | 1410 MHz
+PRE hq=16 b= 1 q= 1728 prefix=14336: fi   1166.1 | fin   1536.4 (1.32, 1.000) | 1395 MHz
+PRE hq=16 b= 1 q=  320 prefix=16064: fi    272.0 | fin    458.0 (1.68, 1.000) | 1395 MHz
+PRE hq=16 b= 1 q= 2048 prefix= 6144: fi    821.7 | fin   1027.8 (1.25, 1.000) | 1410 MHz
+PRE hq=16 b= 1 q= 1728 prefix= 6144: fi    568.6 | fin    706.0 (1.24, 1.000) | 1395 MHz
+PRE hq=16 b= 1 q=  320 prefix= 7872: fi    153.9 | fin    231.2 (1.50, 1.000) | 1395 MHz
+PRE hq=16 b= 1 q= 2048 prefix= 2048: fi    435.3 | fin    449.5 (1.03, 1.000) | 1410 MHz
+PRE hq=16 b= 1 q= 1728 prefix= 2048: fi    280.8 | fin    303.0 (1.08, 1.000) | 1395 MHz
+PRE hq=16 b= 1 q=  320 prefix= 3776: fi     93.8 | fin    115.3 (1.23, 1.000) | 1410 MHz
+PRE hq=32 b= 1 q= 2048 prefix=28000: fi   5281.7 | fin   6961.7 (1.32, 1.000) | 1395 MHz
+PRE hq=32 b= 1 q= 1728 prefix=28000: fi   4265.8 | fin   5644.4 (1.32, 1.000) | 1395 MHz
+PRE hq=32 b= 1 q=  320 prefix=29728: fi   1103.6 | fin   1552.8 (1.41, 1.000) | 1410 MHz
+PRE hq=32 b= 1 q= 2048 prefix=14336: fi   2835.3 | fin   3715.3 (1.31, 1.000) | 1395 MHz
+PRE hq=32 b= 1 q= 1728 prefix=14336: fi   2309.5 | fin   3010.7 (1.30, 1.000) | 1395 MHz
+PRE hq=32 b= 1 q=  320 prefix=16064: fi    626.3 | fin    886.0 (1.41, 1.000) | 1395 MHz
+PRE hq=32 b= 1 q= 2048 prefix= 6144: fi   1382.8 | fin   1763.5 (1.28, 1.000) | 1395 MHz
+PRE hq=32 b= 1 q= 1728 prefix= 6144: fi   1116.8 | fin   1395.0 (1.25, 1.000) | 1395 MHz
+PRE hq=32 b= 1 q=  320 prefix= 7872: fi    343.7 | fin    448.8 (1.31, 1.000) | 1395 MHz
+PRE hq=32 b= 1 q= 2048 prefix= 2048: fi    661.7 | fin    777.3 (1.17, 1.000) | 1395 MHz
+PRE hq=32 b= 1 q= 1728 prefix= 2048: fi    541.4 | fin    599.0 (1.11, 1.000) | 1395 MHz
+PRE hq=32 b= 1 q=  320 prefix= 3776: fi    196.9 | fin    228.5 (1.16, 1.000) | 1395 MHz
+WAVE_DONE

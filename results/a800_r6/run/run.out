@@ -1,0 +1,46 @@
+[05:51] kernel-tests
+xgpu_hashes exit=0
+xgpu_compare exit=0
+HASHES gemm: PI identical 108/108; PI and vendor both identical 108/108; cases in new 108
+HASHES attention: PI identical 5/5; PI and vendor both identical 5/5; cases in new 5
+test_invariance exit=0
+checks failed: 0 []
+test_directed exit=0
+DIRECTED FAILURES: 0
+test_matrix exit=0
+TOTAL FAILURES: 0
+test_gemm exit=0
+INVARIANCE FAILURES: 0 []
+test_mutants exit=0
+UNCAUGHT MUTANTS: 0 []
+[06:04] rust-tests
+cargo test exit=0 | test result: ok. 164 passed; 0 failed; 30 ignored; 0 measured; 0 filtered out; finished in 0.31s test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s test result: ok. 1 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.08s test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s 
+cargo test --ignored pi_ exit=0 | test models::attention::backend::tests::pi_prefill_matches_reference_and_decode_bitwise ... ok test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 193 filtered out; finished in 0.43s 
+[06:11] sm90-build
+engine sm_90a build exit=0 |     Finished `release` profile [optimized] target(s) in 7m 41s
+kernel extension sm_90a build exit=0
+[06:21] engine-bits
+Qwen3-0.6B xgpu_rollout exit=0 | 64 rollouts: 64 with identical token ids; 13063/13063 log-probabilities bitwise equal | ROLLOUTS IDENTICAL TO REFERENCE: True
+Qwen3-0.6B detcheck exit=0 | DETERMINISTIC
+Qwen3-0.6B decode graphs captured for another launch plan: 4
+Qwen3-1.7B xgpu_rollout exit=0 | 64 rollouts: 64 with identical token ids; 14293/14293 log-probabilities bitwise equal | ROLLOUTS IDENTICAL TO REFERENCE: True
+Qwen3-1.7B detcheck exit=0 | DETERMINISTIC
+Qwen3-1.7B decode graphs captured for another launch plan: 4
+Qwen3-4B xgpu_rollout exit=0 | 64 rollouts: 64 with identical token ids; 13975/13975 log-probabilities bitwise equal | ROLLOUTS IDENTICAL TO REFERENCE: True
+Qwen3-4B detcheck exit=0 | DETERMINISTIC
+Qwen3-4B decode graphs captured for another launch plan: 4
+Qwen3-8B xgpu_rollout exit=0 | 64 rollouts: 64 with identical token ids; 14262/14262 log-probabilities bitwise equal | ROLLOUTS IDENTICAL TO REFERENCE: True
+Qwen3-8B detcheck exit=0 | DETERMINISTIC
+Qwen3-8B decode graphs captured for another launch plan: 4
+[06:52] kernel-benches
+attention exit=0
+mixed_batch exit=0
+wave_split exit=0
+prefill_order exit=0
+prefill exit=0
+[07:17] e2e-matrix
+[08:34] e2e-ablation
+[09:38] e2e-extended
+[10:18] e2e-highconc
+[10:37] done
+RUN_R6_DONE

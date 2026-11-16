@@ -1,0 +1,372 @@
+   Compiling sglang-rust v0.1.0 (<repo>/llm_infer_rust)
+warning: sglang-rust@0.1.0: In file included from <repo>/env/venv/lib/python3.12/site-packages/torch/include/c10/cuda/CUDACachingAllocator.h:5,
+warning: sglang-rust@0.1.0:                  from <repo>/env/venv/lib/python3.12/site-packages/torch/include/ATen/cuda/CUDAGraph.h:6,
+warning: sglang-rust@0.1.0:                  from src/engine/cuda_graph_bridge.cpp:1:
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/c10/core/CachingDeviceAllocator.h: In member function 'virtual std::pair<long unsigned int, long unsigned int> c10::DeviceAllocator::getMemoryInfo(c10::DeviceIndex)':
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/c10/core/CachingDeviceAllocator.h:248:68: warning: unused parameter 'device' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   248 |   virtual std::pair<size_t, size_t> getMemoryInfo(c10::DeviceIndex device) {
+warning: sglang-rust@0.1.0:       |                                                   ~~~~~~~~~~~~~~~~~^~~~~~
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/c10/cuda/CUDACachingAllocator.h: In member function 'virtual void c10::cuda::CUDACachingAllocator::CUDAAllocator::createOrIncrefPool(c10::DeviceIndex, c10::MempoolId_t, std::shared_ptr<c10::cuda::CUDACachingAllocator::CUDAAllocator>)':
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/c10/cuda/CUDACachingAllocator.h:176:38: warning: unused parameter 'allocator' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   176 |       std::shared_ptr<CUDAAllocator> allocator = nullptr) {
+warning: sglang-rust@0.1.0:       |       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/c10/cuda/CUDACachingAllocator.h: In member function 'virtual void c10::cuda::CUDACachingAllocator::CUDAAllocator::setUseOnOOM(c10::DeviceIndex, c10::MempoolId_t, bool)':
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/c10/cuda/CUDACachingAllocator.h:184:24: warning: unused parameter 'device' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   184 |       c10::DeviceIndex device,
+warning: sglang-rust@0.1.0:       |       ~~~~~~~~~~~~~~~~~^~~~~~
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/c10/cuda/CUDACachingAllocator.h:185:19: warning: unused parameter 'mempool_id' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   185 |       MempoolId_t mempool_id,
+warning: sglang-rust@0.1.0:       |       ~~~~~~~~~~~~^~~~~~~~~~
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/c10/cuda/CUDACachingAllocator.h:186:12: warning: unused parameter 'use_on_oom' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   186 |       bool use_on_oom) {
+warning: sglang-rust@0.1.0:       |       ~~~~~^~~~~~~~~~
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/c10/cuda/CUDACachingAllocator.h: In member function 'virtual void c10::cuda::CUDACachingAllocator::CUDAAllocator::setNoSplit(c10::DeviceIndex, c10::MempoolId_t)':
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/c10/cuda/CUDACachingAllocator.h:193:44: warning: unused parameter 'device' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   193 |   virtual void setNoSplit(c10::DeviceIndex device, MempoolId_t mempool_id) {
+warning: sglang-rust@0.1.0:       |                           ~~~~~~~~~~~~~~~~~^~~~~~
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/c10/cuda/CUDACachingAllocator.h:193:64: warning: unused parameter 'mempool_id' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   193 |   virtual void setNoSplit(c10::DeviceIndex device, MempoolId_t mempool_id) {
+warning: sglang-rust@0.1.0:       |                                                    ~~~~~~~~~~~~^~~~~~~~~~
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/c10/cuda/CUDACachingAllocator.h: In member function 'virtual std::shared_ptr<c10::GatheredContext> c10::cuda::CUDACachingAllocator::CUDAAllocator::getContextForPointer(const void*)':
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/c10/cuda/CUDACachingAllocator.h:222:19: warning: unused parameter 'ptr' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   222 |       const void* ptr) {
+warning: sglang-rust@0.1.0:       |       ~~~~~~~~~~~~^~~
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/c10/cuda/CUDACachingAllocator.h: In member function 'virtual void c10::cuda::CUDACachingAllocator::CUDAAllocator::pushCompileContext(std::string&)':
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/c10/cuda/CUDACachingAllocator.h:234:48: warning: unused parameter 'md' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   234 |   virtual void pushCompileContext(std::string& md) {}
+warning: sglang-rust@0.1.0:       |                                   ~~~~~~~~~~~~~^~
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/c10/cuda/CUDACachingAllocator.h: In member function 'virtual void c10::cuda::CUDACachingAllocator::CUDAAllocator::setUserMetadata(const std::string&)':
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/c10/cuda/CUDACachingAllocator.h:236:51: warning: unused parameter 'metadata' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   236 |   virtual void setUserMetadata(const std::string& metadata) {}
+warning: sglang-rust@0.1.0:       |                                ~~~~~~~~~~~~~~~~~~~^~~~~~~~
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/c10/cuda/CUDACachingAllocator.h: In member function 'virtual c10::DataPtr c10::cuda::CUDACachingAllocator::CUDAAllocator::allocateWithAddress(size_t, void*)':
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/c10/cuda/CUDACachingAllocator.h:280:46: warning: unused parameter 'size' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   280 |   virtual DataPtr allocateWithAddress(size_t size, void* addr) {
+warning: sglang-rust@0.1.0:       |                                       ~~~~~~~^~~~
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/c10/cuda/CUDACachingAllocator.h:280:58: warning: unused parameter 'addr' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   280 |   virtual DataPtr allocateWithAddress(size_t size, void* addr) {
+warning: sglang-rust@0.1.0:       |                                                    ~~~~~~^~~~
+warning: sglang-rust@0.1.0: In file included from <repo>/env/venv/lib/python3.12/site-packages/torch/include/ATen/Context.h:21,
+warning: sglang-rust@0.1.0:                  from <repo>/env/venv/lib/python3.12/site-packages/torch/include/ATen/ATen.h:8,
+warning: sglang-rust@0.1.0:                  from src/engine/cuda_graph_bridge.cpp:2:
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h: In member function 'virtual PyObject* at::MTIAHooksInterface::getDeviceProperties(c10::DeviceIndex) const':
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h:118:53: warning: unused parameter 'device' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   118 |   virtual PyObject* getDeviceProperties(DeviceIndex device) const {
+warning: sglang-rust@0.1.0:       |                                         ~~~~~~~~~~~~^~~~~~
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h: In member function 'virtual PyObject* at::MTIAHooksInterface::memorySnapshot(const std::optional<std::__cxx11::basic_string<char> >&) const':
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h:133:70: warning: unused parameter 'local_path' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   133 |   virtual PyObject* memorySnapshot(const std::optional<std::string>& local_path) const {
+warning: sglang-rust@0.1.0:       |                                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h: In member function 'virtual void at::MTIAHooksInterface::attachOutOfMemoryObserver(PyObject*) const':
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h:147:52: warning: unused parameter 'observer' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   147 |   virtual void attachOutOfMemoryObserver(PyObject* observer) const {
+warning: sglang-rust@0.1.0:       |                                          ~~~~~~~~~~^~~~~~~~
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h: In member function 'virtual int64_t at::MTIAHooksInterface::mtiagraphCreate(bool) const':
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h:155:40: warning: unused parameter 'keep_graph' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   155 |   virtual int64_t mtiagraphCreate(bool keep_graph = false) const {
+warning: sglang-rust@0.1.0:       |                                   ~~~~~^~~~~~~~~~~~~~~~~~
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h: In member function 'virtual void at::MTIAHooksInterface::mtiagraphDestroy(int64_t) const':
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h:160:41: warning: unused parameter 'handle' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   160 |   virtual void mtiagraphDestroy(int64_t handle) const {
+warning: sglang-rust@0.1.0:       |                                 ~~~~~~~~^~~~~~
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h: In member function 'virtual void at::MTIAHooksInterface::mtiagraphCaptureBegin(int64_t, c10::MempoolId_t) const':
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h:164:46: warning: unused parameter 'handle' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   164 |   virtual void mtiagraphCaptureBegin(int64_t handle, MempoolId_t pool) const {
+warning: sglang-rust@0.1.0:       |                                      ~~~~~~~~^~~~~~
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h:164:66: warning: unused parameter 'pool' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   164 |   virtual void mtiagraphCaptureBegin(int64_t handle, MempoolId_t pool) const {
+warning: sglang-rust@0.1.0:       |                                                      ~~~~~~~~~~~~^~~~
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h: In member function 'virtual void at::MTIAHooksInterface::mtiagraphCaptureEnd(int64_t) const':
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h:168:44: warning: unused parameter 'handle' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   168 |   virtual void mtiagraphCaptureEnd(int64_t handle) const {
+warning: sglang-rust@0.1.0:       |                                    ~~~~~~~~^~~~~~
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h: In member function 'virtual void at::MTIAHooksInterface::mtiagraphInstantiate(int64_t) const':
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h:172:45: warning: unused parameter 'handle' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   172 |   virtual void mtiagraphInstantiate(int64_t handle) const {
+warning: sglang-rust@0.1.0:       |                                     ~~~~~~~~^~~~~~
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h: In member function 'virtual void at::MTIAHooksInterface::mtiagraphReplay(int64_t) const':
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h:176:40: warning: unused parameter 'handle' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   176 |   virtual void mtiagraphReplay(int64_t handle) const {
+warning: sglang-rust@0.1.0:       |                                ~~~~~~~~^~~~~~
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h: In member function 'virtual void at::MTIAHooksInterface::mtiagraphReset(int64_t) const':
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h:180:39: warning: unused parameter 'handle' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   180 |   virtual void mtiagraphReset(int64_t handle) const {
+warning: sglang-rust@0.1.0:       |                               ~~~~~~~~^~~~~~
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h: In member function 'virtual c10::MempoolId_t at::MTIAHooksInterface::mtiagraphPool(int64_t) const':
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/ATen/detail/MTIAHooksInterface.h:184:45: warning: unused parameter 'handle' [-Wunused-parameter]
+warning: sglang-rust@0.1.0:   184 |   virtual MempoolId_t mtiagraphPool(int64_t handle) const {
+warning: sglang-rust@0.1.0:       |                                     ~~~~~~~~^~~~~~
+warning: sglang-rust@0.1.0: In file included from src/engine/cuda_graph_bridge.cpp:4:
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/ATen/core/CachingHostAllocator.h: At global scope:
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/ATen/core/CachingHostAllocator.h:47:16: warning: use of 'std::hardware_destructive_interference_size' [-Winterference-size]
+warning: sglang-rust@0.1.0:    47 | struct alignas(hardware_destructive_interference_size) FreeBlockList {
+warning: sglang-rust@0.1.0:       |                ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/ATen/core/CachingHostAllocator.h:47:16: note: its value can vary between compiler versions or with different '-mtune' or '-mcpu' flags
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/ATen/core/CachingHostAllocator.h:47:16: note: if this use is part of a public ABI, change it to instead use a constant variable you define
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/ATen/core/CachingHostAllocator.h:47:16: note: the default value for the current CPU tuning is 64 bytes
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/ATen/core/CachingHostAllocator.h:47:16: note: you can stabilize this value with '--param hardware_destructive_interference_size=64', or disable this warning with '-Wno-interference-size'
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/ATen/core/CachingHostAllocator.h:130:16: warning: use of 'std::hardware_destructive_interference_size' [-Winterference-size]
+warning: sglang-rust@0.1.0:   130 | struct alignas(hardware_destructive_interference_size) HostStatsStaged {
+warning: sglang-rust@0.1.0:       |                ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/ATen/core/CachingHostAllocator.h:236:11: warning: use of 'std::hardware_destructive_interference_size' [-Winterference-size]
+warning: sglang-rust@0.1.0:   236 |   alignas(hardware_destructive_interference_size) std::mutex blocks_mutex_;
+warning: sglang-rust@0.1.0:       |           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/ATen/core/CachingHostAllocator.h:241:11: warning: use of 'std::hardware_destructive_interference_size' [-Winterference-size]
+warning: sglang-rust@0.1.0:   241 |   alignas(hardware_destructive_interference_size) std::vector<FreeBlockList<B_>> free_list_ =
+warning: sglang-rust@0.1.0:       |           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/ATen/core/CachingHostAllocator.h:245:11: warning: use of 'std::hardware_destructive_interference_size' [-Winterference-size]
+warning: sglang-rust@0.1.0:   245 |   alignas(hardware_destructive_interference_size) std::mutex events_mutex_;
+warning: sglang-rust@0.1.0:       |           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/ATen/core/CachingHostAllocator.h:973:11: warning: use of 'std::hardware_destructive_interference_size' [-Winterference-size]
+warning: sglang-rust@0.1.0:   973 |   alignas(hardware_destructive_interference_size) mutable std::shared_mutex instance_mutex_;
+warning: sglang-rust@0.1.0:       |           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/ATen/core/CachingHostAllocator.h:1004:11: warning: use of 'std::hardware_destructive_interference_size' [-Winterference-size]
+warning: sglang-rust@0.1.0:  1004 |   alignas(hardware_destructive_interference_size) HostStatsStaged stats_;
+warning: sglang-rust@0.1.0:       |           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+warning: sglang-rust@0.1.0: In file included from <repo>/env/venv/lib/python3.12/site-packages/torch/include/ATen/cuda/CUDAEvent.h:7,
+warning: sglang-rust@0.1.0:                  from src/engine/cuda_graph_bridge.cpp:206:
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/c10/cuda/CUDAEvent.h:363:23: warning: use of 'std::hardware_destructive_interference_size' [-Winterference-size]
+warning: sglang-rust@0.1.0:   363 |   struct alignas(c10::hardware_destructive_interference_size) PerDevicePool {
+warning: sglang-rust@0.1.0:       |                       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/torch/include/c10/cuda/CUDAEvent.h:364:18: warning: use of 'std::hardware_destructive_interference_size' [-Winterference-size]
+warning: sglang-rust@0.1.0:   364 |     alignas(c10::hardware_destructive_interference_size) std::mutex mutex_;
+warning: sglang-rust@0.1.0:       |                  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/flashinfer/data/include/flashinfer/sampling.cuh(1206): warning #177-D: variable "batch_size" was declared but never referenced
+warning: sglang-rust@0.1.0:     const uint32_t batch_size = gridDim.x;
+warning: sglang-rust@0.1.0:                    ^
+warning: sglang-rust@0.1.0:           detected during instantiation of "cudaError_t flashinfer::sampling::TopKTopPSamplingFromProb(T *, IdType *, T *, IdType *, __nv_bool *, IdType *, uint32_t, IdType, T, uint32_t, __nv_bool, uint64_t *, uint64_t, uint64_t *, uint64_t, cudaStream_t) [with T=float, IdType=int64_t]" at line 11 of src/engine/sampling_flashinfer.cu
+warning: sglang-rust@0.1.0: 
+warning: sglang-rust@0.1.0: Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+warning: sglang-rust@0.1.0: 
+warning: sglang-rust@0.1.0: <repo>/env/venv/lib/python3.12/site-packages/flashinfer/data/include/flashinfer/sampling.cuh(985): warning #177-D: variable "batch_size" was declared but never referenced
+warning: sglang-rust@0.1.0:     const uint32_t batch_size = gridDim.x;
+warning: sglang-rust@0.1.0:                    ^
+warning: sglang-rust@0.1.0:           detected during instantiation of "cudaError_t flashinfer::sampling::TopPSamplingFromProb(T *, IdType *, __nv_bool *, IdType *, T *, uint32_t, T, uint32_t, __nv_bool, uint64_t *, uint64_t, uint64_t *, uint64_t, cudaStream_t) [with T=float, IdType=int64_t]" at line 15 of src/engine/sampling_flashinfer.cu
+warning: sglang-rust@0.1.0: 
+warning: sglang-rust@0.1.0: src/kernels/pi/pi_attn_kernels.cu(561): warning #177-D: variable "ctas" was declared but never referenced
+warning: sglang-rust@0.1.0:     const int64_t groups = (max_kv_len + kGroupKeys - 1) / kGroupKeys, ctas = (int64_t)batch * num_kv_heads;
+warning: sglang-rust@0.1.0:                                                                        ^
+warning: sglang-rust@0.1.0: 
+warning: sglang-rust@0.1.0: Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+warning: sglang-rust@0.1.0: 
+    Finished `release` profile [optimized] target(s) in 7m 30s
+     Running unittests src/lib.rs (target/release/deps/sglang_rust-18690e0199aa59e0)
+
+running 194 tests
+test engine::batch_context::tests::plain_and_mixed_prefill_share_chunk_validation ... ok
+test engine::batch_context::tests::borrowed_chunk_rows_share_sources_but_own_execution_tensors ... ok
+test engine::batch_context::tests::prepares_mixed_prefill_with_one_token_decode_rows ... ok
+test engine::batch_context::tests::prepares_prefill_tensors_and_page_tables ... ok
+test engine::batch_context::tests::rejects_oversized_mixed_prefill ... ok
+test engine::batch_context::tests::rejects_prefill_without_a_writable_page ... ok
+test engine::batch_context::tests::rejects_requests_without_uncached_tokens ... ok
+test engine::batch_context::tests::table_requirements_apply_to_plain_and_mixed_prefill ... ok
+test engine::engine::tests::auto_chunked_prefill_matches_sglang_memory_buckets ... ok
+test engine::engine::tests::auto_dtype_uses_resolved_checkpoint_kind_and_cpu_fallback ... ok
+test engine::engine::tests::resolves_requested_device_without_silent_cuda_fallback ... ok
+test engine::graph::shared_pool_tests::non_owning_graph_output_releases_storage_preserves_views_and_replays_reused_blocks ... ignored, requires CUDA; run scripts/run-rust-tests.sh cuda
+test engine::graph::shared_pool_tests::shared_pool_invalid_cuda_capture_restores_stream_and_requires_new_context ... ignored, requires CUDA; run scripts/run-rust-tests.sh cuda
+test engine::graph::shared_pool_tests::shared_pool_replays_retained_outputs_and_recovers_closure_failure ... ignored, requires CUDA; run scripts/run-rust-tests.sh cuda
+test engine::engine::tests::validates_model_directory_and_parallelism ... ok
+test engine::graph::tests::flashinfer_graph_replays_dynamic_pages_lengths_and_padded_batches ... ignored, requires CUDA; run scripts/run-rust-tests.sh cuda
+test engine::graph_support::tests::admission_is_mode_specific_and_bounded ... ok
+test engine::kvcache::allocator::tests::cuda_budget_accounts_for_model_memory_and_reserve ... ok
+test engine::kvcache::allocator::tests::explicit_token_cap_rounds_down_without_exceeding_memory_budget ... ok
+test engine::engine::tests::rejects_sequence_length_above_model_limit ... ok
+test engine::kvcache::allocator::tests::heterogeneous_budget_includes_all_groups_and_reserved_pages ... ok
+test engine::kvcache::allocator::tests::rejects_budget_smaller_than_sink_and_one_real_page ... ok
+test engine::kvcache::allocator::tests::single_qwen3_request_can_use_full_gpu_cache_budget ... ok
+test engine::kvcache::allocator::tests::sizes_pages_by_memory_budget_independently_of_scheduler_limits ... ok
+test engine::kvcache::pool::tests::alloc_and_free_match_the_python_pool_contract ... ok
+test engine::engine::tests::tensor_parallelism_is_explicitly_deferred ... ok
+test engine::kvcache::pool::tests::cuda_heterogeneous_cache_preserves_prefix_branch_cleanup_and_padding ... ignored, requires CUDA; run scripts/run-rust-tests.sh cuda
+test engine::kvcache::pool::tests::allocation_fails_without_mutating_the_pool ... ok
+test engine::kvcache::pool::tests::grouped_pool_rejects_overflow_before_allocating_pages ... ok
+test engine::kvcache::pool::tests::layout_rejects_zero_dimensions ... ok
+test engine::kvcache::radix::tests::budget_deferral_does_not_pin_or_evict ... ok
+test engine::kvcache::radix::tests::cold_batch_keeps_private_pages_until_serial_publication ... ok
+test engine::kvcache::radix::tests::completed_generation_is_reused_by_a_later_prompt ... ok
+test engine::kvcache::radix::tests::evicted_node_slot_is_reused_only_after_release ... ok
+test engine::forward::tests::prefill_requires_logit_rows_and_cache_boundaries_to_agree ... ok
+test engine::kvcache::radix::tests::generated_prefix_merges_with_later_prompt_without_leaking_a_page ... ok
+test engine::forward::tests::validates_decode_host_snapshot_without_device_readback ... ok
+test engine::forward::tests::rejects_conflicting_modes_dtypes_and_metadata_shapes ... ok
+test engine::kvcache::pool::tests::libtorch_backed_pool_exposes_k_and_v_slices ... ok
+test engine::graph::table_copy_tests::revisions_preserve_private_rows_and_invalidate_fallback_and_padding ... ok
+test engine::kvcache::radix::tests::matched_page_stays_pinned_during_eviction_and_capacity_is_total ... ok
+test engine::engine::tests::delegates_sampling_to_the_rust_sampler ... ok
+test engine::kvcache::radix::tests::partial_and_unwritten_tokens_are_never_published ... ok
+test engine::kvcache::pool::tests::reserved_page_zero_is_initialized_and_never_allocated ... ok
+test engine::engine::tests::delegates_forward_to_an_attached_model_runner ... ok
+test engine::metadata_transfer::tests::uploads_preserve_host_sources_restore_stream_and_order_buffer_reuse ... ignored, requires CUDA; run scripts/run-rust-tests.sh cuda
+test engine::kvcache::spec::tests::validates_geometry_and_counts_all_layers ... ok
+test engine::engine::tests::cleanup_releases_the_pool_idempotently ... ok
+test engine::model_runner::tests::decode_does_not_pass_prefill_indices ... ok
+test engine::model_runner::tests::invalid_execution_inputs_never_enter_model_computation ... ok
+test engine::model_runner::tests::prefill_passes_logits_indices_to_the_model ... ok
+test engine::sampling::tests::benchmark_sampling_cuda ... ignored, GPU microbenchmark; run alone with --nocapture
+test engine::sampling::tests::cuda_joint_top_k_top_p_uses_original_probability_mass ... ignored, requires CUDA; run scripts/run-rust-tests.sh cuda
+test engine::sampling::tests::deferred_cuda_sampling_preserves_rng_rows_and_owned_results ... ignored, requires CUDA; run scripts/run-rust-tests.sh cuda
+test engine::model_runner::tests::rejects_mismatched_input_and_position_lengths ... ok
+test engine::sampling::tests::flashinfer_sampling_preserves_support_distribution_and_rng ... ignored, requires CUDA; run scripts/run-rust-tests.sh cuda
+test engine::engine::tests::builds_a_model_and_loads_hugging_face_safetensors ... ok
+test engine::model_loader::tests::rejects_index_path_traversal ... ok
+test engine::model_loader::tests::rejects_duplicate_tensor_names_across_shards ... ok
+test engine::sampling::tests::rejects_mismatched_batch_metadata ... ok
+test engine::sampling::tests::samples_greedily_for_non_positive_temperature ... ok
+test engine::segmented_graph::cuda_tests::non_transformer_segments_handle_padding_failure_fallback_and_rebinding ... ignored, requires CUDA; run scripts/run-rust-tests.sh cuda
+test engine::sampling::tests::top_p_zero_keeps_the_highest_logit ... ok
+test engine::segmented_graph::tests::startup_catalog_covers_all_admitted_request_shapes ... ok
+test kernels::pi::schedule_tests::decode_tail_takes_the_tail_only_where_it_pays ... ok
+test kernels::pi::schedule_tests::single_token_tail_counts_only_the_trailing_run ... ok
+test kernels::pi::tests::graph_sizes_are_tuning_buckets ... ok
+test layers::ops::residual_semantics_tests::cuda_normalization_uses_unrounded_fp32_residual_sum ... ignored, requires CUDA; run scripts/run-rust-tests.sh cuda
+test engine::model_loader::tests::loads_a_single_safetensors_checkpoint ... ok
+test layers::ops::tests::cuda_norm_handles_padded_rows_and_partial_head_warps ... ignored, requires CUDA; run scripts/run-rust-tests.sh cuda
+test layers::ops::tests::fused_add_norm_matches_fp32_sum_for_both_cuda_dtypes ... ignored, requires CUDA; run scripts/run-rust-tests.sh cuda
+test layers::ops::tests::fused_cuda_ops_match_eager_bfloat16 ... ignored, requires CUDA; run scripts/run-rust-tests.sh cuda
+test layers::ops::tests::silu_matches_fp32_reference_for_decode_prefill_and_tail_widths ... ignored, requires CUDA; run scripts/run-rust-tests.sh cuda
+test logging::tests::formats_duration_in_seconds_with_millisecond_precision ... ok
+test models::attention::backend::tests::flashinfer_prefill_matches_reference_for_ragged_and_cached_batches ... ignored, requires CUDA; run scripts/run-rust-tests.sh cuda
+test models::attention::backend::tests::flashinfer_reuses_workspace_and_updates_decode_plans ... ignored, requires CUDA; run scripts/run-rust-tests.sh cuda
+test models::attention::backend::tests::pi_prefill_matches_reference_and_decode_bitwise ... ignored, requires CUDA; run scripts/run-rust-tests.sh cuda
+test models::attention::base::tests::cuda_invalid_kv_indices_fail_in_isolated_process ... ignored, requires CUDA; run scripts/run-rust-tests.sh cuda
+test models::attention::base::tests::cuda_kv_store_preserves_packed_strides_padding_and_unwritten_slots ... ignored, requires CUDA; run scripts/run-rust-tests.sh cuda
+test models::qwen3::config::tests::defaults_only_apply_to_missing_fields_and_keep_dynamic_dimensions ... ok
+test models::qwen3::config::tests::extracts_runtime_geometry_and_keeps_computation_fields_model_specific ... ok
+test models::qwen3::config::tests::missing_head_dim_requires_exact_division ... ok
+test models::qwen3::config::tests::permits_metadata_and_disabled_sliding_window ... ok
+test models::qwen3::model::prefill_graph::cuda_tests::segmented_prefill_matches_eager_logits_and_kv_for_live_request_boundaries ... ignored, requires CUDA; run scripts/run-rust-tests.sh cuda
+test models::qwen3::model::prefill_graph::cuda_tests::shared_catalog_decode_prefill_prefill_decode_preserves_logits_and_kv ... ignored, requires CUDA; run scripts/run-rust-tests.sh cuda
+test models::qwen3::config::tests::rejects_unsupported_computation_and_malformed_fields ... ok
+test models::qwen3::output::tests::constructor_creates_isolated_request_parsers ... ok
+test models::qwen3::output::tests::emits_structured_tool_call_and_nullable_content ... ok
+test models::qwen3::output::tests::keeps_partial_reasoning_and_numbers_multiple_calls ... ok
+test models::qwen3::output::tests::retains_malformed_or_incomplete_tool_markup_as_content ... ok
+test models::qwen3::output::tests::splits_reasoning_and_content_across_fragments ... ok
+test logging::tests::writes_plain_file_and_ansi_terminal_logs ... ok
+test models::qwen3::template::tests::matches_hugging_face_qwen3_chat_template ... ok
+test models::qwen3::template::tests::reads_enable_thinking_from_template_kwargs ... ok
+test models::qwen3::template::tests::rejects_malformed_tool_call_instead_of_silently_omitting_it ... ok
+test models::registry::tests::detects_qwen3_template ... ok
+test models::registry::tests::selects_dense_qwen3_and_rejects_other_architectures ... ok
+test scheduler::decode::tests::cuda_table_requirements_preserve_upload_order_on_change ... ignored, requires CUDA; run scripts/run-rust-tests.sh cuda
+test scheduler::decode::tests::builds_decode_tensors_and_page_metadata ... ok
+test scheduler::decode::tests::empty_and_finished_requests_produce_no_batch ... ok
+test scheduler::decode::tests::compacting_rows_and_reusing_pages_preserves_request_mappings ... ok
+test scheduler::decode::tests::out_of_range_sequence_is_rejected ... ok
+test engine::model_loader::tests::loads_indexed_shards_once_and_preserves_tensor_values ... ok
+test scheduler::decode::tests::growing_decode_only_maps_new_tokens_and_handles_page_changes ... ok
+test scheduler::decode::tests::reused_buffers_clear_stale_page_entries ... ok
+test scheduler::decode::tests::table_requirements_preserve_incremental_mappings_and_rebuild_on_change ... ok
+test scheduler::future_map::tests::keeps_slots_stable_when_batch_order_changes ... ok
+test scheduler::future_map::tests::publishes_values_and_reuses_released_slots ... ok
+test scheduler::future_map::tests::rejects_publish_size_mismatch_and_slot_exhaustion ... ok
+test scheduler::future_map::tests::reuses_immutable_scatter_indices_until_slot_order_changes ... ok
+test scheduler::prefill::tests::aborts_request_that_can_never_fit_in_pool ... ok
+test scheduler::prefill::tests::batch_preparation_error_restores_order_and_all_pages ... ok
+test scheduler::prefill::tests::capacity_excludes_the_last_sampled_token ... ok
+test scheduler::prefill::tests::chunked_prefill_batches_short_requests ... ok
+test scheduler::prefill::tests::chunked_prefill_budget_counts_uncached_tokens ... ok
+test scheduler::prefill::tests::chunked_prefill_uses_remaining_batch_budget_for_long_request ... ok
+test scheduler::prefill::tests::completed_prefill_does_not_cache_unwritten_sampled_token ... ok
+test scheduler::prefill::tests::final_chunk_defers_a_second_unfinished_request ... ok
+test scheduler::prefill::tests::final_chunk_only_admits_short_requests_within_remaining_budget ... ok
+test scheduler::prefill::tests::rematches_after_eviction_without_duplicate_page_ids ... ok
+test scheduler::prefill::tests::respects_prefill_token_budget ... ok
+test scheduler::prefill::tests::respects_running_limit_and_keeps_fifo_request_pending ... ok
+test scheduler::prefill::tests::uses_independent_prefill_token_budget ... ok
+test scheduler::scheduler::tests::cuda_cancelled_outstanding_middle_chunk_is_ignored ... ignored, requires CUDA; run scripts/run-rust-tests.sh cuda
+test scheduler::scheduler::tests::cuda_chunked_prefill_completes_short_rows_beside_an_unfinished_chunk ... ignored, requires CUDA; run scripts/run-rust-tests.sh cuda
+test scheduler::scheduler::tests::cuda_completion_overlap_matches_serial_lifecycle_and_errors ... ignored, requires CUDA; run scripts/run-rust-tests.sh cuda
+test scheduler::scheduler::tests::cuda_eos_survivors_and_incoming_prefill_keep_the_pipeline ... ignored, requires CUDA; run scripts/run-rust-tests.sh cuda
+test scheduler::scheduler::tests::cuda_middle_chunk_publish_failure_emits_one_terminal ... ignored, requires CUDA; run scripts/run-rust-tests.sh cuda
+test scheduler::scheduler::tests::cuda_one_batch_pipeline_relays_tokens_and_fences_lifecycle ... ignored, requires CUDA; run scripts/run-rust-tests.sh cuda
+test scheduler::scheduler::tests::abort_running_request_releases_only_its_private_pages ... ok
+test server::cli::tests::deterministic_selects_pi_attention ... ok
+test server::cli::tests::parses_model_server_address_and_device ... ok
+test server::cli::tests::row_invariant_gemm_keeps_the_attention_backend ... ok
+test server::schemas::tests::defaults_and_clamps_http_sampling ... ok
+test server::schemas::tests::preserves_tools_tool_calls_and_template_kwargs ... ok
+test server::schemas::tests::resolves_chat_token_limits_into_sampling_params ... ok
+test tokenizer::tests::explicit_custom_selection_does_not_depend_on_template_text ... ok
+test tokenizer::tests::encodes_and_decodes ... ok
+test tokenizer::tests::falls_back_to_joined_message_content ... ok
+test tokenizer::tests::generic_template_is_compiled_during_initialization ... ok
+test tokenizer::tests::rejects_out_of_range_token_ids ... ok
+test tokenizer::tests::renders_a_basic_hugging_face_chat_template ... ok
+test tokenizer::tests::passes_extended_kwargs_to_generic_template ... ok
+test scheduler::scheduler::tests::cancelled_outstanding_middle_chunk_is_ignored ... ok
+test scheduler::scheduler::tests::decode_failure_preserves_prefill_output_and_finishes_request ... ok
+test scheduler::scheduler::tests::oversized_prompt_emits_abort_and_uses_injected_eos ... ok
+test scheduler::scheduler::tests::prefill_and_decode_run_in_the_same_step ... ok
+test scheduler::scheduler::tests::chunked_prefill_emits_only_final_chunk_and_matches_decode ... ok
+test scheduler::scheduler::tests::deferred_publish_failure_releases_private_pages_without_second_terminal ... ok
+test scheduler::scheduler::tests::chunked_prefill_can_mix_with_an_outstanding_decode ... ok
+test scheduler::scheduler::tests::naive_prefill_returns_pages_when_request_finishes ... ok
+test scheduler::scheduler::tests::generated_prefix_collision_reclaims_the_duplicate_page ... ok
+test scheduler::scheduler::tests::replacing_runner_refreshes_metadata_for_existing_requests ... ok
+test scheduler::scheduler::tests::prefill_failure_does_not_stop_existing_decode ... ok
+test scheduler::scheduler::tests::prefill_failure_rolls_back_and_keeps_other_abort_results ... ok
+test scheduler::scheduler::tests::pipeline_next_forward_error_preserves_completed_output ... ok
+test scheduler::scheduler::tests::publish_failure_isolated_to_one_request ... ok
+test scheduler::scheduler::tests::prefill_finishes_on_eos_and_releases_running_slot ... ok
+test scheduler::scheduler::tests::throughput_policy_builds_mixed_prefill_batch ... ok
+test scheduler::scheduler::tests::chunked_prefill_completes_short_rows_beside_an_unfinished_chunk ... ok
+test scheduler::scheduler::tests::middle_chunk_publish_failure_emits_one_terminal ... ok
+test server::components::builder::tests::build_components_rejects_unsupported_model_before_loading ... ok
+test scheduler::scheduler::tests::eos_survivors_and_incoming_prefill_keep_the_pipeline ... ok
+test scheduler::scheduler::tests::terminal_output_and_cancel_hold_pages_until_their_fence ... ok
+test scheduler::scheduler::tests::one_batch_pipeline_relays_tokens_and_fences_lifecycle ... ok
+test models::attention::base::tests::writes_and_reads_paged_cache_slots ... ok
+test models::attention::base::tests::cpu_store_skips_reserved_slot_and_rejects_invalid_locations ... ok
+test engine::kvcache::allocator::tests::cpu_pool_keeps_small_scheduler_demand_cap ... ok
+test layers::linear::tests::logits_gather_live_rows_and_accept_tied_embedding_weights ... ok
+test engine::kvcache::pool::tests::heterogeneous_cache_preserves_prefix_branch_cleanup_and_padding ... ok
+test layers::ops::residual_semantics_tests::normalization_uses_unrounded_fp32_residual_sum ... ok
+test engine::sampling::tests::deferred_sampling_preserves_rows_validation_and_empty_batches ... ok
+test layers::ops::rope_tests::rope_keeps_bfloat16_query_and_key ... ok
+test layers::mlp::tests::packed_swiglu_matches_separate_gate_up_and_down ... ok
+test layers::linear::tests::packed_qkv_matches_separate_projections_with_independent_attention_width ... ok
+test layers::ops::rope_tests::cached_rope_matches_eager_formula_for_reordered_and_last_positions ... ok
+test models::qwen3::model::tests::loads_all_dense_qwen3_hugging_face_weight_names ... ok
+test server::components::builder::tests::invalid_model_and_runtime_combinations_fail_before_tokenizer_or_weights ... ok
+test server::components::builder::tests::strict_eos_precedence_and_validation_happen_before_model_loading ... ok
+test engine::engine::tests::rejects_factory_runtime_mismatches_before_loading_or_binding ... ok
+test engine::engine::tests::serving_loader_builds_model_before_cache_on_cpu ... ok
+test engine::sampling::tests::top_k_one_makes_sampling_deterministic ... ok
+test models::qwen3::model::tests::paged_decode_and_cached_prefix_prefill_match_full_forward ... ok
+test models::qwen3::model::tests::produces_prefill_logits_with_the_expected_shape ... ok
+test engine::sampling::tests::joint_top_k_top_p_uses_original_probability_mass ... ok
+test models::qwen3::model::tests::allows_qwen3_attention_width_to_exceed_hidden_size ... ok
+test models::attention::backend::tests::sdpa_causal_prefill_matches_reference ... ok
+test models::attention::backend::tests::batched_cached_prefill_matches_per_request_attention ... ok
+test models::attention::backend::tests::prepared_prefill_reuses_metadata_and_writes_static_outputs ... ok
+test models::attention::backend::tests::batched_prefill_matches_per_request_attention_for_unequal_lengths ... ok
+test models::attention::backend::tests::padded_decode_matches_eager_for_different_sequence_lengths ... ok
+test models::qwen3::model::tests::flash_attention_backend_runs_on_cpu_via_sdpa ... ok
+test server::components::builder::tests::unified_startup_loads_tiny_qwen3_and_generates_without_eos ... ok
+test kernels::pi::tests::token_logprobs_match_log_softmax_and_do_not_depend_on_the_batch ... ok
+
+test result: ok. 164 passed; 0 failed; 30 ignored; 0 measured; 0 filtered out; finished in 0.31s
+
+     Running unittests src/main.rs (target/release/deps/sglang_rust-f8ad86d95a9c055d)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/layered_state_cache.rs (target/release/deps/layered_state_cache-d19748aaea585ac4)
+
+running 2 tests
+test cuda_heterogeneous_factory_serving_prefill_decode_and_cached_extend_match_full_forward ... ignored, requires CUDA; run scripts/run-rust-tests.sh cuda
+test heterogeneous_factory_serving_prefill_decode_and_cached_extend_match_full_forward ... ok
+
+test result: ok. 1 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+   Doc-tests sglang_rust
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

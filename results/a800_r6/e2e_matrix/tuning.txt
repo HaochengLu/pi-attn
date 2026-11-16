@@ -1,0 +1,4 @@
+Qwen3-0.6B: | llm-infer-rust | INFO | PI GEMM tiles tuned shapes=5 max_m=2080 seconds=3.928824021
+Qwen3-1.7B: | llm-infer-rust | INFO | PI GEMM tiles tuned shapes=5 max_m=2080 seconds=7.700101103
+Qwen3-4B: | llm-infer-rust | INFO | PI GEMM tiles tuned shapes=5 max_m=2080 seconds=9.834924957
+Qwen3-8B: | llm-infer-rust | INFO | PI GEMM tiles tuned shapes=5 max_m=2080 seconds=15.544339413

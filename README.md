@@ -18,7 +18,7 @@ Ask an LLM server the same question twice at temperature 0 and you can get two d
 
 On one A800, Qwen3 0.6B–8B, with radix caching, chunked prefill, CUDA graphs and CPU/GPU overlap all enabled:
 
-- **No throughput cost.** On average (geometric mean over 40 workloads) the deterministic mode is **2.7% faster** than the same engine without determinism (−2.3% to +16.9%). It is on par with vLLM 0.17.1.
+- **No throughput cost.** On average (geometric mean over 40 workloads) the deterministic mode is **3.3% faster** than the same engine without determinism (−1.6% to +16.9%). It is on par with vLLM 0.17.1.
 - **2.0–3.7× faster than vLLM's batch-invariant mode**, the only other engine that passes our numeric checks on the A800. On an H100 it is 1.8–3.1× faster than vLLM's batch-invariant mode and 1.5–1.9× faster than SGLang's deterministic mode, within −1.7% to +4.4% of its own non-deterministic throughput (paper §7, Table 4).
 - **Bitwise identical** tokens *and* log-probabilities across concurrency, prefix-cache state, chunking, decode vs. re-prefill, seeded sampling, eight server configurations and restarts.
 - **Rollout = trainer.** A PyTorch forward on the same kernels reproduces all **55,593** rollout log-probabilities bit for bit, so every importance ratio is exactly 1. A standard bf16 trainer misses by more than 1% on 10–22% of tokens.
@@ -62,7 +62,7 @@ eval/run_all.sh        # rebuilds the engine, runs every test and benchmark (~8 
 cd paper && python figures.py ../results figs && bash build.sh    # redraw the figures, rebuild paper.pdf
 ```
 
-[`results/README.md`](results/README.md) maps every table and figure to the files that hold its numbers. The A800 run is in `results/a800/`, and its end-to-end and attention numbers after the round-5 scheduling changes in `results/a800_r5/`; the earlier RTX 4090 D run is at the top level of `results/`; the A100, A10G, L4 and H100 runs are in `results/modal/`. Set `BASELINE_ENGINES="rust rust-det sglang sglang-det vllm vllm-det vllm17 vllm17-det"` to include the SGLang and vLLM baselines.
+[`results/README.md`](results/README.md) maps every table and figure to the files that hold its numbers. The A800 run is in `results/a800/`, and its end-to-end and attention numbers after the later class-A scheduling rounds in `results/a800_r6/` (round 5: `results/a800_r5/`); the earlier RTX 4090 D run is at the top level of `results/`; the A100, A10G, L4 and H100 runs are in `results/modal/`. Set `BASELINE_ENGINES="rust rust-det sglang sglang-det vllm vllm-det vllm17 vllm17-det"` to include the SGLang and vLLM baselines.
 
 ## Repository
 

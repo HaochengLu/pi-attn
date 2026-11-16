@@ -1,0 +1,18 @@
+L=517 hq=16 hkv=8: PI err mean 5.753e-04 max 1.224e-02 | FlashInfer err mean 6.882e-04 max 1.496e-02 | bf16(exact) err mean 5.122e-04
+L=2049 hq=16 hkv=8: PI err mean 4.437e-04 max 9.453e-03 | FlashInfer err mean 4.581e-04 max 9.453e-03 | bf16(exact) err mean 4.013e-04
+mutant merge_reversed: 96 failed checks, kinds ['split']
+L=517 hq=16 hkv=8: PI err mean 5.752e-04 max 8.733e-03 | FlashInfer err mean 6.866e-04 max 1.459e-02 | bf16(exact) err mean 5.125e-04
+L=2049 hq=16 hkv=8: PI err mean 4.420e-04 max 8.597e-03 | FlashInfer err mean 4.568e-04 max 8.597e-03 | bf16(exact) err mean 3.995e-04
+mutant decode_fold_unfused: 110 failed checks, kinds ['path']
+L=517 hq=16 hkv=8: PI err mean 5.704e-04 max 8.895e-03 | FlashInfer err mean 6.867e-04 max 1.453e-02 | bf16(exact) err mean 5.131e-04
+L=2049 hq=16 hkv=8: PI err mean 4.354e-04 max 8.596e-03 | FlashInfer err mean 4.587e-04 max 8.596e-03 | bf16(exact) err mean 4.014e-04
+mutant prefill_group_256: 15825 failed checks, kinds ['heads', 'path', 'split']
+L=517 hq=16 hkv=8: PI err mean 5.716e-04 max 8.653e-03 | FlashInfer err mean 6.834e-04 max 1.490e-02 | bf16(exact) err mean 5.092e-04
+L=2049 hq=16 hkv=8: PI err mean 4.433e-04 max 9.087e-03 | FlashInfer err mean 4.580e-04 max 9.087e-03 | bf16(exact) err mean 4.009e-04
+mutant decode16_d_unfused: 21 failed checks, kinds ['path']
+L=517 hq=16 hkv=8: PI err mean 5.724e-04 max 9.273e-03 | FlashInfer err mean 6.836e-04 max 2.874e-02 | bf16(exact) err mean 5.089e-04
+L=2049 hq=16 hkv=8: PI err mean 4.417e-04 max 9.244e-03 | FlashInfer err mean 4.562e-04 max 9.244e-03 | bf16(exact) err mean 3.989e-04
+mutant decode16_pv_k_reversed: 994 failed checks, kinds ['path']
+cuBLAS M-invariance control: 26/27 projections vary with M
+wrong segment count control: S=1 result equals the S=2 fold: False
+UNCAUGHT MUTANTS: 0 []

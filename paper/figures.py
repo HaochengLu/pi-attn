@@ -301,7 +301,7 @@ def fig_baselines():
 
 # ------------------------------------------------------------------ Figure 5: end to end
 def fig_e2e():
-    rows = [l for l in (RES / "a800_r5/e2e_matrix/SUMMARY.md").read_text().splitlines() if l.startswith("| ") and "model" not in l and "---" not in l]
+    rows = [l for l in (RES / "a800_r6/e2e_matrix/SUMMARY.md").read_text().splitlines() if l.startswith("| ") and "model" not in l and "---" not in l]
     models = ["0.6B", "1.7B", "4B", "8B"]
     wls = ["64/256 c1", "512/256 c8", "512/256 c32", "2048/256 c16", "4096/128 c4"]
     M = np.full((4, 5), np.nan)
@@ -335,7 +335,7 @@ def fig_e2e():
 
     ax = fig.add_subplot(gs[1])
     def ttft(model):  # (prompt tokens, change of time to first token in %) of the workloads without a shared prefix
-        txt = (RES / "a800_r5/e2e_extended/SUMMARY.md").read_text().split(f"### Qwen3-{model}")[1].split("###")[0]
+        txt = (RES / "a800_r6/e2e_extended/SUMMARY.md").read_text().split(f"### Qwen3-{model}")[1].split("###")[0]
         pts = []
         for l in txt.splitlines():
             c = [x.strip() for x in l.strip("|").split("|")]

@@ -1,0 +1,22 @@
+xgpu_hashes exit=0
+xgpu_compare exit=0
+attention: pi identical on 5/5, flashinfer identical on 5/5
+gemm: pi identical on 108/108, cublas identical on 108/108
+device NVIDIA A800-SXM4-80GB vs reference NVIDIA A800-SXM4-80GB
+HASHES gemm: PI identical 108/108; PI and vendor both identical 108/108; cases in new 108
+HASHES attention: PI identical 5/5; PI and vendor both identical 5/5; cases in new 5
+test_invariance exit=0
+L=2049 hq=16 hkv=8: PI err mean 4.437e-04 max 9.453e-03 | FlashInfer err mean 4.581e-04 max 9.453e-03 | bf16(exact) err mean 4.013e-04
+checks failed: 0 []
+test_directed exit=0
+group 32 rejected: GQA group size must be <= 16 (one 16-row MMA group per kv head)
+DIRECTED FAILURES: 0
+test_matrix exit=0
+long ctx 32768/20001: failures 0 []
+TOTAL FAILURES: 0
+test_gemm exit=0
+3.5-4B lm_head N=248320 K= 2560: max|err| pi(fp32 out) 2.66e-05 pi(bf16) 1.56e-02 cublas(bf16) 1.56e-02
+INVARIANCE FAILURES: 0 []
+test_mutants exit=0
+wrong segment count control: S=1 result equals the S=2 fold: False
+UNCAUGHT MUTANTS: 0 []

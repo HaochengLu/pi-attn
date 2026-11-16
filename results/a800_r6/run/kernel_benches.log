@@ -1,0 +1,5 @@
+attention exit=0
+mixed_batch exit=0
+wave_split exit=0
+prefill_order exit=0
+prefill exit=0

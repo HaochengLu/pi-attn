@@ -1,0 +1,3 @@
+{"out_tok_s": 2855.54, "req_s": 22.31, "ttft_ms": 385.45, "tpot_ms": 18.67, "itl_ms": 19.07, "p99_ttft_ms": 2322.15, "e2e_ms": 2755.97, "tokens": 32768, "in": 2048, "out": 128, "concurrency": 64, "shared": 0, "repeats": 1, "out_tok_s_all": [2855.5]}
+{"out_tok_s": 11214.88, "req_s": 43.81, "ttft_ms": 218.45, "tpot_ms": 10.32, "itl_ms": 10.94, "p99_ttft_ms": 580.04, "e2e_ms": 2850.95, "tokens": 65536, "in": 512, "out": 256, "concurrency": 128, "shared": 0, "repeats": 1, "out_tok_s_all": [11214.9]}
+{"out_tok_s": 9756.89, "req_s": 38.11, "ttft_ms": 115.3, "tpot_ms": 6.08, "itl_ms": 6.36, "p99_ttft_ms": 1554.74, "e2e_ms": 1664.5, "tokens": 65536, "in": 512, "out": 256, "concurrency": 64, "shared": 0, "repeats": 1, "out_tok_s_all": [9756.9]}

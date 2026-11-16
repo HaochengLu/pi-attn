@@ -1,0 +1,18 @@
+# o3bench.log
+seed 0 regime special30: 5950 launch pairs so far, 0 mismatches
+seed 0 regime nonfinite_v: 6800 launch pairs so far, 0 mismatches
+EQ prefill opt vs probe (variants 0-4, splits 0/1/2/3/7, both grid orders, 8 input regimes, 17 shapes, 1 seeds): 6800 launch pairs, each also against the reference build's first launch of the shape, 0 mismatches
+PRE hq=16 b= 1 q= 8192 prefix=    0: fi   1656.0 | base   2012.1 (1.22, 1.000) | o3   1994.1 (1.20, 0.991) | o3nr   1934.5 (1.17, 0.961) | 1380 MHz
+PRE hq=16 b= 1 q=16384 prefix=    0: fi   6050.8 | base   8087.5 (1.34, 1.000) | o3   8043.6 (1.33, 0.995) | o3nr   7810.1 (1.29, 0.966) | 1395 MHz
+PRE hq=16 b= 1 q=30000 prefix=    0: fi  19311.9 | base  26393.0 (1.37, 1.000) | o3  26299.1 (1.36, 0.996) | o3nr  25439.3 (1.32, 0.964) | 1395 MHz
+PRE hq=16 b=32 q=  512 prefix=    0: fi    297.9 | base    450.9 (1.51, 1.000) | o3    464.9 (1.56, 1.031) | o3nr    437.9 (1.47, 0.971) | 1410 MHz
+PRE hq=16 b=32 q= 2048 prefix=    0: fi   3237.6 | base   4616.2 (1.43, 1.000) | o3   4624.4 (1.43, 1.002) | o3nr   4472.2 (1.38, 0.969) | 1395 MHz
+PRE hq=16 b= 8 q= 1024 prefix=    0: fi    260.2 | base    349.1 (1.34, 1.000) | o3    357.8 (1.38, 1.025) | o3nr    341.4 (1.31, 0.978) | 1395 MHz
+PRE hq=16 b= 1 q= 2048 prefix=    0: fi    172.7 | base    159.0 (0.92, 1.000) | o3    161.1 (0.93, 1.013) | o3nr    154.4 (0.89, 0.971) | 1410 MHz
+PRE hq=16 b= 1 q=  512 prefix= 8192: fi    256.4 | base    399.2 (1.56, 1.000) | o3    388.7 (1.52, 0.974) | o3nr    384.3 (1.50, 0.963) | 1395 MHz
+PRE hq=16 b= 1 q=  128 prefix=16384: fi    114.7 | base    209.2 (1.82, 1.000) | o3    202.4 (1.76, 0.967) | o3nr    200.5 (1.75, 0.958) | 1395 MHz
+PRE hq=16 b= 4 q= 2048 prefix= 2048: fi   1190.8 | base   1631.8 (1.37, 1.000) | o3   1621.8 (1.36, 0.994) | o3nr   1558.9 (1.31, 0.955) | 1395 MHz
+PRE hq=32 b= 1 q= 8192 prefix=    0: fi   3075.9 | base   3979.6 (1.29, 1.000) | o3   3971.3 (1.29, 0.998) | o3nr   3843.5 (1.25, 0.966) | 1380 MHz
+PRE hq=32 b= 1 q=16384 prefix=    0: fi  11565.3 | base  15807.2 (1.37, 1.000) | o3  15739.3 (1.36, 0.996) | o3nr  15221.5 (1.32, 0.963) | 1395 MHz
+PRE hq=32 b=32 q=  512 prefix=    0: fi    574.1 | base    838.9 (1.46, 1.000) | o3    859.6 (1.50, 1.025) | o3nr    817.2 (1.42, 0.974) | 1410 MHz
+PRE hq=32 b= 8 q= 2048 prefix=    0: fi   1646.0 | base   2288.2 (1.39, 1.000) | o3   2296.5 (1.40, 1.004) | o3nr   2227.0 (1.35, 0.973) | 1395 MHz

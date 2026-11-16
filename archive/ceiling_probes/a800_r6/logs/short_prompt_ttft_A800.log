@@ -1,0 +1,21 @@
+# bis1.log
+asc1 64/256 c1 ttft 4.63 tpot 1.926 | 512/256 c8 ttft 34.41 tpot 2.522
+asc2 64/256 c1 ttft 4.61 tpot 1.936 | 512/256 c8 ttft 34.70 tpot 2.520
+base1 64/256 c1 ttft 4.49 tpot 1.937 | 512/256 c8 ttft 33.83 tpot 2.520
+base2 64/256 c1 ttft 4.43 tpot 1.925 | 512/256 c8 ttft 33.93 tpot 2.522
+lf1 64/256 c1 ttft 4.72 tpot 1.937 | 512/256 c8 ttft 34.09 tpot 2.522
+lf2 64/256 c1 ttft 4.60 tpot 1.925 | 512/256 c8 ttft 34.83 tpot 2.520
+new1 64/256 c1 ttft 4.75 tpot 1.936 | 512/256 c8 ttft 35.05 tpot 2.522
+new2 64/256 c1 ttft 4.57 tpot 1.935 | 512/256 c8 ttft 35.37 tpot 2.519
+notailwave1 64/256 c1 ttft 4.57 tpot 1.925 | 512/256 c8 ttft 34.63 tpot 2.519
+notailwave2 64/256 c1 ttft 4.71 tpot 1.936 | 512/256 c8 ttft 34.35 tpot 2.521
+# kern.log
+base1 64/256 c1 ttft 4.52 tpot 1.935 | 512/256 c8 ttft 33.74 tpot 2.520
+base2 64/256 c1 ttft 4.66 tpot 1.935 | 512/256 c8 ttft 34.19 tpot 2.521
+base3 64/256 c1 ttft 4.52 tpot 1.936 | 512/256 c8 ttft 34.33 tpot 2.520
+deterministic1 64/256 c1 ttft 4.72 tpot 1.936 | 512/256 c8 ttft 34.42 tpot 2.521
+deterministic2 64/256 c1 ttft 4.75 tpot 1.935 | 512/256 c8 ttft 34.45 tpot 2.520
+deterministic3 64/256 c1 ttft 4.74 tpot 1.937 | 512/256 c8 ttft 34.58 tpot 2.522
+kern1 64/256 c1 ttft 4.66 tpot 1.936 | 512/256 c8 ttft 34.06 tpot 2.522
+kern2 64/256 c1 ttft 4.79 tpot 1.935 | 512/256 c8 ttft 34.48 tpot 2.521
+kern3 64/256 c1 ttft 4.64 tpot 1.936 | 512/256 c8 ttft 34.74 tpot 2.522

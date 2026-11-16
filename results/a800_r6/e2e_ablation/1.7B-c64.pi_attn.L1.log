@@ -1,0 +1,1 @@
+{"out_tok_s": 7164.37, "req_s": 27.99, "ttft_ms": 233.47, "tpot_ms": 7.92, "itl_ms": 7.92, "p99_ttft_ms": 574.83, "e2e_ms": 2254.2, "tokens": 32768, "in": 512, "out": 256, "concurrency": 64, "shared": 0, "repeats": 1, "out_tok_s_all": [7164.4]}
