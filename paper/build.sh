@@ -1,9 +1,15 @@
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
 pandoc paper.md -s -o paper.tex --number-sections --citeproc --bibliography=refs.bib --csl=ieee.csl \
-  -V documentclass=article -V fontsize=10pt -V geometry:margin=0.95in -V colorlinks=true -V linkcolor=piblue -V urlcolor=piblue -V citecolor=piblue \
+  -V documentclass=article -V fontsize=10pt -V geometry:margin=0.92in \
+  -V colorlinks=true -V linkcolor=citeblue -V urlcolor=citeblue -V citecolor=citeblue \
   --include-in-header=header.tex
-# longtable cannot see floats placed on its page later; flush pending floats before each table
-sed -i '' 's/^\\begin{longtable}/\\FloatBarrier\n\\begin{longtable}/' paper.tex
-# the teaser stays right under the abstract
-perl -0pi -e 's/\\begin\{figure\}/\\begin{figure}[H]/' paper.tex
-tectonic -X compile paper.tex 2>&1 | grep -i "error\|Overfull \\\\vbox" || true
+# Keep only the Figure 1 teaser pinned right under the abstract; let all other figures float naturally
+python3 -c '
+from pathlib import Path
+p = Path("paper.tex")
+s = p.read_text()
+s = s.replace("\\begin{figure}", "\\begin{figure}[H]", 1)
+p.write_text(s)
+'
+tectonic -X compile paper.tex
