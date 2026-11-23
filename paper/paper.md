@@ -1,5 +1,5 @@
 ---
-title: "Fix the Program, Not the Schedule"
+title: "Determinism Is Free: Bitwise-Exact LLM Serving via Canonical Floating-Point Programs"
 author: "Haocheng Lu, Fanqing Meng, Lingxiao Du, Haoxuan Cheng, Minjun Zhu"
 date: ""
 abstract: |
