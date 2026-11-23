@@ -1,6 +1,6 @@
 ---
 title: "Fix the Program, Not the Schedule"
-author: "Haocheng Lu, Haoxuan Cheng"
+author: "Haocheng Lu, Fanqing Meng, Lingxiao Du, Haoxuan Cheng, Minjun Zhu"
 date: ""
 abstract: |
   Production LLM serving engines are not reproducible: identical requests at temperature zero return different tokens and log-probabilities depending on batch composition, prefix-cache hits, chunked prefill boundaries, and whether a token is evaluated during decode or prefill. In reinforcement learning (RL), rescoring rollouts in a trainer produces yet another answer, corrupting importance ratios before a single gradient step is taken. Existing deterministic modes treat reproducibility as a heavy performance tax—disabling split-KV, pinning GEMM tiles, or turning off radix caching—sacrificing 30–71% of serving throughput while still failing prefill–decode equivalence.

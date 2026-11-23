@@ -109,7 +109,7 @@ Everything, caches included, is installed under `env/` by `setup_env.sh` (idempo
 ```bibtex
 @misc{lu2026piattn,
   title  = {Fix the Program, Not the Schedule: Bitwise-Reproducible {LLM} Serving at Full Speed with Every Optimization On},
-  author = {Haocheng Lu and Haoxuan Cheng},
+  author = {Haocheng Lu and Fanqing Meng and Lingxiao Du and Haoxuan Cheng and Minjun Zhu},
   year   = {2026},
   url    = {https://github.com/HaochengLu/pi-attn}
 }
